@@ -1,0 +1,7 @@
+--target=aarch64-linux-android35
+--sysroot=/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+-Icompat/include
+-I../../MacNativeGames/games/totk/runtime
+-I../../MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn
+-I../../MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/include
+-std=gnu11

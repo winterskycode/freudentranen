@@ -1,0 +1,32 @@
+# Whitelist: only this project's own sources and notes are tracked. Game data, keys, dumps, extracted or rewritten game
+# code, generated tables (they hold game symbols), build outputs and the cloned reference projects never are.
+/*
+!/.gitignore
+!/.github/
+!/README.md
+!/BUILDING.md
+!/LICENSE
+!/LICENSES/
+!/NOTICE
+!/port/
+!/patches/
+
+# inside port/: outputs and fetched sources
+/port/rewriter/out-*/
+/port/rewriter/verify-*/
+/port/rewriter/merged*.py
+/port/rewriter/android_patch_nso.py
+/port/rewriter/patch_nso.py
+/port/xlate/work-*/
+/port/xlate/linux-*/
+/port/xlate/ndk-bin/
+/port/xlate/*.log
+/port/android/deps/src/
+/port/android/deps/build/
+/port/android/deps/out/
+__pycache__/
+*.pyc
+*.o
+*.so
+*.apk
+*.log

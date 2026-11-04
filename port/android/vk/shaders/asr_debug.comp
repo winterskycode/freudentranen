@@ -1,0 +1,14 @@
+// A debug view for Arm ASR (nvn_vulkan_asr.inc, live word asrshow=): one channel of one of its images, scaled, as grey
+// into the output (motion: the length in pixels).
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(push_constant) uniform P { vec4 sel; } p;   // channel, scale, 1: motion length in pixels (x size), size x
+layout(set = 0, binding = 0) uniform sampler2D src;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D dst;
+void main() {
+    ivec2 P = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(P, imageSize(dst)))) return;
+    vec4 s = texelFetch(src, P, 0);
+    float v = p.sel.z == 1.0 ? length(s.xy * vec2(textureSize(src, 0))) : s[int(p.sel.x)];
+    imageStore(dst, P, vec4(vec3(abs(v) * p.sel.y), 1.0));
+}

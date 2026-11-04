@@ -1,0 +1,89 @@
+Tears of the Kingdom native port for Android
+=============================================
+
+Copyright (C) 2026 winterskycode and contributors.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public
+License, version 3, as published by the Free Software Foundation (the full text is in LICENSE). It is distributed in the
+hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE (sections 15 and 16 of the licence). Use it at your own risk, saves included.
+
+Source
+------
+Repository: https://github.com/winterskycode/freudentranen
+The complete corresponding source of each release is published next to its APK as totk-<tag>-source.tar.xz: this
+repository at the release tag, plus the exact upstream sources the build fetched (MacNativeGames, Mesa, libadrenotools,
+liblinkernsbypass, Opus, libvpx, zstd, Capstone, Noto Sans CJK), so the release can be rebuilt even if an upstream disappears. The toolchains
+(the Android NDK and SDK, the .NET SDK 10.0.402) are the published versions pinned in port/android/tools/env.sh and
+port/android/tools/release.sh.
+
+Why the AGPL-3.0
+----------------
+The Vulkan renderer (port/android/vk), the code rewriter's Android target and the GPU driver build
+(port/android/tools/build_gpu_driver.py) come from the D2R Android port, which is AGPL-3.0, so this project as a whole is distributed under the AGPL-3.0. Code its
+authors released under MIT, BSD or other permissive licences keeps that licence and its copyright notice; the AGPL-3.0
+applies to the combined work and to this project's changes, and does not take away the permissions those licences
+grant for the original code.
+
+What this project is built on
+-----------------------------
+  * MacNativeGames (https://github.com/ly05010419/MacNativeGames) -- MIT, Copyright (c) 2026 MacNativeGames
+    contributors. The native runtime the port runs on: loader, Horizon services, audio, the game's patches and the code
+    rewriter. Fetched at a pinned commit by port/setup.sh, which applies this project's changes
+    (the android branch of https://github.com/winterskycode/MacNativeGames). Text: MacNativeGames/LICENSE.
+  * d2r-mobile by jhaizhou (https://github.com/jhaizhou-ops/d2r-mobile) -- MIT, Copyright (c) 2026 jhaizhou. The code
+    rewriter's tools in port/rewriter/d2r (local changes listed in its README.md), and the D2R graphics layer that
+    MacNativeGames carries (d2r_gfx). Text: port/rewriter/d2r/LICENSE.
+  * d2r-android v0.6.1 by sydeEvans (https://github.com/sydeEvans/d2r-android) -- MIT. The Android port of d2r-mobile
+    that the D2R Android port imported; part of port/android/vk descends from it. Text:
+    LICENSES/MIT-d2r-android-sydeEvans.txt.
+  * The D2R Android port by ImL1s (aa22396584 on GitLab), android/v2 branch at commit 99cac6a, published at
+    https://gitlab.com/aa22396584/d2r-mobile and mirrored at https://github.com/akari-sora/d2r-mobile (neither is public
+    any more) -- AGPL-3.0 for its changes since 2026-10-18, on top of the MIT code above. This project imported its
+    dm/android/native code on 2026-10-20 as port/android/vk: the NVN-to-Vulkan renderer (nvn_vulkan.c and its .inc
+    parts), the GPU driver loader (gpu_driver.c), present rect, pending ranges, the POSIX host helpers, the Vulkan
+    function table and the D2R host headers in port/android/vk/d2r. Its dm/android/tools/build_gpu_driver.py became
+    port/android/tools/build_gpu_driver.py, and the Android target of its dm/tools/patch_nso.py (DM_TARGET=android)
+    was merged into port/rewriter/d2r/patch_nso.py. Text: port/android/vk/LICENSE.AGPL.
+    MODIFIED: this project has changed these files continuously since 2026-10-20 to run Tears of the Kingdom (its
+    command records, runtime shader translation, render state, pipelines, synchronisation, frame generation and
+    upscaling, pacing; the rewriter's TOTK call windows and stack handling); the git history of this repository records every change and its date.
+
+Third-party components in the APK
+---------------------------------
+Every one of these, with its licence text, is listed in port/android/app/licenses.tsv and shown in the app under
+Tools > Licences:
+  * Mesa's Turnip Vulkan driver for Adreno GPUs, built from whitebelyash/mesa-unified (turnip/gen8) with this project's
+    fix (patches/turnip-a8xx-pvtmem-stack-pad.patch) -- MIT, some parts Apache-2.0 or BSL-1.0
+  * libadrenotools and liblinkernsbypass -- BSD-2-Clause
+  * The D2R graphics layer in MacNativeGames (d2r_gfx) -- MIT; parts ported from deko3d -- zlib; nvn.h by h1k421 -- MIT
+  * bcdec -- MIT or Unlicense
+  * Code in MacNativeGames derived from AMD FidelityFX, nxnative and Ryujinx's audio renderer -- MIT
+  * The Ryujinx shader translator -- MIT; the .NET runtime compiled into it -- MIT
+  * AMD FidelityFX SDK v1.1.4, FSR 3.1 frame interpolation and optical flow (port/android/vk/third_party/fsr3) -- MIT,
+    Copyright (C) 2024 Advanced Micro Devices, Inc.
+  * Dear ImGui, lsfg-vk, volk, AMD FidelityFX Super Resolution 1, Arm Accuracy Super Resolution, SMAA, the RenderDoc
+    in-application API header, pe-parse -- MIT
+  * DXVK's DXBC compiler, by way of the dxbc project (port/android/vk/third_party/dxbc) -- zlib; the Khronos SPIR-V
+    headers in it -- MIT-style
+  * Opus, libvpx, Zstandard -- BSD-3-Clause
+  * The reader for the player's game files (port/android/setup/container) is this project's own code, written from the file
+    formats. Its RomFS index is a C port of MacNativeGames' scripts/extract_romfs.py and prepare_romfs_backend.py (MIT, above).
+  * Capstone 5.0.9, for the code rewriter in C (port/android/setup/patcher; not in the APK until that is linked) --
+    BSD-3-Clause, its LLVM-derived parts NCSA. Fetched by port/android/deps/build_deps.sh.
+  * The LLVM C++ runtime (libc++), linked into the native libraries by the Android NDK -- Apache-2.0 WITH
+    LLVM-exception. Text: LICENSES/Apache-2.0-WITH-LLVM-exception-libcxx.txt.
+  * The Figtree and Marcellus SC fonts -- SIL Open Font License 1.1 (port/android/app/assets/fonts)
+  * Noto Sans CJK SC Regular, cut down to the characters the game takes from a shared font (port/android/tools/fetch_font.sh)
+    -- SIL Open Font License 1.1, Copyright 2014-2021 Adobe. Text: LICENSES/OFL-NotoSansCJK.txt.
+
+Not part of this project
+------------------------
+  * Lossless Scaling's frame generation shaders: never part of this project or the APK. Players who own Lossless Scaling
+    choose their own Lossless.dll in the app, which translates its shaders on the device and does not keep the file.
+
+No game content
+---------------
+This repository and the APK contain no game program, game data, keys, firmware or saves. Players supply their own copy
+of the game and their console's keys. This is an independent, non-commercial project, not affiliated with, endorsed or
+sponsored by Nintendo. The Legend of Zelda and Nintendo Switch are trademarks of Nintendo.

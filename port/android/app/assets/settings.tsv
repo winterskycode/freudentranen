@@ -1,0 +1,56 @@
+# The settings of the startup screen (LauncherActivity) and the in-game menu (vk/overlay.cpp): one row each, tab-separated:
+#   key  tab  flags  default  values  names  label  help  needs
+# key: the environment variable the game reads (launch.env); @name: a row that opens a page instead of holding a value;
+#   =: a section heading (flag H), which shows only its label.
+# values / names: '|'-separated, in the same order. Rows show in file order; tabs in order of first appearance.
+# flags: L applies at once in the game (the rest are saved for the next start), Q also in the quick menu, X experimental,
+#   D only when the app carries Turnip, S startup screen only, P opens a page (@ rows), H a section heading.
+# Values starting with lsfg show only once the startup screen has made LSFG's shaders (Lsfg.java, vk/overlay.cpp).
+# needs (optional): KEY=value|value: the row shows only while that setting has one of these values. A section must start
+#   with a row that always shows. Help: one or two plain sentences, what it does and the trade-off; no figures that age.
+=	Graphics	H	-	-	-	Resolution	
+TOTK_OPERATION_MODE	Graphics	-	handheld	handheld|docked	Handheld|Docked	Console mode	Runs the game as a handheld or as if docked to a TV. Docked looks sharper but works the GPU harder.
+TOTK_RENDER_RES	Graphics	-	0	800x450|960x540|1120x630|1280x720|1440x810|0|1920x1080|2136x1200|2560x1440	800×450|960×540|1120×630|1280×720|1440×810|Original|1920×1080 (supersampled)|2136×1200 (supersampled)|2560×1440 (supersampled)	Render resolution	How detailed the 3D world is before it is fitted to the screen. Lower runs faster and cooler but looks softer. Sizes above the screen look smoother but need far more GPU power and memory.
+TOTK_UPSCALER	Graphics	L	fsr1	fsr1|bilinear	FSR 1|Bilinear	Upscaler	How the picture is enlarged to fill the screen. FSR 1 keeps edges sharp. Bilinear is a little softer and slightly faster. This only matters in handheld mode.
+TOTK_FSR_SHARPNESS	Graphics	L	0.25	0|0.25|0.5|1	Strongest|Strong|Medium|Light	Sharpening	How crisp FSR 1 makes the picture. Stronger looks more detailed, but jagged edges stand out more.	TOTK_UPSCALER=fsr1
+=	Graphics	H	-	-	-	Smoothing	
+TOTK_AA	Graphics	LQ	off	off|smaa|smaat2x	Off|SMAA|SMAA T2x	Anti-aliasing	Smooths jagged edges in the world and leaves the HUD sharp. SMAA suits most players. SMAA T2x also calms flickering far-away edges, but fast movement can leave a faint trail. T2x needs docked mode; in handheld it acts like SMAA.
+TOTK_SMAA_ULTRA	Graphics	L	0	0|1	High|Ultra	SMAA quality	How hard SMAA looks for edges. High is enough for most scenes. Ultra finds fainter edges for a small GPU cost.	TOTK_AA=smaa|smaat2x
+TOTK_TAA	Graphics	X	0	0|asr	Off|Arm ASR	Temporal upscaling	Builds each frame from several smaller ones, which smooths far-away edges better than SMAA and replaces it. Lights can shimmer, fast characters can smear, and it costs a lot of GPU time.	TOTK_OPERATION_MODE=docked
+=	Graphics	H	-	-	-	Detail	
+TOTK_ANISO	Graphics	L	0	0|1|4|8|16	Original|Off|4×|8×|16×	Texture filtering	Keeps the ground and walls sharp when you see them at a shallow angle. Higher looks sharper and costs a little GPU time.
+TOTK_SHADOW_RES	Graphics	-	720	720|1024|1440|2048	720 (original)|1024|1440|2048	Shadow quality	How sharp the sun’s shadows are, especially leaves on the ground. Higher values cost very little.
+TOTK_SHADOW_CASCADES	Graphics	-	4	4|3|2	Far (original)|Medium|Near	Shadow distance	How far away the sun casts shadows. Near and Medium drop the shadows of distant hills and trees and lighten the load a little. Close shadows do not change.
+=	Frame rate	H	-	-	-	Speed	
+TOTK_FPS_CAP	Frame rate	LQ	120	30|40|45|60|70|80|90|100|110|120	30|40|45|60|70|80|90|100|110|120	Frame rate limit	The most pictures shown each second, counting generated ones. A lower limit saves power and heat. The game always runs at normal speed.
+TOTK_DISPLAY_HZ	Frame rate	L	120	120|60	120 Hz|60 Hz	Screen refresh rate	How often the screen updates. 120 Hz looks smoother when the frame rate is uneven. 60 Hz saves power. If the device gets very hot, Android drops the screen to 60 Hz by itself.
+=	Frame rate	H	-	-	-	Frame generation	
+TOTK_FG	Frame rate	LQ	off	off|builtin|fsr|lsfg|lsfg3|lsfg4|lsfga	Off|Built-in ×2|FSR 3.1 ×2|LSFG ×2|LSFG ×3|LSFG ×4|LSFG adaptive	Frame generation	Adds pictures between the ones the game draws, so motion looks smoother, with a little more input delay. Built-in is the lightest. FSR 3.1 looks better. LSFG needs your Lossless.dll, chosen in Tools > Lossless Scaling on the startup screen. Generation pauses if heat drops the screen to 60 Hz.
+TOTK_FG_HUD	Frame rate	L	real	real|generated	Real frames|Generated	Game HUD	How the game’s HUD looks with frame generation. Real frames stays sharp but moves at the game’s frame rate. Generated moves smoothly, but moving text can smear.	TOTK_FG=builtin|lsfg|lsfg3|lsfg4|lsfga
+TOTK_LSFG_FLOW	Frame rate	L	0.75	1|0.75|0.5|0.25	Full|0.75|0.5|0.25	LSFG flow scale	How closely LSFG follows motion. Lower uses less GPU time, but fast motion looks blurrier.	TOTK_FG=lsfg|lsfg3|lsfg4|lsfga
+TOTK_LSFG_PERF	Frame rate	L	1	1|0	On|Off	LSFG performance mode	A lighter version of LSFG. It uses less GPU time but shows slightly more visual errors.	TOTK_FG=lsfg|lsfg3|lsfg4|lsfga
+=	Frame rate	H	-	-	-	Advanced	
+TOTK_UNCAPPED_INTERVAL	Frame rate	-	1	1|0	Up to the limit|Original (30–40)	Frame rate mode	Up to the limit lets the game run as fast as the frame rate limit allows. Original keeps the Switch’s 30 to 40 frames per second.
+TOTK_SYNC_LAG	Frame rate	-	0	0|1	Off|On	CPU and GPU overlap	Prepares the next frame while the last one is still being drawn. Busy places run about 10% faster, but controls can lag by up to one more frame.
+TOTK_PACING	Frame rate	X	0	0|1	Off|On	Even frame pacing	Gives every frame the same time on screen. This can look steadier, but it adds input delay.
+=	Controls	H	-	-	-	Buttons	
+@controls	Controls	PQ	-	-	-	Button mapping	Choose which button does each action, such as jumping or attacking. Menu buttons follow Face buttons instead.
+TOTK_FACE_BUTTONS	Controls	L	label	position|label	By position|By label	Face buttons	How A, B, X and Y match the Switch’s. By position uses the same places as a Switch, so the right-hand button is A. By label uses the letter printed on each button.
+TOTK_BUTTON_STYLE	Controls	-	xbox	xbox|switch|playstation	Xbox|Switch|PlayStation	Button letters	Which button symbols the game shows in its prompts. This changes the pictures only, never what a button does.
+=	Controls	H	-	-	-	Motion	
+TOTK_MOTION	Controls	L	on	on|off	On|Off	Motion controls	Aim by tilting the device, like the gyro controls on a Switch.
+=	System	H	-	-	-	Sound	
+TOTK_VOLUME	System	LQ	100	100|80|60|40|20|0	100 %|80 %|60 %|40 %|20 %|Muted	Volume	The game’s volume. The game is muted while this menu is open.
+=	System	H	-	-	-	Performance overlay	
+TOTK_HUD_FPS	System	LQ	off	off|on	Off|On	Show frame rate	Shows the frame rate on screen, counting every picture shown.
+TOTK_HUD_FRAMETIME	System	L	off	off|on	Off|On	Show frame time	Shows how long each frame takes, with a small graph. Red bars are too slow for 60 frames per second.
+TOTK_HUD_REFRESH	System	L	off	off|on	Off|On	Show screen refresh rate	Shows how often the screen is updating right now. It falls to 60 Hz if the device gets very hot.
+TOTK_HUD_TEMP	System	L	off	off|on	Off|On	Show temperature	Shows the hottest of the CPU and GPU temperatures. Around 95 °C the device starts to slow itself down.
+TOTK_HUD_SHADERS	System	L	off	off|on	Off|On	Show shader activity	Shows how many shaders are being built right now. A stutter while this is above zero is a shader being built.
+TOTK_HUD_DRIVER	System	L	off	off|on	Off|On	Show graphics driver	Shows the graphics driver and its version.
+TOTK_HUD_CORNER	System	L	bottom-left	bottom-left|bottom-right|top-left|top-right	Bottom left|Bottom right|Top left|Top right	Overlay corner	Which corner of the screen the performance overlay sits in.
+=	System	H	-	-	-	Device	
+@drivers	System	PS	-	-	-	GPU driver	The graphics driver the game uses: your device’s own, the bundled Turnip driver for Adreno GPUs, or one from a .zip made for emulators. Each keeps its own shader cache.
+TOTK_ADPF	System	-	1	1|0	On|Off	Power hints	Tells Android how long each frame takes, so it raises the CPU speed only as far as needed. This saves power and heat.
+=	System	H	-	-	-	Support	
+TOTK_RECORD	System	L	off	off|on	Off|On	Bug report recording	Keeps a video of the last 30 seconds, so a bug report can include it, even after a crash. It uses about 45 MB of storage and a little GPU time.

@@ -1,0 +1,16 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+// SMAA pass 2: blending weights from the edges, with the precomputed area (linear) and search (nearest) textures.
+layout(binding = 0) uniform sampler2D edgesTex;
+layout(binding = 1) uniform sampler2D areaTex;
+layout(binding = 2) uniform sampler2D searchTex;
+layout(binding = 3, rgba8) uniform writeonly image2D blendOut;
+#include "smaa_common.glsl"
+
+void main() {
+    ivec2 p; vec2 texcoord;
+    if (!smaa_pixel(p, texcoord)) return;
+    vec2 pixcoord; vec4 offset[3];
+    SMAABlendingWeightCalculationVS(texcoord, pixcoord, offset);
+    imageStore(blendOut, p, SMAABlendingWeightCalculationPS(texcoord, pixcoord, offset, edgesTex, areaTex, searchTex, pc.sub));   // 0: SMAA 1x; T2x: (1,1,1,0) / (2,2,2,0)
+}

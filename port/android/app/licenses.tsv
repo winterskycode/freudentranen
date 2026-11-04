@@ -1,0 +1,38 @@
+# The third-party software in the APK and where its licence texts are (tools/build_apk.sh copies them into
+# assets/licenses; the startup screen's Tools > Licences shows them). One row per component, tab-separated:
+#   name  licence  what it does in this app  licence files (comma-separated, from the repository root)  only when (a file
+#   whose presence puts the component in the APK, or -)
+# A row whose licence file is missing fails the build, unless its "only when" file is missing too (the part is not
+# in this APK).
+Tears of the Kingdom native port	AGPL-3.0	This app: the startup screen, the native runtime port and the Vulkan renderer. Copyright, no warranty, where the source is and what it is built on: the notice below.	NOTICE,LICENSE	-
+D2R Android port	AGPL-3.0	By ImL1s (aa22396584). The Vulkan renderer and the GPU driver loader started as a copy of its code (2026-10-20) and have been changed since.	port/android/vk/LICENSE.AGPL	-
+d2r-android	MIT	By sydeEvans. The Android port of d2r-mobile that the D2R Android port imported; part of the renderer descends from it.	LICENSES/MIT-d2r-android-sydeEvans.txt	-
+MacNativeGames	MIT	The native runtime the port is built on: loader, Horizon services, audio and the game's patches.	MacNativeGames/LICENSE	-
+D2R mobile graphics (d2r_gfx)	MIT; deko3d parts zlib	From jhaizhou's d2r-mobile, by way of MacNativeGames: the NVN graphics layer and texture conversion.	MacNativeGames/games/totk/third_party/d2r_gfx/LICENSE,MacNativeGames/games/totk/third_party/d2r_gfx/LICENSE.deko3d	-
+nvn.h	MIT	By h1k421: the declarations of the Switch graphics API that the graphics layer implements.	MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/include/nvn.h	-
+bcdec	MIT or Unlicense	Decoding block-compressed textures.	MacNativeGames/games/totk/third_party/d2r_gfx/third_party/bcdec/LICENSE	-
+MacNativeGames third-party notices	MIT	Code in the runtime derived from AMD FidelityFX, nxnative and Ryujinx's audio renderer.	MacNativeGames/games/totk/third_party/licenses/AMD-FidelityFX-MIT.txt,MacNativeGames/games/totk/third_party/licenses/nxnative.txt,MacNativeGames/games/totk/third_party/licenses/Ryujinx-Audio.txt	-
+Ryujinx shader translator	MIT	Translates the game's shaders for Vulkan (libtotk_xlate.so).	MacNativeGames/vendor/ryujinx/LICENSE.txt,MacNativeGames/vendor/ryujinx/src/Spv.Generator/LICENSE	-
+.NET runtime	MIT	The runtime compiled into the shader translator (NativeAOT).	tools/dotnet/LICENSE.txt,tools/dotnet/ThirdPartyNotices.txt	-
+Mesa (Turnip)	MIT; some parts Apache-2.0 or BSL-1.0	The bundled Turnip Vulkan driver for Adreno GPUs (libvulkan_freedreno.so), with this project's fixes.	work/turnip-build/mesa/docs/license.rst,work/turnip-build/mesa/licenses/MIT,work/turnip-build/mesa/licenses/Apache-2.0,work/turnip-build/mesa/licenses/BSL-1.0	work/android/turnip/libvulkan_freedreno.so
+libadrenotools	BSD-2-Clause	Loads the bundled or an installed GPU driver.	port/android/vk/third_party/adrenotools/LICENSE	work/android/gpu-driver/libadrenotools.so
+liblinkernsbypass	BSD-2-Clause	Part of libadrenotools' hooks: loads the driver outside Android's library namespaces.	work/android/gpu-driver/licenses/liblinkernsbypass.txt	work/android/gpu-driver/libadrenotools.so
+Dear ImGui	MIT	The in-game menu.	port/android/vk/third_party/imgui/LICENSE.txt	-
+lsfg-vk	MIT	Frame generation (the LSFG framegen library; the player's own Lossless Scaling shaders are not part of the app).	port/android/vk/third_party/lsfg_framegen/LICENSE.md	-
+volk	MIT	Vulkan function loading for frame generation.	port/android/vk/third_party/volk/LICENSE.md	-
+DXVK's DXBC compiler	zlib	Translates the shaders of the player's own Lossless.dll for Vulkan, on the device (libtotklsfg.so). Taken out of DXVK by the dxbc project.	port/android/vk/third_party/dxbc/LICENSE.md	-
+SPIR-V headers	MIT-style (Khronos)	By The Khronos Group: spirv.hpp and GLSL.std.450.h, part of the DXBC compiler. Both carry this licence.	port/android/vk/third_party/dxbc/include/spirv/thirdparty/GLSL.std.450.h	-
+pe-parse	MIT	Reads the resources of the player's own Lossless.dll (libtotklsfg.so).	port/android/vk/third_party/pe-parse/LICENSE	-
+AMD FidelityFX Super Resolution 1	MIT	The FSR 1 upscaler and sharpening.	port/android/vk/third_party/fsr1/LICENSE	-
+AMD FidelityFX SDK (FSR 3.1)	MIT	The FSR 3.1 frame generation: frame interpolation and optical flow.	port/android/vk/third_party/fsr3/LICENSE.txt	-
+Arm Accuracy Super Resolution	MIT	Temporal upscaling (Arm ASR).	port/android/vk/third_party/asr/LICENSE	-
+SMAA	MIT	Anti-aliasing.	port/android/vk/third_party/smaa/LICENSE.txt	-
+Capstone	BSD-3-Clause; LLVM parts NCSA	By Nguyen Anh Quynh: decodes the game's code in the code rewriter (port/android/setup/patcher). Listed once libtokpatcher.a is built into the APK.	port/android/deps/src/capstone/LICENSE.TXT,port/android/deps/src/capstone/LICENSE_LLVM.TXT	port/android/deps/out/lib/libtokpatcher.a
+RenderDoc in-application API	MIT	The frame capture hook for debugging (the header's licence).	port/android/vk/third_party/renderdoc_app.h	-
+Opus	BSD-3-Clause	Audio decoding.	port/android/deps/src/opus/COPYING	-
+libvpx	BSD-3-Clause	Video playback for the game's cutscenes.	port/android/deps/src/libvpx/LICENSE,port/android/deps/src/libvpx/PATENTS	-
+Zstandard	BSD-3-Clause	Decompression of the game's files and the mod installer.	port/android/deps/src/zstd/LICENSE	-
+LLVM C++ runtime (libc++)	Apache-2.0 WITH LLVM-exception	The C++ standard library, linked into the native libraries by the Android NDK.	LICENSES/Apache-2.0-WITH-LLVM-exception-libcxx.txt	-
+Figtree	SIL Open Font License 1.1	The startup screen's text font.	port/android/app/assets/fonts/OFL-Figtree.txt	-
+Marcellus SC	SIL Open Font License 1.1	The startup screen's title font.	port/android/app/assets/fonts/OFL-MarcellusSC.txt	-
+Noto Sans CJK	SIL Open Font License 1.1	By Adobe. In the place of the console's shared fonts, cut down to the characters the game takes from them: accented letters, punctuation, signs and kana in the Chinese and Korean text.	LICENSES/OFL-NotoSansCJK.txt	port/android/deps/out/fonts/SharedFont.otf

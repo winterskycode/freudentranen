@@ -1,0 +1,39 @@
+diff --git a/src/freedreno/vulkan/tu_cmd_buffer.cc b/src/freedreno/vulkan/tu_cmd_buffer.cc
+index 01f0aa65957..6827e12ee5d 100644
+--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
+@@ -354,6 +354,17 @@ tu_emit_rt_workaround(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
+    tu_cs_emit(cs, A6XX_CP_SET_MARKER_0_RT_WA_END);
+ }
+ 
++static uint32_t
++tu_flushmask(void)
++{
++   static int64_t v = -1;
++   if (v < 0) {
++      const char *m = getenv("TU_FLUSHMASK");
++      v = m ? (int64_t) strtoul(m, NULL, 0) : 0;
++   }
++   return (uint32_t) v;
++}
++
+ template <chip CHIP>
+ static void
+ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
+@@ -362,6 +373,7 @@ tu6_emit_flushes(struct tu_cmd_buffer *cmd_buffer,
+ {
+    BITMASK_ENUM(tu_cmd_flush_bits) flushes = cache->flush_bits;
+    cache->flush_bits = 0;
++   flushes |= (enum tu_cmd_flush_bits) tu_flushmask();
+ 
+    if (TU_DEBUG(FLUSHALL))
+       flushes |= TU_CMD_FLAG_ALL_CLEAN | TU_CMD_FLAG_ALL_INVALIDATE;
+@@ -625,7 +637,7 @@ void
+ tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer)
+ {
+    if (!cmd_buffer->state.renderpass_cache.flush_bits &&
+-       likely(!tu_env.debug))
++       likely(!tu_env.debug) && !tu_flushmask())
+       return;
+ 
+    struct tu_cs *cs = &cmd_buffer->draw_cs;

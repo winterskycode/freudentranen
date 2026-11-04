@@ -1,0 +1,19 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+// SMAA pass 1: luma edges of the canvas, and a copy of it (pass 3 reads the copy and writes the canvas). The canvas
+// holds linear display values (R11G11B10F, 0..1 after the game's tonemap); SMAA's thresholds are for gamma-encoded
+// colour, so the point reads return sqrt (gamma 2.0).
+layout(binding = 0) uniform sampler2D colorTex;
+layout(binding = 1, rgba8) uniform writeonly image2D edgesOut;
+layout(binding = 2, r11f_g11f_b10f) uniform writeonly image2D colorCopy;   // the canvas as it is, for pass 3 to read
+#define SMAASamplePoint(tex, coord) sqrt(max(textureLod(tex, coord, 0.0), vec4(0.0)))
+#include "smaa_common.glsl"
+
+void main() {
+    ivec2 p; vec2 texcoord;
+    if (!smaa_pixel(p, texcoord)) return;
+    imageStore(colorCopy, p, texelFetch(colorTex, p, 0));
+    vec4 offset[3];
+    SMAAEdgeDetectionVS(texcoord, offset);
+    imageStore(edgesOut, p, vec4(SMAALumaEdgeDetectionPS(texcoord, offset, colorTex), 0.0, 0.0));
+}

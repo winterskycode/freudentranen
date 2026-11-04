@@ -1,0 +1,20 @@
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 57c95e67c56..c6f59bdcde8 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -3072,6 +3072,15 @@ tu_setup_pvtmem(struct tu_device *dev,
+                1 << 12);
+       uint32_t total_size =
+          dev->physical_device->info->num_sp_cores * pvtmem_bo->per_sp_size;
++      /* A8xx: SP_xS_PVT_MEM_STACK_OFFSET = per_sp_size places each SP's
++       * hardware stack after its private memory, so the last SP's stack
++       * starts at the end of the BO. On a830 the stack does spill there
++       * (LSFG's constant buffer, allocated right after pvtmem, was
++       * overwritten with return addresses whenever other GPU work ran
++       * between its frames), so keep one more SP-sized slot behind it.
++       */
++      if (dev->physical_device->info->chip >= 8)
++         total_size += pvtmem_bo->per_sp_size;
+ 
+       VkResult result = tu_bo_init_new(dev, NULL, &pvtmem_bo->bo, total_size,
+                                        TU_BO_ALLOC_INTERNAL_RESOURCE, "pvtmem");

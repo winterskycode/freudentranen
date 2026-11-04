@@ -1,0 +1,23 @@
+// Motion vectors for Arm ASR (nvn_vulkan_asr.inc): the camera's only, from the G-buffer depth and this and the last
+// frame's view-projection (GL clip space, y up, depth not reversed), in ASR's
+// convention: texture-UV units, the last frame's position minus this one's (its ReconstructAndDilate reads
+// prevUV = uv + mv), not dilated (ASR dilates them), not jittered.
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(push_constant) uniform P {
+    mat4 reproj;   // previous view-projection * inverse(current view-projection)
+    vec4 render;   // render w, h, 1/w, 1/h
+    vec4 misc;     // x: clip-space y direction
+} p;
+layout(set = 0, binding = 0) uniform sampler2D depth;
+layout(set = 0, binding = 1, rg16f) uniform writeonly image2D motion;
+
+void main() {
+    ivec2 P = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(P, ivec2(p.render.xy)))) return;
+    float d = texelFetch(depth, P, 0).r;
+    vec2 uv = (vec2(P) + 0.5) * p.render.zw, mv = vec2(0.0);
+    vec4 c = p.reproj * vec4(uv.x * 2.0 - 1.0, p.misc.x * (1.0 - uv.y * 2.0), d * 2.0 - 1.0, 1.0);
+    if (c.w > 1e-7) { vec2 n = c.xy / c.w; mv = vec2(n.x * 0.5 + 0.5, 0.5 - 0.5 * p.misc.x * n.y) - uv; }
+    imageStore(motion, P, vec4(mv, 0.0, 0.0));
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.tok.totk">
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
+  <application android:label="Tears of the Kingdom" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:hasCode="true" android:extractNativeLibs="true"
+      android:isGame="true" android:appCategory="game" android:debuggable="true" android:requestLegacyExternalStorage="true">
+    <activity android:name=".LauncherActivity" android:exported="true" android:screenOrientation="sensorLandscape"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+    <provider android:name=".ReportProvider" android:authorities="dev.tok.totk.reports" android:exported="false"
+        android:grantUriPermissions="true"/>
+    <activity android:name=".GameActivity" android:exported="false" android:process=":game"
+        android:screenOrientation="sensorLandscape" android:launchMode="singleTask"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+        android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|smallestScreenSize|density">
+      <meta-data android:name="android.app.lib_name" android:value="totk"/>
+    </activity>
+  </application>
+</manifest>

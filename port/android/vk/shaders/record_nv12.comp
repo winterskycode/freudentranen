@@ -1,0 +1,43 @@
+// Bug-report recording (nvn_vulkan_record.inc): the presented picture scaled to the video's size and converted to NV12
+// (BT.709, limited range) into a buffer the encoder reads. One invocation makes a 4x2 block, so every write is a whole
+// 32-bit word: four luma bytes in each of the two rows and the block's two chroma pairs.
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(push_constant) uniform P {
+    vec2 origin;       // the picture's rectangle in the source texture, in texels
+    vec2 extent;
+    ivec2 size;        // the video, a multiple of 4 x 2
+    int srgb;          // the source is sampled through an sRGB view: values come back linear
+} p;
+layout(set = 0, binding = 0) uniform sampler2D src;
+layout(set = 0, binding = 1, std430) writeonly buffer Out { uint words[]; } nv12;
+
+vec3 encode(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+
+vec3 fetch(ivec2 o) {
+    vec2 uv = (p.origin + (vec2(o) + 0.5) * p.extent / vec2(p.size)) / vec2(textureSize(src, 0));
+    vec3 c = clamp(textureLod(src, uv, 0.0).rgb, 0.0, 1.0);
+    return p.srgb != 0 ? encode(c) : c;
+}
+
+uint pack4(float a, float b, float c, float d) {
+    uvec4 v = uvec4(clamp(round(vec4(a, b, c, d) * 255.0), 0.0, 255.0));
+    return v.x | (v.y << 8) | (v.z << 16) | (v.w << 24);
+}
+
+float luma(vec3 c) { return (16.0 + 219.0 * dot(c, vec3(0.2126, 0.7152, 0.0722))) / 255.0; }
+
+void main() {
+    ivec2 b = ivec2(gl_GlobalInvocationID.xy) * ivec2(4, 2);
+    if (b.x >= p.size.x || b.y >= p.size.y) return;
+    vec3 c[8];
+    for (int y = 0; y < 2; y++) for (int x = 0; x < 4; x++) c[y * 4 + x] = fetch(b + ivec2(x, y));
+    int row = p.size.x / 4;
+    nv12.words[b.y * row + b.x / 4] = pack4(luma(c[0]), luma(c[1]), luma(c[2]), luma(c[3]));
+    nv12.words[(b.y + 1) * row + b.x / 4] = pack4(luma(c[4]), luma(c[5]), luma(c[6]), luma(c[7]));
+    vec3 l = (c[0] + c[1] + c[4] + c[5]) * 0.25, r = (c[2] + c[3] + c[6] + c[7]) * 0.25;   // a chroma pair per 2x2
+    vec2 cl = vec2(dot(l, vec3(-0.1146, -0.3854, 0.5)), dot(l, vec3(0.5, -0.4542, -0.0458)));
+    vec2 cr = vec2(dot(r, vec3(-0.1146, -0.3854, 0.5)), dot(r, vec3(0.5, -0.4542, -0.0458)));
+    cl = (128.0 + 224.0 * cl) / 255.0; cr = (128.0 + 224.0 * cr) / 255.0;
+    nv12.words[p.size.y * row + (b.y / 2) * row + b.x / 4] = pack4(cl.x, cl.y, cr.x, cr.y);
+}

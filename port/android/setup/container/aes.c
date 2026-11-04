@@ -1,0 +1,203 @@
+/* AES-128: ECB for keys, XTS for NCA headers, CTR for everything else. The instructions when the CPU has them (aes_hw.c),
+   otherwise portable C from constant tables. A context is read-only after tokc_aes_init. */
+#include "container_internal.h"
+#if defined(__aarch64__) && defined(__linux__)
+#include <sys/auxv.h>
+#ifndef HWCAP_AES
+#define HWCAP_AES (1 << 3)
+#endif
+#endif
+
+#define SBOX(F) \
+ F(0x63)F(0x7c)F(0x77)F(0x7b)F(0xf2)F(0x6b)F(0x6f)F(0xc5)F(0x30)F(0x01)F(0x67)F(0x2b)F(0xfe)F(0xd7)F(0xab)F(0x76) \
+ F(0xca)F(0x82)F(0xc9)F(0x7d)F(0xfa)F(0x59)F(0x47)F(0xf0)F(0xad)F(0xd4)F(0xa2)F(0xaf)F(0x9c)F(0xa4)F(0x72)F(0xc0) \
+ F(0xb7)F(0xfd)F(0x93)F(0x26)F(0x36)F(0x3f)F(0xf7)F(0xcc)F(0x34)F(0xa5)F(0xe5)F(0xf1)F(0x71)F(0xd8)F(0x31)F(0x15) \
+ F(0x04)F(0xc7)F(0x23)F(0xc3)F(0x18)F(0x96)F(0x05)F(0x9a)F(0x07)F(0x12)F(0x80)F(0xe2)F(0xeb)F(0x27)F(0xb2)F(0x75) \
+ F(0x09)F(0x83)F(0x2c)F(0x1a)F(0x1b)F(0x6e)F(0x5a)F(0xa0)F(0x52)F(0x3b)F(0xd6)F(0xb3)F(0x29)F(0xe3)F(0x2f)F(0x84) \
+ F(0x53)F(0xd1)F(0x00)F(0xed)F(0x20)F(0xfc)F(0xb1)F(0x5b)F(0x6a)F(0xcb)F(0xbe)F(0x39)F(0x4a)F(0x4c)F(0x58)F(0xcf) \
+ F(0xd0)F(0xef)F(0xaa)F(0xfb)F(0x43)F(0x4d)F(0x33)F(0x85)F(0x45)F(0xf9)F(0x02)F(0x7f)F(0x50)F(0x3c)F(0x9f)F(0xa8) \
+ F(0x51)F(0xa3)F(0x40)F(0x8f)F(0x92)F(0x9d)F(0x38)F(0xf5)F(0xbc)F(0xb6)F(0xda)F(0x21)F(0x10)F(0xff)F(0xf3)F(0xd2) \
+ F(0xcd)F(0x0c)F(0x13)F(0xec)F(0x5f)F(0x97)F(0x44)F(0x17)F(0xc4)F(0xa7)F(0x7e)F(0x3d)F(0x64)F(0x5d)F(0x19)F(0x73) \
+ F(0x60)F(0x81)F(0x4f)F(0xdc)F(0x22)F(0x2a)F(0x90)F(0x88)F(0x46)F(0xee)F(0xb8)F(0x14)F(0xde)F(0x5e)F(0x0b)F(0xdb) \
+ F(0xe0)F(0x32)F(0x3a)F(0x0a)F(0x49)F(0x06)F(0x24)F(0x5c)F(0xc2)F(0xd3)F(0xac)F(0x62)F(0x91)F(0x95)F(0xe4)F(0x79) \
+ F(0xe7)F(0xc8)F(0x37)F(0x6d)F(0x8d)F(0xd5)F(0x4e)F(0xa9)F(0x6c)F(0x56)F(0xf4)F(0xea)F(0x65)F(0x7a)F(0xae)F(0x08) \
+ F(0xba)F(0x78)F(0x25)F(0x2e)F(0x1c)F(0xa6)F(0xb4)F(0xc6)F(0xe8)F(0xdd)F(0x74)F(0x1f)F(0x4b)F(0xbd)F(0x8b)F(0x8a) \
+ F(0x70)F(0x3e)F(0xb5)F(0x66)F(0x48)F(0x03)F(0xf6)F(0x0e)F(0x61)F(0x35)F(0x57)F(0xb9)F(0x86)F(0xc1)F(0x1d)F(0x9e) \
+ F(0xe1)F(0xf8)F(0x98)F(0x11)F(0x69)F(0xd9)F(0x8e)F(0x94)F(0x9b)F(0x1e)F(0x87)F(0xe9)F(0xce)F(0x55)F(0x28)F(0xdf) \
+ F(0x8c)F(0xa1)F(0x89)F(0x0d)F(0xbf)F(0xe6)F(0x42)F(0x68)F(0x41)F(0x99)F(0x2d)F(0x0f)F(0xb0)F(0x54)F(0xbb)F(0x16)
+#define SBYTE(s) s,
+#define XT(x) ((((x) << 1) ^ ((((x) >> 7) & 1) * 0x1b)) & 0xff)
+/* A column of MixColumns for one S-box output: 2s, s, s, 3s from the low byte up. */
+#define TE(s) ((uint32_t)XT(s) | (uint32_t)(s) << 8 | (uint32_t)(s) << 16 | (uint32_t)(XT(s) ^ (s)) << 24),
+static const uint8_t sbox[256] = {SBOX(SBYTE)};
+static const uint32_t te[256] = {SBOX(TE)};
+static const uint8_t inv_sbox[256] = {
+ 0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,
+ 0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e,0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25,
+ 0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92,0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84,
+ 0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06,0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b,
+ 0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73,0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e,
+ 0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b,0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4,
+ 0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f,0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef,
+ 0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61,0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d};
+
+static uint32_t rol(uint32_t v, unsigned n) { return v << n | v >> (32 - n); }
+static uint8_t xt(uint8_t x) { return (uint8_t)XT(x); }
+static uint8_t mul(uint8_t a, unsigned b) {
+    uint8_t r = 0;
+    for (; b; b >>= 1, a = xt(a)) if (b & 1) r ^= a;
+    return r;
+}
+
+/* Columns are little-endian words: row 0 in the low byte. */
+static void portable_encrypt(const uint8_t rk[176], const uint8_t in[16], uint8_t out[16]) {
+    uint32_t s[4], t[4];
+    for (int c = 0; c < 4; c++) s[c] = rd32(in + 4 * c) ^ rd32(rk + 4 * c);
+    for (int r = 1; r < 10; r++) {
+        for (int c = 0; c < 4; c++)
+            t[c] = te[s[c] & 255] ^ rol(te[s[(c + 1) & 3] >> 8 & 255], 8) ^ rol(te[s[(c + 2) & 3] >> 16 & 255], 16) ^
+                   rol(te[s[(c + 3) & 3] >> 24], 24) ^ rd32(rk + 16 * r + 4 * c);
+        memcpy(s, t, sizeof s);
+    }
+    for (int c = 0; c < 4; c++)
+        wr32(out + 4 * c, ((uint32_t)sbox[s[c] & 255] | (uint32_t)sbox[s[(c + 1) & 3] >> 8 & 255] << 8 |
+                           (uint32_t)sbox[s[(c + 2) & 3] >> 16 & 255] << 16 | (uint32_t)sbox[s[(c + 3) & 3] >> 24] << 24) ^ rd32(rk + 160 + 4 * c));
+}
+
+/* Only keys and NCA headers are decrypted, a few kilobytes: the plain inverse cipher. */
+static void portable_decrypt(const uint8_t rk[176], const uint8_t in[16], uint8_t out[16]) {
+    uint8_t s[16], t[16];
+    for (int i = 0; i < 16; i++) s[i] = in[i] ^ rk[160 + i];
+    for (int r = 9; r >= 0; r--) {
+        for (int i = 0; i < 16; i++) t[(i + 4 * (i & 3)) & 15] = inv_sbox[s[i]];   /* InvShiftRows, InvSubBytes */
+        for (int i = 0; i < 16; i++) t[i] ^= rk[16 * r + i];
+        if (!r) { memcpy(s, t, 16); break; }
+        for (int c = 0; c < 16; c += 4) {
+            const uint8_t *x = t + c;
+            for (int i = 0; i < 4; i++)
+                s[c + i] = (uint8_t)(mul(x[i], 14) ^ mul(x[(i + 1) & 3], 11) ^ mul(x[(i + 2) & 3], 13) ^ mul(x[(i + 3) & 3], 9));
+        }
+    }
+    memcpy(out, s, 16);
+}
+
+static int hw_usable(void) {
+    if (!tokc_aes_hw_compiled()) return 0;
+#if defined(__x86_64__)
+    __builtin_cpu_init();
+    return __builtin_cpu_supports("aes");
+#elif defined(__aarch64__) && defined(__linux__)
+    return (getauxval(AT_HWCAP) & HWCAP_AES) != 0;
+#else
+    return 0;
+#endif
+}
+
+const char *tokc_aes_impl_name(void) {
+    if (!hw_usable()) return "portable";
+#if defined(__aarch64__)
+    return "armv8";
+#else
+    return "aes-ni";
+#endif
+}
+
+void tokc_aes_init(tokc_aes *a, const uint8_t key[16], int mode) {
+    uint8_t *w = a->rk, rcon = 1;
+    memcpy(w, key, 16);
+    for (int i = 16; i < 176; i += 4) {
+        uint8_t t[4];
+        memcpy(t, w + i - 4, 4);
+        if (!(i & 15)) {
+            uint8_t first = t[0];
+            t[0] = sbox[t[1]] ^ rcon; t[1] = sbox[t[2]]; t[2] = sbox[t[3]]; t[3] = sbox[first];
+            rcon = xt(rcon);
+        }
+        for (int k = 0; k < 4; k++) w[i + k] = w[i + k - 16] ^ t[k];
+    }
+    a->hw = mode == TOKC_AES_AUTO && hw_usable();
+    if (a->hw) tokc_aes_hw_make_dk(a->dk, a->rk);
+    else memset(a->dk, 0, sizeof a->dk);
+}
+
+void tokc_aes_encrypt(const tokc_aes *a, const uint8_t in[16], uint8_t out[16]) {
+    if (a->hw) tokc_aes_hw_encrypt(a->rk, in, out);
+    else portable_encrypt(a->rk, in, out);
+}
+void tokc_aes_decrypt(const tokc_aes *a, const uint8_t in[16], uint8_t out[16]) {
+    if (a->hw) tokc_aes_hw_decrypt(a->dk, in, out);
+    else portable_decrypt(a->rk, in, out);
+}
+
+void tokc_aes_ecb_decrypt(const uint8_t key[16], const uint8_t *in, uint8_t *out, size_t n) {
+    tokc_aes a;
+    tokc_aes_init(&a, key, TOKC_AES_AUTO);
+    for (size_t i = 0; i + 16 <= n; i += 16) tokc_aes_decrypt(&a, in + i, out + i);
+    tokc_wipe(&a, sizeof a);
+}
+
+static void counter(uint8_t c[16], const uint8_t high[8], uint64_t block) {
+    memcpy(c, high, 8);
+    for (int i = 0; i < 8; i++) c[15 - i] = (uint8_t)(block >> 8 * i);
+}
+
+void tokc_aes_ctr(const tokc_aes *a, const uint8_t high[8], uint64_t off, void *data, size_t n) {
+    uint8_t *p = data, c[16], ks[16];
+    uint64_t block = off >> 4;
+    size_t skip = (size_t)(off & 15);
+    if (skip && n) {
+        size_t take = n < 16 - skip ? n : 16 - skip;
+        counter(c, high, block++);
+        tokc_aes_encrypt(a, c, ks);
+        for (size_t i = 0; i < take; i++) p[i] ^= ks[skip + i];
+        p += take; n -= take;
+    }
+    size_t whole = n >> 4;
+    if (a->hw) {
+        if (whole) tokc_aes_hw_ctr(a->rk, high, block, p, whole);
+        block += whole; p += whole << 4;
+    } else {
+        for (size_t b = 0; b < whole; b++, p += 16) {
+            counter(c, high, block++);
+            portable_encrypt(a->rk, c, ks);
+            for (int i = 0; i < 16; i++) p[i] ^= ks[i];
+        }
+    }
+    n &= 15;
+    if (n) {
+        counter(c, high, block);
+        tokc_aes_encrypt(a, c, ks);
+        for (size_t i = 0; i < n; i++) p[i] ^= ks[i];
+    }
+    tokc_wipe(ks, sizeof ks);
+}
+
+static void xts(const tokc_aes *key, const tokc_aes *tweak_key, const uint8_t tweak[16], uint8_t *p, size_t n, int encrypt) {
+    uint8_t t[16], b[16];
+    tokc_aes_encrypt(tweak_key, tweak, t);
+    for (size_t off = 0; off + 16 <= n; off += 16, p += 16) {
+        for (int i = 0; i < 16; i++) b[i] = p[i] ^ t[i];
+        if (encrypt) tokc_aes_encrypt(key, b, b);
+        else tokc_aes_decrypt(key, b, b);
+        for (int i = 0; i < 16; i++) p[i] = b[i] ^ t[i];
+        uint8_t carry = 0;
+        for (int i = 0; i < 16; i++) { uint8_t top = t[i] >> 7; t[i] = (uint8_t)(t[i] << 1 | carry); carry = top; }
+        if (carry) t[0] ^= 0x87;
+    }
+    tokc_wipe(t, sizeof t); tokc_wipe(b, sizeof b);
+}
+void tokc_xts_decrypt(const tokc_aes *key, const tokc_aes *tweak_key, const uint8_t tweak[16], void *data, size_t n) { xts(key, tweak_key, tweak, data, n, 0); }
+void tokc_xts_encrypt(const tokc_aes *key, const tokc_aes *tweak_key, const uint8_t tweak[16], void *data, size_t n) { xts(key, tweak_key, tweak, data, n, 1); }
+
+void tokc_nca_xts(const uint8_t key[32], void *data, size_t n, int encrypt) {
+    tokc_aes k, t;
+    uint8_t *p = data;
+    tokc_aes_init(&k, key, TOKC_AES_AUTO);
+    tokc_aes_init(&t, key + 16, TOKC_AES_AUTO);
+    for (size_t off = 0, sector = 0; off + 0x200 <= n; off += 0x200, sector++) {
+        uint8_t tweak[16] = {0};
+        for (int i = 0; i < 8; i++) tweak[15 - i] = (uint8_t)((uint64_t)sector >> 8 * i);
+        xts(&k, &t, tweak, p + off, 0x200, encrypt);
+    }
+    tokc_wipe(&k, sizeof k); tokc_wipe(&t, sizeof t);
+}

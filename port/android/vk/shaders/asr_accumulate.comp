@@ -1,0 +1,66 @@
+// Copyright  © 2023 Advanced Micro Devices, Inc.
+// Copyright  © 2024-2025 Arm Limited.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Arm ASR's accumulate pass (its ffxm_fsr2_accumulate_pass_fs.glsl, Quality, no sharpening) as a compute shader for
+// nvn_vulkan_asr.inc: the same Accumulate, its four render targets stored as images.
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_samplerless_texture_functions : require
+
+#define FSR2_BIND_SRV_INPUT_EXPOSURE                         0
+#define FSR2_BIND_SRV_DILATED_REACTIVE_MASKS                 1
+#define FSR2_BIND_SRV_DILATED_MOTION_VECTORS                 2
+#define FSR2_BIND_SRV_INTERNAL_UPSCALED                      3
+#define FSR2_BIND_SRV_LOCK_STATUS                            4
+#define FSR2_BIND_SRV_PREPARED_INPUT_COLOR                   5
+#define FSR2_BIND_SRV_LANCZOS_LUT                            6
+#define FSR2_BIND_SRV_UPSCALE_MAXIMUM_BIAS_LUT               7
+#define FSR2_BIND_SRV_SCENE_LUMINANCE_MIPS                   8
+#define FSR2_BIND_SRV_AUTO_EXPOSURE                          9
+#define FSR2_BIND_SRV_LUMA_HISTORY                           10
+#define FSR2_BIND_SRV_TEMPORAL_REACTIVE                      11
+#define FSR2_BIND_UAV_NEW_LOCKS                              12
+#define FSR2_BIND_CB_FSR2                                    0
+
+#include "fsr2/ffxm_fsr2_callbacks_glsl.h"
+#include "fsr2/ffxm_fsr2_common.h"
+#include "fsr2/ffxm_fsr2_sample.h"
+#include "fsr2/ffxm_fsr2_upsample.h"
+#include "fsr2/ffxm_fsr2_postprocess_lock_status.h"
+#include "fsr2/ffxm_fsr2_reproject.h"
+#include "fsr2/ffxm_fsr2_accumulate.h"
+
+layout (set = 1, binding = 13, rgba16f) writeonly uniform image2D o_internal_upscaled_color;
+layout (set = 1, binding = 14, rg16f) writeonly uniform image2D o_lock_status;
+layout (set = 1, binding = 15, rgba8) writeonly uniform image2D o_luma_history;
+layout (set = 1, binding = 16, rgba16f) writeonly uniform image2D o_upscaled_output;
+layout (local_size_x = 8, local_size_y = 8) in;
+
+void main()
+{
+    FfxInt32x2 uPixelCoord = FfxInt32x2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(uPixelCoord, DisplaySize()))) return;
+    AccumulateOutputs result = Accumulate(uPixelCoord);
+    imageStore(o_internal_upscaled_color, uPixelCoord, result.fColorAndWeight);
+    imageStore(o_luma_history, uPixelCoord, result.fLumaHistory);
+    imageStore(o_lock_status, uPixelCoord, vec4(result.fLockStatus, 0.0, 0.0));
+    imageStore(o_upscaled_output, uPixelCoord, vec4(result.fColor, 1.0));
+}

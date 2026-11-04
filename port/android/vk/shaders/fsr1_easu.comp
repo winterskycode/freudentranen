@@ -1,0 +1,21 @@
+// FSR 1 EASU (edge-adaptive spatial upsampling): the game's picture (gamma-encoded RGBA8) into a display-size image.
+// Push constants: FsrEasuCon's con0..con3. One work group writes a 16x16 tile (64 threads, 4 pixels each).
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x = 64) in;
+layout(push_constant) uniform Con { uvec4 con0, con1, con2, con3; } k;
+layout(set = 0, binding = 0) uniform sampler2D src;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D dst;
+#define A_GPU 1
+#define A_GLSL 1
+#include "ffx_a.h"
+#define FSR_EASU_F 1
+AF4 FsrEasuRF(AF2 p) { return textureGather(src, p, 0); }
+AF4 FsrEasuGF(AF2 p) { return textureGather(src, p, 1); }
+AF4 FsrEasuBF(AF2 p) { return textureGather(src, p, 2); }
+#include "ffx_fsr1.h"
+void fsr_pixel(AU2 pos) { AF3 c; FsrEasuF(c, pos, k.con0, k.con1, k.con2, k.con3); imageStore(dst, ASU2(pos), AF4(c, 1.0)); }
+void main() {
+    AU2 p = ARmp8x8(gl_LocalInvocationID.x) + AU2(gl_WorkGroupID.x << 4u, gl_WorkGroupID.y << 4u);
+    fsr_pixel(p); p.x += 8u; fsr_pixel(p); p.y += 8u; fsr_pixel(p); p.x -= 8u; fsr_pixel(p);
+}

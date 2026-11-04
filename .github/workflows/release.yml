@@ -1,0 +1,64 @@
+# A release: pushing a tag named YYYYMMDD-HHMM (e.g. 20261029-1325) builds the APK from source on a clean machine
+# (port/android/tools/release.sh), signs it with the release key and publishes it with its SHA-256 on the Releases page,
+# next to its complete source (totk-<tag>-source.tar.xz, as the AGPL-3.0 requires; NOTICE).
+# The tag's annotation, when it has one, becomes the release notes.
+# Only the owner releases: the job runs in the "release" environment, which needs the owner's approval and accepts
+# release tags only, and only that environment holds the signing secrets:
+#   TOTK_KEYSTORE_BASE64     the release keystore (release.jks), base64
+#   TOTK_KEYSTORE_PASSWORD   its password
+# A tag ruleset lets only the owner create, move or delete release tags. Third-party actions are pinned to a commit.
+name: Release
+on:
+  push:
+    tags: ['[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]']
+permissions: {}
+concurrency: release
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    environment: release   # waits for the owner's approval; the signing secrets exist only here
+    permissions:
+      contents: write   # creating the release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          fetch-depth: 0   # build_apk.sh records the described commit in the APK (bug reports)
+          persist-credentials: false   # the token is not left in .git/config for the build's scripts
+      - name: Room on the runner's disk (for the NDK, .NET and the build: several GB)
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules && df -h /
+      - name: Build tools
+        run: |
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends $(cat port/android/tools/ci-packages.txt)
+      - name: Android SDK packages (the versions in port/android/tools/env.sh)
+        run: |
+          . port/android/tools/env.sh
+          SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SM" --licenses > /dev/null
+          "$SM" "ndk;$NDK_VERSION" "build-tools;$BUILD_TOOLS_VERSION" "platforms;$PLATFORM_VERSION" > /dev/null
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.TOTK_KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$KEYSTORE" ] || { echo "the TOTK_KEYSTORE_BASE64 secret is not set (the release environment's secrets)"; exit 1; }
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+      - name: Build the APK
+        env:
+          TOTK_KEYSTORE: ${{ runner.temp }}/release.jks
+          TOTK_KEYSTORE_PASSWORD: ${{ secrets.TOTK_KEYSTORE_PASSWORD }}
+          TOTK_KEY_ALIAS: totk
+        run: sh port/android/tools/release.sh "$GITHUB_REF_NAME"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=""   # an annotated tag's message (a lightweight tag would give its commit's message instead)
+          [ "$(git cat-file -t "$GITHUB_REF_NAME")" = tag ] && notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")
+          set -- dist/totk-$GITHUB_REF_NAME.apk dist/totk-$GITHUB_REF_NAME.apk.sha256 \
+            dist/totk-$GITHUB_REF_NAME-source.tar.xz dist/totk-$GITHUB_REF_NAME-source.tar.xz.sha256
+          if [ -n "$notes" ]; then gh release create "$GITHUB_REF_NAME" "$@" --verify-tag --title "$GITHUB_REF_NAME" --notes "$notes"
+          else gh release create "$GITHUB_REF_NAME" "$@" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes; fi
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"

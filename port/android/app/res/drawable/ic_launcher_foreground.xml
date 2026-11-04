@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A gold tear in a broken ring, with a jade glow -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateY="2.25">   <!-- the tear centred in the ring (its middle was at 51.75) -->
+    <path android:pathData="M28,58a26,26 0 1,0 52,0a26,26 0 1,0 -52,0">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="58" android:gradientRadius="26">
+                <item android:offset="0" android:color="#666FE6C3"/>
+                <item android:offset="1" android:color="#006FE6C3"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    </group>
+    <path android:pathData="M78.27,36.37 A30,30 0 0 1 78.27,71.63 M71.63,78.27 A30,30 0 0 1 36.37,78.27 M29.73,71.63 A30,30 0 0 1 29.73,36.37 M36.37,29.73 A30,30 0 0 1 71.63,29.73" android:strokeColor="#FFD8B45C" android:strokeAlpha="0.85" android:strokeWidth="1.8" android:strokeLineCap="round"/>
+    <path android:pathData="M75.21,75.21 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M32.79,75.21 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M32.79,32.79 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M75.21,32.79 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0" android:fillColor="#FF6FE6C3"/>
+    <group android:translateY="2.25">   <!-- the tear centred in the ring (its middle was at 51.75) -->
+    <path android:pathData="M54,29 C54,29 39.5,46.5 39.5,60 A14.5,14.5 0 0 0 68.5,60 C68.5,46.5 54,29 54,29 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="54" android:startY="29" android:endX="54" android:endY="74.5">
+                <item android:offset="0" android:color="#FFF3DA94"/>
+                <item android:offset="1" android:color="#FFB8903F"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M54,41 C54,41 46.5,51.5 46.5,59.5 A7.5,7.5 0 0 0 61.5,59.5 C61.5,51.5 54,41 54,41 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="54" android:startY="41" android:endX="54" android:endY="67">
+                <item android:offset="0" android:color="#FFC4FAEA"/>
+                <item android:offset="1" android:color="#FF3FB89A"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    </group>
+</vector>

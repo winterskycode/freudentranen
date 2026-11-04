@@ -1,0 +1,10 @@
+#version 450
+// lsfg_test: a picture (packed RGBA8 in a buffer) into an input image with a compute shader instead of a transfer
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) readonly buffer Pixels { uint pixels[]; };
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D target;
+void main() {
+    ivec2 size = imageSize(target), p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= size.x || p.y >= size.y) return;
+    imageStore(target, p, unpackUnorm4x8(pixels[p.y * size.x + p.x]));
+}

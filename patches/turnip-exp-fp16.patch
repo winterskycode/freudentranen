@@ -1,0 +1,133 @@
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 57c95e67c56..44bf524730d 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -14,6 +14,7 @@
+ #include "vk_nir.h"
+ #include "vk_nir_convert_ycbcr.h"
+ #include "vk_pipeline.h"
++#include "vk_shader_module.h"
+ #include "vk_util.h"
+ 
+ #include "ir3/ir3_compiler.h"
+@@ -193,6 +194,97 @@ tu_nir_lower_softfloat64(struct tu_device *dev, nir_shader *nir)
+    ir3_optimize_loop(dev->compiler, &optimize_options, nir);
+ }
+ 
++/* TOTK probe (TOTK_FP16=fs | all): every 32-bit float ALU operation and float comparison is computed at 16 bits, as if
++ * the whole shader were RelaxedPrecision, in fragment shaders only or in every stage. The conversions around each op
++ * fold away where ops chain; inputs, outputs, memory and texture coordinates stay 32-bit. A measurement of what the
++ * game's fp32 shading would gain at half precision; it is not accurate (values above 65504 overflow). */
++static unsigned
++totk_fp16_bit_size(const nir_instr *instr, UNUSED void *data)
++{
++   if (instr->type != nir_instr_type_alu)
++      return 0;
++   const nir_alu_instr *alu = nir_instr_as_alu(instr);
++   if (nir_op_is_vec_or_mov(alu->op))
++      return 0;
++   const nir_op_info *info = &nir_op_infos[alu->op];
++   nir_alu_type out = nir_alu_type_get_base_type(info->output_type);
++   if (out == nir_type_float) {
++      if (alu->def.bit_size != 32)
++         return 0;
++      for (unsigned i = 0; i < info->num_inputs; i++)   /* conversions from other types, pack/unpack: keep */
++         if (nir_alu_type_get_base_type(info->input_types[i]) != nir_type_float)
++            return 0;
++      switch (alu->op) {
++      case nir_op_f2f16: case nir_op_f2f32: case nir_op_f2f64: case nir_op_f2fmp:
++         return 0;
++      default:
++         return 16;
++      }
++   }
++   if (out == nir_type_bool && info->num_inputs >= 1 &&
++       nir_alu_type_get_base_type(info->input_types[0]) == nir_type_float &&
++       alu->src[0].src.ssa->bit_size == 32)
++      return 16;
++   return 0;
++}
++static uint64_t
++totk_fnv1a(const void *data, size_t n)
++{
++   const uint8_t *b = (const uint8_t *)data; uint64_t h = 0xcbf29ce484222325ull;
++   for (size_t i = 0; i < n; i++) { h ^= b[i]; h *= 0x100000001b3ull; }
++   return h;
++}
++/* TOTK_FP16_SKIP=<hex>,<hex>,...: modules (FNV-1a 64 of their SPIR-V bytes, as the port logs with TOTK_VK_SPVID=1) kept at 32 bits */
++static bool
++totk_fp16_skip(const VkPipelineShaderStageCreateInfo *stage_info)
++{
++   static uint64_t list[64]; static int n = -1;
++   if (n < 0) {
++      n = 0; const char *e = getenv("TOTK_FP16_SKIP");
++      while (e && *e && n < 64) { char *end; list[n] = strtoull(e, &end, 16); if (end == e) break; n++; e = *end == ',' ? end + 1 : end; }
++   }
++   if (!n || stage_info->module == VK_NULL_HANDLE) return false;
++   VK_FROM_HANDLE(vk_shader_module, module, stage_info->module);
++   uint64_t h = totk_fnv1a(module->data, module->size);
++   for (int i = 0; i < n; i++) if (list[i] == h) return true;
++   return false;
++}
++/* a shader that stores to a buffer or image feeds something else (the game reads culling results back): kept at 32 bits */
++static bool
++totk_fp16_stores(nir_shader *nir)
++{
++   nir_foreach_function_impl(impl, nir) {
++      nir_foreach_block(block, impl) {
++         nir_foreach_instr(instr, block) {
++            if (instr->type != nir_instr_type_intrinsic) continue;
++            switch (nir_instr_as_intrinsic(instr)->intrinsic) {
++            case nir_intrinsic_store_ssbo: case nir_intrinsic_store_global: case nir_intrinsic_store_deref:
++            case nir_intrinsic_image_deref_store: case nir_intrinsic_image_store: case nir_intrinsic_bindless_image_store:
++            case nir_intrinsic_ssbo_atomic: case nir_intrinsic_ssbo_atomic_swap: case nir_intrinsic_global_atomic:
++            case nir_intrinsic_image_deref_atomic: case nir_intrinsic_image_atomic: case nir_intrinsic_bindless_image_atomic: {
++               if (nir_instr_as_intrinsic(instr)->intrinsic == nir_intrinsic_store_deref) {
++                  nir_deref_instr *d = nir_src_as_deref(nir_instr_as_intrinsic(instr)->src[0]);
++                  if (!nir_deref_mode_is_one_of(d, nir_var_mem_ssbo | nir_var_mem_global | nir_var_image)) continue;
++               }
++               return true; }
++            default: break;
++            }
++         }
++      }
++   }
++   return false;
++}
++static int
++totk_fp16_mode(void)
++{
++   static int mode = -1;
++   if (mode < 0) {
++      const char *e = getenv("TOTK_FP16");
++      mode = !e || !*e ? 0 : !strcmp(e, "all") ? 2 : 1;
++   }
++   return mode;
++}
++
+ nir_shader *
+ tu_spirv_to_nir(struct tu_device *dev,
+                 void *mem_ctx,
+@@ -267,6 +359,22 @@ tu_spirv_to_nir(struct tu_device *dev,
+    NIR_PASS(_, nir, nir_opt_copy_prop_vars);
+    NIR_PASS(_, nir, nir_opt_combine_stores, nir_var_all);
+ 
++   if (totk_fp16_mode() == 2 || (totk_fp16_mode() == 1 && stage == MESA_SHADER_FRAGMENT)) {
++      static unsigned converted, skipped_list, skipped_stores, skipped_depth;
++      bool list = totk_fp16_skip(stage_info), stores = !list && totk_fp16_stores(nir);
++      bool depth = !list && !stores && stage == MESA_SHADER_FRAGMENT &&
++                   (nir->info.outputs_written & (BITFIELD64_BIT(FRAG_RESULT_DEPTH) | BITFIELD64_BIT(FRAG_RESULT_STENCIL) | BITFIELD64_BIT(FRAG_RESULT_SAMPLE_MASK)));
++      if (list) skipped_list++; else if (stores) skipped_stores++; else if (depth) skipped_depth++; else converted++;
++      if ((converted + skipped_list + skipped_stores + skipped_depth) % 50 == 0)
++         mesa_logi("[totk-fp16] converted %u shaders, kept at 32 bits: list %u, storage writes %u, depth/stencil/mask writers %u", converted, skipped_list, skipped_stores, skipped_depth);
++      if (!list && !stores && !depth) {
++      NIR_PASS(_, nir, nir_lower_vars_to_ssa);
++      NIR_PASS(_, nir, nir_lower_bit_size, totk_fp16_bit_size, NULL);
++      NIR_PASS(_, nir, nir_opt_algebraic);   /* f2f16(f2f32(h)) -> h between chained ops */
++      NIR_PASS(_, nir, nir_opt_dce);
++      }
++   }
++
+    NIR_PASS(_, nir, nir_lower_system_values);
+    NIR_PASS(_, nir, nir_lower_is_helper_invocation);
+ 
