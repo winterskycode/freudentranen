@@ -29,7 +29,7 @@ What this project is built on
 -----------------------------
   * MacNativeGames (https://github.com/ly05010419/MacNativeGames) -- MIT, Copyright (c) 2026 MacNativeGames
     contributors. The native runtime the port runs on: loader, Horizon services, audio, the game's patches and the code
-    rewriter. Fetched at a pinned commit by port/setup.sh, which applies this project's changes
+    rewriter. Fetched at a pinned commit by port/setup.sh, with this project's changes
     (the android branch of https://github.com/winterskycode/MacNativeGames). Text: MacNativeGames/LICENSE.
   * d2r-mobile by jhaizhou (https://github.com/jhaizhou-ops/d2r-mobile) -- MIT, Copyright (c) 2026 jhaizhou. The code
     rewriter's tools in port/rewriter/d2r (local changes listed in its README.md), and the D2R graphics layer that
@@ -47,7 +47,8 @@ What this project is built on
     was merged into port/rewriter/d2r/patch_nso.py. Text: port/android/vk/LICENSE.AGPL.
     MODIFIED: this project has changed these files continuously since 2026-10-20 to run Tears of the Kingdom (its
     command records, runtime shader translation, render state, pipelines, synchronisation, frame generation and
-    upscaling, pacing; the rewriter's TOTK call windows and stack handling); the git history of this repository records every change and its date.
+    upscaling, pacing; the rewriter's TOTK call windows and stack handling). This repository's history starts at its first
+    public commit, so it does not record the changes made before then.
 
 Third-party components in the APK
 ---------------------------------
@@ -69,7 +70,7 @@ Tools > Licences:
   * Opus, libvpx, Zstandard -- BSD-3-Clause
   * The reader for the player's game files (port/android/setup/container) is this project's own code, written from the file
     formats. Its RomFS index is a C port of MacNativeGames' scripts/extract_romfs.py and prepare_romfs_backend.py (MIT, above).
-  * Capstone 5.0.9, for the code rewriter in C (port/android/setup/patcher; not in the APK until that is linked) --
+  * Capstone 5.0.9, for the code rewriter in C (port/android/setup/patcher) --
     BSD-3-Clause, its LLVM-derived parts NCSA. Fetched by port/android/deps/build_deps.sh.
   * The LLVM C++ runtime (libc++), linked into the native libraries by the Android NDK -- Apache-2.0 WITH
     LLVM-exception. Text: LICENSES/Apache-2.0-WITH-LLVM-exception-libcxx.txt.
