@@ -256,7 +256,7 @@ static int pad_connected, face_by_label;
 /* TOTK_BUTTON_STYLE: the letters the prompts show for a face button, by its place on the device: xbox (the printed ones on
    an Xbox-layout device such as the Odin 3: bottom A, right B, left X, top Y), switch (right A, bottom B, top X, left Y) or
    playstation: the Switch's letters, drawn as Circle, Cross, Triangle and Square by the icons the startup screen merges in
-   for it (built-in mod _buttons-playstation, tools/make_icon_mod.py). Only the letters change, never which button a
+   for it (built-in mod _buttons-playstation, IconMod.java). Only the letters change, never which button a
    prompt means. */
 static int style_switch, style_playstation;
 /* The prompts show each Switch button's letter swapped (A <-> B, X <-> Y): the letter at the place of the key that presses

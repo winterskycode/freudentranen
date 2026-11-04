@@ -75,7 +75,8 @@ Tools > Licences:
   * The LLVM C++ runtime (libc++), linked into the native libraries by the Android NDK -- Apache-2.0 WITH
     LLVM-exception. Text: LICENSES/Apache-2.0-WITH-LLVM-exception-libcxx.txt.
   * The Figtree and Marcellus SC fonts -- SIL Open Font License 1.1 (port/android/app/assets/fonts)
-  * Noto Sans CJK SC Regular, cut down to the characters the game takes from a shared font (port/android/tools/fetch_font.sh)
+  * Noto Sans CJK SC Regular, cut down to the characters the game takes from a shared font (port/android/tools/fetch_font.sh),
+    and Bold, whose letters L, R, 1, 2 and 3 are cut into the PlayStation button icons (port/android/tools/make_icon_asset.py)
     -- SIL Open Font License 1.1, Copyright 2014-2021 Adobe. Text: LICENSES/OFL-NotoSansCJK.txt.
 
 Not part of this project

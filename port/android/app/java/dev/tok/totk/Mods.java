@@ -52,8 +52,9 @@ final class Mods {
         BASE = new File(c.getFilesDir(), "mod-base.bin");
     }
     static final String RSTB = "System/Resource/ResourceSizeTable.Product.143.Nin_NX_NVN.rsizetable.zs";
-    /** Built-in mods (ids starting with "_"): pushed with the game data, not listed on the Mods page, and merged when a
-        setting asks for them, below the player's mods. The PlayStation button icons: tools/make_icon_mod.py. */
+    /** Built-in mods (ids starting with "_"): not listed on the Mods page, and merged when a setting asks for them, below the
+        player's mods. The PlayStation button icons: made here from the player's files (IconMod); for prepared data under
+        /sdcard/tok, pushed with it (tools/make_icon_mod.py). */
     static final String ICONS_PLAYSTATION = "_buttons-playstation";
 
     interface Progress { void step(String what); }
@@ -372,7 +373,7 @@ final class Mods {
         }
     }
 
-    private static void writeMod(Mod m) throws IOException {
+    static void writeMod(Mod m) throws IOException {
         try {
             JSONObject j = new JSONObject();
             j.put("name", m.name).put("author", m.author).put("version", m.version).put("description", m.description).put("source", m.source).put("made", m.made)
@@ -380,6 +381,18 @@ final class Mods {
              .put("contents", new JSONArray(m.contents)).put("warnings", new JSONArray(m.warnings));
             write(new File(m.dir(), "mod.json"), j.toString(2));
         } catch (JSONException e) { throw new IOException(e); }
+    }
+
+    // ---- the built-in icons ----
+
+    /** Makes the PlayStation button icons from the game files. Null when they are ready, else why not, in plain words. */
+    static String makeIcons(byte[] art, Progress p) {
+        String why;
+        try { ModData.Romfs rom = env(); ROOT.mkdirs(); IconMod.make(rom::read, art, p); return null; }
+        catch (IOException e) { why = e.getMessage(); }
+        catch (RuntimeException e) { why = "The game files are not as expected."; }
+        catch (OutOfMemoryError e) { why = "The app ran out of memory."; }
+        return "The PlayStation buttons could not be made, so the game shows Switch buttons. " + why;
     }
 
     // ---- the merged set the game loads ----
@@ -589,7 +602,7 @@ final class Mods {
         tmp.renameTo(f);
     }
 
-    private static void writeBytes(File f, byte[] b) throws IOException { try (OutputStream o = new FileOutputStream(f)) { o.write(b); } }
+    static void writeBytes(File f, byte[] b) throws IOException { try (OutputStream o = new FileOutputStream(f)) { o.write(b); } }
 
     private static void copy(InputStream in, OutputStream out) throws IOException { byte[] buf = new byte[1 << 16]; for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n); }
 

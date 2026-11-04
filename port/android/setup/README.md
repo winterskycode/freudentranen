@@ -134,7 +134,10 @@ From the player's files `host/app.c` sets `TOTK_ROMFS` to a private folder and t
 | `/sdcard/tok/fonts` | `fonts/SharedFont.otf` in the APK, from `tools/fetch_font.sh` | See below. |
 | `mod-base.bin` | `modbase/`, through `host/player_romfs_jni.c` | Made once in private storage. The Java side is still to do, see below. |
 
-`mods/_buttons-playstation` is still from the PC: milestone 8.
+`mods/_buttons-playstation` is no longer from the PC either: the first start with PlayStation buttons makes it in the app's storage
+(`IconMod.java`), from the player's font and layout archives and `icons/playstation.bin` in the APK (`tools/make_icon_asset.py`, which
+reads no game file). `tools/icon_test` compares it with the PC tool's. A folder pushed from the PC serves prepared data only: its
+layout line names the PC's overlay as the original, which the player's files do not have, so with picks the app makes its own.
 
 **Shared fonts.** The six slots are what `main+0x105dc60` maps these names to: `nintendo_udsg-r_std_003.bfttf` 0 (standard),
 `udsg-r_org_zh-cn` 1, `udsg-r_ext_zh-cn` 2, `udjxh-db_zh-tw` 3, `udsg-r_ko` 4, `nintendo_ext_003` 5. A complex font

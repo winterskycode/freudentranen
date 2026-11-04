@@ -80,7 +80,7 @@ The complete corresponding source of \`totk-$TAG.apk\` (GNU AGPL-3.0, section 6;
   \`totk/patches/turnip-a8xx-pvtmem-stack-pad.patch\` and its NDK build fixes).
 - \`upstream/opus/\`, \`upstream/zstd/\`, \`upstream/libvpx/\`: the tags in \`totk/port/android/deps/build_deps.sh\`.
 - \`upstream/capstone/\`: the tag in \`totk/port/android/setup/patcher/fetch_capstone.sh\`.
-- \`upstream/noto-sans-cjk/\`: the font \`totk/port/android/tools/fetch_font.sh\` fetches and cuts down.
+- \`upstream/noto-sans-cjk/\`: the fonts \`totk/port/android/tools/fetch_font.sh\` fetches and makes the shared font and the icon letters from.
 - \`upstream/libadrenotools-*/\`, \`upstream/liblinkernsbypass-*/\`: the commits in
   \`totk/port/android/tools/build_gpu_driver.py\`.
 

@@ -153,6 +153,44 @@ final class ModData {
         }
     }
 
+    /** Where a member's bytes are in a SARC: {start, end}, or null when it has no such member. */
+    static int[] member(byte[] d, String name) {
+        ByteBuffer b = le(d); int header = b.getShort(4) & 0xffff, start = b.getInt(12), count = b.getShort(header + 6) & 0xffff, names = header + 12 + count * 16 + 8;
+        byte[] want = (name + "\0").getBytes(StandardCharsets.UTF_8);
+        for (int i = 0; i < count; i++) {
+            int e = header + 12 + i * 16, at = names + (b.getInt(e + 4) & 0xffffff) * 4;
+            if (!Arrays.equals(Arrays.copyOfRange(d, at, at + want.length), want)) continue;
+            int lo = b.getInt(e + 8), hi = b.getInt(e + 12);
+            if (lo < 0 || hi < lo || start < 0 || start + hi > d.length) throw new IllegalArgumentException("a SARC member lies outside it");
+            return new int[]{start + lo, start + hi};
+        }
+        return null;
+    }
+
+    /** The SARC with one member's bytes replaced. Unlike Sarc.write every other member stays as the game stores it: same order,
+        same alignment, the header changed only in the offsets (a font archive aligns its fonts, a pack only to 8). */
+    static byte[] replaceMember(byte[] d, String name, byte[] blob) throws IOException {
+        int[] at = member(d, name); if (at == null) throw new IOException("no member " + name);
+        ByteBuffer b = le(d); int header = b.getShort(4) & 0xffff, start = b.getInt(12), count = b.getShort(header + 6) & 0xffff, nodes = header + 12;
+        Integer[] order = new Integer[count]; for (int i = 0; i < count; i++) order[i] = i;
+        Arrays.sort(order, (x, y) -> Integer.compare(b.getInt(nodes + x * 16 + 8), b.getInt(nodes + y * 16 + 8)));
+        int[] lo = new int[count]; int size = 0;
+        for (int i : order) {
+            int was = b.getInt(nodes + i * 16 + 8), end = b.getInt(nodes + i * 16 + 12), align = was == 0 ? 1 : Math.min(Integer.lowestOneBit(was), 0x2000);
+            size = (size + align - 1) & -align; lo[i] = size;
+            size += start + was == at[0] && start + end == at[1] ? blob.length : end - was;
+        }
+        byte[] out = new byte[start + size]; System.arraycopy(d, 0, out, 0, start);
+        ByteBuffer o = le(out); o.putInt(8, out.length);
+        for (int i = 0; i < count; i++) {
+            int e = nodes + i * 16, was = b.getInt(e + 8), end = b.getInt(e + 12);
+            boolean mine = start + was == at[0] && start + end == at[1];
+            System.arraycopy(mine ? blob : d, mine ? 0 : start + was, out, start + lo[i], mine ? blob.length : end - was);
+            o.putInt(e + 8, lo[i]); o.putInt(e + 12, lo[i] + (mine ? blob.length : end - was));
+        }
+        return out;
+    }
+
     /** The SFAT name hash (key 0x65, signed characters). */
     static int sarcHash(String name) {
         int h = 0; for (byte c : name.getBytes(StandardCharsets.UTF_8)) h = h * 0x65 + c; return h;

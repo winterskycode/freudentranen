@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.14
 """The PlayStation button icons as a built-in mod for the startup screen's merge (app Mods.java, built-in id
-_buttons-playstation), made from the player's own RomFS.
+_buttons-playstation), made from the player's own RomFS. This is for prepared data under /sdcard/tok on a dev device: from the
+player's picked files the app makes the mod itself (IconMod.java, tools/make_icon_asset.py) and does not use this folder.
 
     work/venv/bin/python port/android/tools/make_icon_mod.py   -> work/android/v143/mods/_buttons-playstation/
         (push_data.sh puts it in /sdcard/tok/v143/mods/)

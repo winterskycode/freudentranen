@@ -40,8 +40,12 @@ if [ "${TOTK_VK_VALIDATION:-0}" = 1 ]; then cp "$(find $ROOT/work/tools/vvl -pat
 rm -rf $OUT/assets-gen && mkdir -p $OUT/assets-gen
 { git -C $ROOT describe --always --dirty 2>/dev/null || echo unknown; date '+built %Y-%m-%d %H:%M'; } > $OUT/assets-gen/build.txt
 cp -r $APP/assets/. $OUT/assets-gen/
-# the stand-in for the firmware's shared fonts (host/player_files.c): fetched and cut down, never committed
-if [ "$NAME" = totk ]; then sh $ROOT/port/android/tools/fetch_font.sh && cp $ROOT/port/android/deps/out/fonts/SharedFont.otf $OUT/assets-gen/fonts/; fi
+# the stand-in for the firmware's shared fonts (host/player_files.c) and the PlayStation icons' drawings (IconMod.java): made
+# from a fetched font, never committed
+if [ "$NAME" = totk ]; then
+  sh $ROOT/port/android/tools/fetch_font.sh && cp $ROOT/port/android/deps/out/fonts/SharedFont.otf $OUT/assets-gen/fonts/
+  mkdir -p $OUT/assets-gen/icons && cp $ROOT/port/android/deps/out/icons/playstation.bin $OUT/assets-gen/icons/
+fi
 # assets/licenses: the licence texts of the third-party software in this APK (app/licenses.tsv; Tools > Licences), copied
 # from the sources themselves; a header file gives its leading licence comment only
 mkdir -p $OUT/assets-gen/licenses; : > $OUT/assets-gen/licenses/index.tsv

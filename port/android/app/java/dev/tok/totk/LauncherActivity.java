@@ -32,6 +32,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -80,6 +81,7 @@ public class LauncherActivity extends Activity {
     private String modFocus, modGeneral;    // the mod to focus when the page is rebuilt; a last-start problem no mod can be named for
     private boolean modMoving;              // Y: up / down move the focused mod
     private boolean preparing;   // launch() for the "Prepare shaders" row
+    private boolean iconsTried; private String iconsProblem;   // this run made, or failed to make, the icon mod (IconMod)
     private volatile String modStatus = "", launchStatus, launchError;   // installing / merging progress; the Continue row while mods are prepared; why they could not be
     private List<File> modCandidates = new ArrayList<>();   // mods found in the inbox / Downloads to install
     private File modCandidate;
@@ -1419,8 +1421,14 @@ public class LauncherActivity extends Activity {
             env.append(s.key).append('=').append(s.values[index(s)]).append('\n');
         }
         List<Mods.Mod> on = Game.MODS && modsOn() ? Mods.enabled(mods) : new ArrayList<>();
+        String iconNote = null;
         if (Game.MODS && value("TOTK_BUTTON_STYLE").equals("playstation")) {   // the icon mod is a 1.4.3 RomFS mod   // the icons, below the player's mods (theirs win), even with mods off
-            Mods.Mod icons = Mods.builtIn(Mods.ICONS_PLAYSTATION); if (icons != null) on.add(icons);
+            Mods.Mod icons = Mods.builtIn(Mods.ICONS_PLAYSTATION);
+            if (picked() && !iconsCurrent(icons)) {   // the player's files: made here, once. A folder from the PC does not fit them.
+                if (!iconsTried) { makeIcons(); return; }
+                icons = null; iconNote = iconsProblem;   // they could not be made: the game starts with the Switch's buttons
+            } else if (!picked() && icons != null && !icons.version.isEmpty()) icons = null;   // made from picks: with prepared data its layout file meets the PC's overlay, and the game stops
+            if (icons != null) on.add(icons);
         }
         if (!on.isEmpty()) {
             if (!Mods.upToDate(on)) {   // merge the mods first (a few seconds), then start
@@ -1451,10 +1459,34 @@ public class LauncherActivity extends Activity {
         try (FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "launch.env"))) {
             out.write(env.toString().getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) { return; }
-        launchStatus = null;
+        launchStatus = null; launchError = iconNote;
         // a crossfade instead of the default open transition, which slid this screen off to the left
         startActivity(new Intent(this, GameActivity.class),
             ActivityOptions.makeCustomAnimation(this, android.R.anim.fade_in, android.R.anim.fade_out).toBundle());
+    }
+
+    private byte[] iconArt() {
+        try (InputStream in = getAssets().open(IconMod.ASSET)) { return in.readAllBytes(); } catch (IOException e) { return null; }
+    }
+
+    private boolean iconsCurrent(Mods.Mod icons) {
+        try { return IconMod.current(icons, iconArt()); } catch (IOException e) { return false; }
+    }
+
+    /** The first start with PlayStation buttons: makes the icon mod on a worker thread, then starts. If that fails the game
+        starts all the same, and the reason shows now and on the Continue row after the game. */
+    private void makeIcons() {
+        if (launchStatus != null) return;
+        launchStatus = "Making the PlayStation buttons…"; invalidateAll(page);
+        boolean prep = preparing; byte[] art = iconArt();
+        new Thread(() -> {
+            String failed = Mods.makeIcons(art, what -> runOnUiThread(() -> { launchStatus = what; invalidateAll(page); }));
+            runOnUiThread(() -> {
+                launchStatus = null; iconsTried = true; iconsProblem = failed;
+                if (failed != null) Toast.makeText(this, failed, Toast.LENGTH_LONG).show();
+                preparing = prep; launch(); preparing = false;
+            });
+        }).start();
     }
 
     // ---- input ----
