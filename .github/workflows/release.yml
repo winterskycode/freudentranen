@@ -2,7 +2,7 @@
 # (port/android/tools/release.sh), signs it with the release key and publishes it with its SHA-256 on the Releases page,
 # next to its complete source (totk-<tag>-source.tar.xz, as the AGPL-3.0 requires; NOTICE).
 # The tag's annotation, when it has one, becomes the release notes.
-# Only the owner releases: the job runs in the "release" environment, which needs the owner's approval and accepts
+# Only the owner releases: the job runs in the "release" environment, which accepts
 # release tags only, and only that environment holds the signing secrets:
 #   TOTK_KEYSTORE_BASE64     the release keystore (release.jks), base64
 #   TOTK_KEYSTORE_PASSWORD   its password
@@ -17,7 +17,7 @@ jobs:
   apk:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
-    environment: release   # waits for the owner's approval; the signing secrets exist only here
+    environment: release   # the signing secrets exist only here
     permissions:
       contents: write   # creating the release
     steps:
@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 0   # build_apk.sh records the described commit in the APK (bug reports)
           persist-credentials: false   # the token is not left in .git/config for the build's scripts
-      - name: Room on the runner's disk (for the NDK, .NET and the build: several GB)
+      - name: Room on the runner's disk (several GB for the NDK, .NET and the build)
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules && df -h /
       - name: Build tools
         run: |
