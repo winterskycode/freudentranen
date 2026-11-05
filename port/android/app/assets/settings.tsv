@@ -31,7 +31,6 @@ TOTK_LSFG_FLOW	Frame rate	L	0.75	1|0.75|0.5|0.25	Full|0.75|0.5|0.25	LSFG flow sc
 TOTK_LSFG_PERF	Frame rate	L	1	1|0	On|Off	LSFG performance mode	A lighter version of LSFG. It uses less GPU time but shows slightly more visual errors.	TOTK_FG=lsfg|lsfg3|lsfg4|lsfga
 =	Frame rate	H	-	-	-	Advanced	
 TOTK_UNCAPPED_INTERVAL	Frame rate	-	1	1|0	Up to the limit|Original (30–40)	Frame rate mode	Up to the limit lets the game run as fast as the frame rate limit allows. Original keeps the Switch’s 30 to 40 frames per second.
-TOTK_SYNC_LAG	Frame rate	-	0	0|1	Off|On	CPU and GPU overlap	Prepares the next frame while the last one is still being drawn. Busy places run about 10% faster, but controls can lag by up to one more frame.
 TOTK_PACING	Frame rate	X	0	0|1	Off|On	Even frame pacing	Gives every frame the same time on screen. This can look steadier, but it adds input delay.
 =	Controls	H	-	-	-	Buttons	
 @controls	Controls	PQ	-	-	-	Button mapping	Choose which button does each action, such as jumping or attacking. Menu buttons follow Face buttons instead.
