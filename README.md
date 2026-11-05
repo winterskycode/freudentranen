@@ -1,4 +1,4 @@
-# freudentranen
+# Freudentränen (Tears of Joy) ToTK Android Native
 
 The Legend of Zelda: Tears of the Kingdom (Nintendo Switch, 1.4.3) running natively on Android: the game's own
 ARM64 code executes on the device, with a host for the Switch's system services and NVN graphics. It is not an
@@ -42,6 +42,7 @@ Then:
 ## Screenshots
 | | |
 |---|---|
+| ![Fighting the Thunder Gleeok](.github/media/boss-gleeok.jpg) | ![A lightning strike in the Thunder Gleeok fight](.github/media/boss-gleeok-lightning.jpg) |
 | ![Fighting the Frox in the Depths](.github/media/boss-frox.jpg) | ![Fighting a Flux Construct](.github/media/boss-flux.jpg) |
 | ![Driving a Zonai vehicle in the Depths](.github/media/depths-vehicle.jpg) | ![Hateno Village](.github/media/hateno.jpg) |
 | ![Great Sky Island](.github/media/sky-island.jpg) | ![The app's startup screen](.github/media/startup-screen.jpg) |
