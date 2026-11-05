@@ -11,7 +11,8 @@ G = vk/'third_party/fsr3/gpu'
 D = ['FFX_GPU=1', 'FFX_GLSL=1', 'FFX_HALF=0', 'FFX_FRAMEINTERPOLATION_OPTION_LOW_RES_MOTION_VECTORS=1',
      'FFX_FRAMEINTERPOLATION_OPTION_JITTER_MOTION_VECTORS=0', 'FFX_FRAMEINTERPOLATION_OPTION_INVERTED_DEPTH=0',
      'FFX_OPTICALFLOW_OPTION_HDR_COLOR_INPUT=0']
-PASSES = {  # our name: source
+# our name: source
+PASSES = {
     'fi_dilate': 'frameinterpolation/ffx_frameinterpolation_reconstruct_and_dilate_pass', 'fi_setup': 'frameinterpolation/ffx_frameinterpolation_setup_pass',
     'fi_prev_depth': 'frameinterpolation/ffx_frameinterpolation_reconstruct_previous_depth_pass', 'fi_game_mv': 'frameinterpolation/ffx_frameinterpolation_game_motion_vector_field_pass',
     'fi_game_pyr': 'frameinterpolation/ffx_frameinterpolation_compute_game_vector_field_inpainting_pyramid_pass', 'fi_of_field': 'frameinterpolation/ffx_frameinterpolation_optical_flow_vector_field_pass',

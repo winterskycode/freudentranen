@@ -5,16 +5,21 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
     mat4 reproj;
-    vec4 size;     // w, h, 1/w, 1/h
-    vec4 opt;      // x: clip-space y direction, y: motion passes' scale (1, 2: the nearest of each 2x2), z: optical flow's scale, w: 1 when the picture is a scene (linear, sRGB-encoded here)
-    vec4 scale;    // xy: the picture's share of the picture texture, zw: the scene's share of the depth target (dynamic resolution)
+    // w, h, 1/w, 1/h
+    vec4 size;
+    // x: clip-space y direction, y: motion passes' scale (1, 2: the nearest of each 2x2), z: optical flow's scale, w: 1
+    // when the picture is a scene (linear, sRGB-encoded here)
+    vec4 opt;
+    // xy: the picture's share of the picture texture, zw: the scene's share of the depth target (dynamic resolution)
+    vec4 scale;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D pic;
 layout(set = 0, binding = 1) uniform sampler2D depth;
 layout(set = 0, binding = 2, rgba8) uniform writeonly image2D color;
 layout(set = 0, binding = 3, rg16f) uniform writeonly image2D motion;
 layout(set = 0, binding = 4, r32f) uniform writeonly image2D depth_out;
-layout(set = 0, binding = 5, rgba8) uniform writeonly image2D color_half;   // for optical flow at half size
+// for optical flow at half size
+layout(set = 0, binding = 5, rgba8) uniform writeonly image2D color_half;
 vec3 enc(vec3 c) {
     if (p.opt.w == 0.0) return c;
     c = clamp(c, 0.0, 1.0);
@@ -25,7 +30,8 @@ void main() {
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;
     vec2 uv = (vec2(o) + 0.5) * p.size.zw;
     imageStore(color, o, vec4(enc(textureLod(pic, uv * p.scale.xy, 0.0).rgb), 1.0));
-    if (p.opt.z > 1.5 && o.x % 2 == 0 && o.y % 2 == 0)   // one bilinear sample: the mean of the 2x2
+    // one bilinear sample: the mean of the 2x2
+    if (p.opt.z > 1.5 && o.x % 2 == 0 && o.y % 2 == 0)
         imageStore(color_half, o / 2, vec4(enc(textureLod(pic, (vec2(o) + 1.0) * p.size.zw * p.scale.xy, 0.0).rgb), 1.0));
     int s = int(p.opt.y);
     if (o.x % s != 0 || o.y % s != 0) return;

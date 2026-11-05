@@ -8,19 +8,22 @@
    afterwards as with the built-in pass (fg_hud_generated). Constants live in a ring of mapped slots (dynamic uniform buffers).
    Motion work at half size: on Adreno the image atomics of the motion passes cost 2.5 ms at 720p, and optical flow's search
    1.4; FSR's render size below its display size (LOW_RES_MOTION_VECTORS) and half-size flow bring a picture from 7.3 to
-   3.1 ms with no visible loss (Odin, 2026-11-03). TOTK_FSRFG_MOTION=1 and TOTK_FSRFG_FLOW=1 run them at full size;
+   3.1 ms with no visible loss (Odin). TOTK_FSRFG_MOTION=1 and TOTK_FSRFG_FLOW=1 run them at full size;
    TOTK_FSRFG_TIMER=1 logs GPU time a picture, =2 by pass; TOTK_FSRFG_NONE=1 acts as a device without what it needs. */
-typedef struct { uint16_t binding; uint8_t kind; const char *name; } fsr_binding;   /* kind: 0 sampled, 1 storage, 2 uniform, 3 storage buffer, 4 sampler */
+/* kind: 0 sampled, 1 storage, 2 uniform, 3 storage buffer, 4 sampler */
+typedef struct { uint16_t binding; uint8_t kind; const char *name; } fsr_binding;
 typedef struct { const char *name; const uint32_t *code; size_t size; const fsr_binding *bindings; uint32_t count; } fsr_pass_source;
 #include "fsrfg_passes_spv.inc"
 enum { FSR_SLOT = 4096, FSR_SLOTS = 8, FSR_CB_FI = 0, FSR_CB_PYR = 256, FSR_CB_OFSPD = 512, FSR_CB_OF = 768, FSR_OF_COMMON = 7, FSR_LEVELS = 7, FSR_CB_PYR_RENDER = 2816, FSR_MAX_STEPS = 64, FSR_STAMPS = 6, FSR_TIMER_RING = 4 };
-typedef struct { int kind, pass; VkDescriptorSet set; uint32_t x, y, z, ubos; int skip_on_reset; image_entry *image; uint32_t value; } fsr_step;   /* kind: 0 dispatch, 1 clear image to value, 2 time stamp x */
+/* kind: 0 dispatch, 1 clear image to value, 2 time stamp x */
+typedef struct { int kind, pass; VkDescriptorSet set; uint32_t x, y, z, ubos; int skip_on_reset; image_entry *image; uint32_t value; } fsr_step;
 typedef struct { image_entry *in_cur, *in_prev, *flow_rw, *flow_prev, *flow_r, *next; int par, level; } fsr_ctx;
 typedef struct { int32_t render[2], display[2]; float display_rcp[2], cam_near, cam_far; int32_t upscaler[2], mode, reset; float depth_to_view[4]; float delta; int32_t hudless, distortion[2];
     float of_scale[2]; int32_t of_block; uint32_t flags; int32_t max_render[2], of_half, instances; int32_t rect_base[2], rect_size[2]; float debug_bar[3]; uint32_t transfer; float luminance[2], tan_half_fov; int32_t pad;
     float jitter[2], mv_scale[2]; } fsr_fi_constants;
 static struct {
-    int timer, failed, ready; uint32_t w, h, rw, rh, scale, ow, oh, of_scale, levels;   /* w, h: the picture; rw, rh: the motion passes (TOTK_FG_FSR_SCALE=2: FSR's render size below its display size) */
+    /* w, h: the picture; rw, rh: the motion passes (TOTK_FG_FSR_SCALE=2: FSR's render size below its display size) */
+    int timer, failed, ready; uint32_t w, h, rw, rh, scale, ow, oh, of_scale, levels;
     uint64_t runs, last_frames, frame_index;
     VkDescriptorSetLayout set_layout[FSR_PASSES], prep_set_layout; VkPipelineLayout layout[FSR_PASSES], prep_layout; VkPipeline pipeline[FSR_PASSES], prep; VkDescriptorPool pool;
     image_entry src[2], src_half[2], mv, depth, dmv, dd, rdp, rdi, gx, gy, ox, oy, dm, pyr, dist, in[2][FSR_LEVELS], flow[2][FSR_LEVELS], ofv, hist, hist_prev, scd_temp, scd_out, *out;
@@ -87,7 +90,8 @@ static void fsr_add(int par, int pass, const fsr_ctx *c, uint32_t x, uint32_t y,
 }
 static void fsr_add_clear(int par, image_entry *e, uint32_t value, int skip_on_reset) { fsr.steps[par][fsr.nsteps[par]++] = (fsr_step){.kind = 1, .image = e, .value = value, .skip_on_reset = skip_on_reset}; }
 static void fsr_add_stamp(int par, uint32_t at) { fsr.steps[par][fsr.nsteps[par]++] = (fsr_step){.kind = 2, .x = at}; }
-static void fsr_spd(uint32_t w, uint32_t h, int mips, uint32_t out[6]) {   /* ffxSpdSetup: groups x, y, offsets, count, mips */
+/* ffxSpdSetup: groups x, y, offsets, count, mips */
+static void fsr_spd(uint32_t w, uint32_t h, int mips, uint32_t out[6]) {
     out[0] = (w - 1) / 64 + 1; out[1] = (h - 1) / 64 + 1; out[2] = out[3] = 0; out[4] = out[0] * out[1];
     if (mips >= 0) out[5] = (uint32_t)mips; else { uint32_t r = w > h ? w : h, m = 0; while (r > 1) { r >>= 1; m++; } out[5] = m > 12 ? 12 : m; }
 }
@@ -114,7 +118,8 @@ static void fsr_build_steps(int p) {
     }
     fsr_add_stamp(p, 2);
     c.level = FSR_OF_COMMON;
-    fsr_add_clear(p, &fsr.rdp, 0x3f800000u, 0);   /* 1.0f: the depths are kept as float bits, nearest wins */
+    /* 1.0f: the depths are kept as float bits, nearest wins */
+    fsr_add_clear(p, &fsr.rdp, 0x3f800000u, 0);
     fsr_add(p, FSR_FI_DILATE, &c, mx, my, 1, 0);
     fsr_add(p, FSR_FI_SETUP, &c, mx, my, 1, 0);
     fsr_add_clear(p, &fsr.rdi, 0x3f800000u, 1);
@@ -246,7 +251,8 @@ static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *pu
             memset(fsr.ms, 0, sizeof fsr.ms); fsr.total = 0; fsr.timed = 0; }
     }
     unsigned fq = (unsigned)(fsr.runs % FSR_TIMER_RING) * (FSR_MAX_STEPS + 1); static uint8_t fine_reset[FSR_TIMER_RING]; unsigned fslot = (unsigned)(fsr.runs % FSR_TIMER_RING);
-    if (fsr.fine) {   /* the pictures two parities apart have the same steps; this slot was recorded with the parity it has now */
+    /* the pictures two parities apart have the same steps; this slot was recorded with its current parity */
+    if (fsr.fine) {
         uint64_t t[FSR_MAX_STEPS + 1]; int n = 0; for (int i = 0; i < fsr.nsteps[p]; i++) if (fsr.steps[p][i].kind == 0) n++;
         if (fsr.runs >= FSR_TIMER_RING && !fine_reset[fslot] && vkGetQueryPoolResults(device, fsr.fine, fq, (uint32_t)n + 1, sizeof t, t, 8, VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
             int k = 0; for (int i = 0; i < fsr.nsteps[p]; i++) if (fsr.steps[p][i].kind == 0) { fsr.fine_ms[fsr.steps[p][i].pass] += (double)(t[k + 1] - t[k]) * gpu_limits.timestampPeriod / 1e6; fsr.fine_n[fsr.steps[p][i].pass]++; k++; } }
@@ -260,7 +266,8 @@ static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *pu
         .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
     vkUpdateDescriptorSets(device, 6, w, 0, NULL);
     fsr_barrier();
-    if (reset) {   /* ffx_opticalflow.cpp: everything the flow keeps between frames */
+    /* ffx_opticalflow.cpp: everything the flow keeps between frames */
+    if (reset) {
         VkClearColorValue zero = {{0}}; VkImageSubresourceRange all = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         image_entry *e[] = {&fsr.scd_temp, &fsr.scd_out, &fsr.hist, &fsr.hist_prev};
         for (size_t i = 0; i < 4; i++) vkCmdClearColorImage(command, e[i]->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &all);
@@ -269,7 +276,8 @@ static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *pu
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fsr.prep);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fsr.prep_layout, 0, 1, &set, 0, NULL);
     float pc[28]; memcpy(pc, push, sizeof pc); pc[21] = (float)fsr.scale; pc[22] = (float)fsr.of_scale;
-    pc[26] = fg.view[0] > 0 ? fg.view[0] : 1; pc[27] = fg.view[1] > 0 ? fg.view[1] : 1;   /* with dynamic resolution the scene is a corner of the depth target */
+    /* with dynamic resolution the scene is a corner of the depth target */
+    pc[26] = fg.view[0] > 0 ? fg.view[0] : 1; pc[27] = fg.view[1] > 0 ? fg.view[1] : 1;
     vkCmdPushConstants(command, fsr.prep_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 112, pc);
     vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
     fsr_barrier();

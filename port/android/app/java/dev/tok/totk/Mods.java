@@ -64,7 +64,8 @@ final class Mods {
         long installed, bytes; int replaced, added, skipped;
         boolean on = true;
         final List<String> contents = new ArrayList<>(), warnings = new ArrayList<>(), notes = new ArrayList<>();
-        String problem;   /* from the last start: a failed start or a crash involving this mod */
+        /** From the last start: a failed start or a crash involving this mod. */
+        String problem;
         File dir() { return new File(ROOT, id); }
         File preview() { for (String n : new String[]{"preview.png", "preview.jpg"}) { File f = new File(dir(), n); if (f.exists()) return f; } return null; }
     }
@@ -89,12 +90,14 @@ final class Mods {
             Mod m = load(f[1]); if (m == null) continue;
             m.on = f[0].equals("on"); out.add(m); seen.add(m.id);
         }
-        String[] dirs = ROOT.list();   // installed but not in the list (an interrupted save): at the bottom, off
+        // installed but not in the list (an interrupted save): at the bottom, off
+        String[] dirs = ROOT.list();
         if (dirs != null) { Arrays.sort(dirs); for (String d : dirs) if (!seen.contains(d) && !d.startsWith("_") && new File(ROOT, d + "/mod.json").exists()) { Mod m = load(d); if (m != null) { m.on = false; out.add(m); } } }
         Map<String, List<String>> notes = new HashMap<>();
         for (String l : lines(new File(ACTIVE, "notes.tsv"))) { int t = l.indexOf('\t'); if (t > 0) notes.computeIfAbsent(l.substring(0, t), k -> new ArrayList<>()).add(l.substring(t + 1)); }
         List<Mod> withIcons = enabled(out); Mod icons = builtIn(ICONS_PLAYSTATION); if (icons != null) withIcons.add(icons);
-        if (upToDate(enabled(out)) || upToDate(withIcons)) for (Mod m : out) if (notes.containsKey(m.id)) m.notes.addAll(notes.get(m.id));   // only while they describe this list
+        // only while they describe this list
+        if (upToDate(enabled(out)) || upToDate(withIcons)) for (Mod m : out) if (notes.containsKey(m.id)) m.notes.addAll(notes.get(m.id));
         return out;
     }
 
@@ -200,7 +203,8 @@ final class Mods {
             m.id = slug(m.name) + "-" + Long.toHexString(m.installed & 0xffffff);
             File dir = m.dir(); dir.mkdirs();
             File dest = new File(dir, "romfs"); dest.mkdirs();
-            File[] parts = root.listFiles();   // the RomFS folders; loose files beside them (a readme, a picture) are not game files
+            // the RomFS folders; loose files beside them (a readme, a picture) are not game files
+            File[] parts = root.listFiles();
             if (parts != null) for (File f : parts) {
                 if (!f.isDirectory() || f.getName().startsWith(".")) continue;
                 if (source.isDirectory() || !f.renameTo(new File(dest, f.getName()))) { p.step("Copying " + f.getName()); copyTree(f, new File(dest, f.getName())); }
@@ -415,7 +419,8 @@ final class Mods {
     static void apply(List<Mod> on, Progress p) throws IOException {
         ModData.Romfs rom = env();
         deleteTree(ACTIVE); File gen = new File(ACTIVE, "gen"); gen.mkdirs();
-        Map<String, List<Object[]>> by = new LinkedHashMap<>();   // path -> {mod, entry}, top first
+        // path -> {mod, entry}, top first
+        Map<String, List<Object[]>> by = new LinkedHashMap<>();
         for (Mod m : on) for (String l : lines(new File(m.dir(), "files.tsv"))) {
             Entry e = Entry.parse(l); if (e == null || !(e.kind.equals("copy") || e.kind.equals("pack"))) continue;
             by.computeIfAbsent(e.path, k -> new ArrayList<>()).add(new Object[]{m, e});
@@ -432,7 +437,8 @@ final class Mods {
             if (te.kind.equals("pack")) {
                 byte[] orig = rom.read(path); byte[] packed = mergePack(path, orig, from, notes);
                 Set<String> ids = new LinkedHashSet<>(); for (Object[] f : from) ids.add(((Mod) f[0]).id);
-                if (packed == null) continue;   /* the mods' changes to it were all 1.4.3's already */
+                /* the mods' changes to it were all 1.4.3's already */
+                if (packed == null) continue;
                 File out = new File(gen, path); out.getParentFile().mkdirs();
                 byte[] z = Zstd.compress(packed, Zstd.dictionaryOf(orig)); writeBytes(out, z);
                 long grown = table.get(path) + Math.max(0, packed.length - unzs(orig).length);
@@ -487,9 +493,12 @@ final class Mods {
                 }
                 if (Arrays.equals(b, c)) continue;
                 long hb = ModData.hash8(b);
-                if (bm != null && hb == bm.hash) continue;                                      // the mod has 1.0.0's
-                if (bm != null && ModData.hash8(c) == bm.hash) { cur.put(name, b); changedBy.put(name, m.id); continue; }   // only the mod changed it
-                if (changedBy.containsKey(name)) {                                               // two mods changed it: the higher one wins
+                // the mod has 1.0.0's
+                if (bm != null && hb == bm.hash) continue;
+                // only the mod changed it
+                if (bm != null && ModData.hash8(c) == bm.hash) { cur.put(name, b); changedBy.put(name, m.id); continue; }
+                // two mods changed it: the higher one wins
+                if (changedBy.containsKey(name)) {
                     note(notes, changedBy.get(name), "Overridden by " + m.name + ": " + name + " in " + path);
                     cur.put(name, b); changedBy.put(name, m.id); continue;
                 }

@@ -1,6 +1,6 @@
-/* Shader setup (plan step 8): every shader of the game translated once on the device, ahead of play, as the PC's
-   tools/aot_shaders.py does for this developer's device. Players have no PC step: the APK carries the translator, and
-   this finds the shaders in the player's own RomFS and game modules and translates each for the default bind state
+/* Shader setup: every shader of the game translated once on the device, ahead of play, as tools/aot_shaders.py does on
+   a PC. Players have no PC step: the APK carries the translator, and this finds the shaders in the player's own RomFS
+   and game modules and translates each for the default bind state
    (the translator takes texture kinds from the instructions and vertex input types from their use, so that variant
    serves almost every draw; the rare other bind states are still translated when the game first meets them).
 
@@ -9,8 +9,8 @@
    modules' embedded BNSH files; a shader is SHA-256 of its control section and code (totk_shader_id). Only the folders
    that hold shaders in 1.4.3 are read (Shader/, Effect/, Lib/, UI/ and the boot package: about 17,000 files, 1.6 GB of
    the 17 GB RomFS): on the PC this finds exactly the 28,771 shaders of prepare_shader_seed.py's full scan, and its
-   translations are byte-identical to aot_shaders.py's (2026-10-30; TOTK_SHADER_SETUP_LIST=<file> lists the ids found).
-   A shader it misses is translated when the game first uses it, as before. On the Odin 3 an empty cache took 165 s
+   translations are byte-identical to aot_shaders.py's (TOTK_SHADER_SETUP_LIST=<file> lists the ids found).
+   A shader it misses is translated when the game first uses it. On the Odin 3 an empty cache takes 165 s
    (title screen; 82 shaders fail, the same 82 as on the PC).
 
    It runs in the background of the game's first session (or after the cache was dropped), from the first present, with
@@ -21,7 +21,8 @@
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <zstd.h>
-int runtime_romfs_load(const char *path, uint8_t **out, uint64_t *size);   /* runtime.h */
+/* runtime.h */
+int runtime_romfs_load(const char *path, uint8_t **out, uint64_t *size);
 
 typedef struct { uint64_t offset, size; const char *name; } setup_file;
 typedef struct setup_shader { char id[65]; int st; uint8_t *control, *code; uint32_t control_size, code_size; struct setup_shader *next; } setup_shader;
@@ -55,9 +56,11 @@ static int setup_index(const char *romfs) {
         const char *n = (const char *)m + strings + name;
         /* the folders that hold shaders (see the top) */
         if (strncmp(n, "Shader/", 7) && strncmp(n, "Effect/", 7) && strncmp(n, "Lib/", 4) && strncmp(n, "UI/", 3) && strcmp(n, "Pack/Bootup.Nin_NX_NVN.pack.zs")) continue;
-        setup.files[setup.nfiles++] = (setup_file){su_rd64(e), su_rd64(e + 8), n};   /* the map stays: names point into it */
+        /* the map stays: names point into it */
+        setup.files[setup.nfiles++] = (setup_file){su_rd64(e), su_rd64(e + 8), n};
     }
-    if (player_on && player_on()) return 1;   /* no image: setup_read goes through the player's files */
+    /* no image: setup_read goes through the player's files */
+    if (player_on && player_on()) return 1;
     snprintf(path, sizeof path, "%s/romfs.bin", romfs);
     setup.fd = open(path, O_RDONLY);
     return setup.fd >= 0;
@@ -80,7 +83,8 @@ static int setup_sarc_member(const uint8_t *s, uint64_t size, unsigned i, const 
     if (b < a || !su_range(size, start + a, b - a)) { *data = NULL; *n = 0; return 1; }
     *data = s + start + a; *n = b - a; return 1;
 }
-static int setup_dictionaries(void) {   /* Pack/ZsDic.pack.zs: a SARC of the game's zstd dictionaries */
+/* Pack/ZsDic.pack.zs: a SARC of the game's zstd dictionaries */
+static int setup_dictionaries(void) {
     uint8_t *pack = NULL; uint64_t n = 0;
     if (runtime_romfs_load("Pack/ZsDic.pack.zs", &pack, &n)) return 0;
     unsigned long long m = ZSTD_getFrameContentSize(pack, n);
@@ -108,7 +112,8 @@ static const uint8_t *setup_decode(const uint8_t *raw, uint64_t n, uint64_t *m_o
     __atomic_add_fetch(&setup.decoded_bytes, m, __ATOMIC_RELAXED);
     *out = b; *m_out = m; return b;
 }
-static uint32_t setup_key_len(const uint8_t *control, uint64_t n) {   /* prepare_shader_seed.py control_key_len */
+/* prepare_shader_seed.py control_key_len */
+static uint32_t setup_key_len(const uint8_t *control, uint64_t n) {
     uint32_t size = n >= 0x24 ? su_rd32(control + 0x20) : 0;
     return size >= 0x7cc && size < 0x880 ? size : 0x880;
 }
@@ -137,7 +142,8 @@ static int setup_stage_ok(const uint8_t *control, uint32_t key_len, uint64_t cod
     if (!len || c1 > len || len > code_avail) return want >= 0 ? -1 : 0;
     *length = len; return 1;
 }
-static void setup_bnsh(const uint8_t *d, uint64_t n) {   /* one BNSH file (offsets relative to it) */
+/* one BNSH file (offsets relative to it) */
+static void setup_bnsh(const uint8_t *d, uint64_t n) {
     if (n < 0x88 || memcmp(d, "BNSH", 4) || d[12] != 0xff || d[13] != 0xfe || memcmp(d + 96, "grsc", 4)) return;
     uint64_t size = su_rd32(d + 28); if (size > n) return; n = size;
     uint32_t count = su_rd32(d + 124); uint64_t variations = su_rd64(d + 128);
@@ -148,14 +154,16 @@ static void setup_bnsh(const uint8_t *d, uint64_t n) {   /* one BNSH file (offse
         for (int k = 0; k < 3; k++) {
             uint64_t at = su_rd64(d + program + stages[k].rel); if (!at || !su_range(n, at + 8, 24)) continue;
             uint64_t control_off = su_rd64(d + at + 8), code_off = su_rd64(d + at + 16); uint32_t code_size = su_rd32(d + at + 24), control_size = su_rd32(d + at + 28);
-            if (!su_range(n, control_off, control_size) || !su_range(n, code_off, code_size) || control_size < 0x7cc) continue;   /* the SDK's older layout */
+            /* the SDK's older layout */
+            if (!su_range(n, control_off, control_size) || !su_range(n, code_off, code_size) || control_size < 0x7cc) continue;
             const uint8_t *control = d + control_off; uint32_t key_len = setup_key_len(control, control_size), length;
             if (control_size < key_len) continue;
             if (setup_stage_ok(control, key_len, code_size, stages[k].st, &length) == 1) setup_add(stages[k].st, control, key_len, d + code_off, length);
         }
     }
 }
-static void setup_sharcb(const uint8_t *d, uint64_t n) {   /* agl shader package (BAHS): prepare_shader_seed.py sharcb_shaders */
+/* agl shader package (BAHS): prepare_shader_seed.py sharcb_shaders */
+static void setup_sharcb(const uint8_t *d, uint64_t n) {
     if (n < 32 || memcmp(d, "BAHS", 4)) return;
     uint64_t start = su_rd32(d + 20), pool_size = su_rd32(d + 24), pool = su_rd32(d + 28);
     if (start < 32 || start > pool || !su_range(n, pool, pool_size)) return;
@@ -240,13 +248,15 @@ static int setup_service(FILE **in, FILE **out, pid_t *child) {
     char *argv[] = {exe, "--service", "--spirv-only", "--out", (char *)totk_cache_dir(), "--chain", "android-vk1", NULL};
     char *env[256]; int ne = 0; for (char **v = environ; *v && ne < 255; v++) if (strncmp(*v, "LD_PRELOAD=", 11)) env[ne++] = *v;
     env[ne] = NULL;
-    pid_t pid; int r = posix_spawn(&pid, exe, &fa, NULL, argv, env);   /* the child keeps this thread's low priority */
+    /* the child keeps this thread's low priority */
+    pid_t pid; int r = posix_spawn(&pid, exe, &fa, NULL, argv, env);
     posix_spawn_file_actions_destroy(&fa); close(to[0]); close(from[1]);
     if (r) { close(to[1]); close(from[0]); return 0; }
     *in = fdopen(to[1], "w"); *out = fdopen(from[0], "r"); *child = pid;
     return *in && *out;
 }
-static void setup_service_end(FILE **in, FILE **out, pid_t child) {   /* end of input: it exits; reaped here */
+/* end of input: it exits; reaped here */
+static void setup_service_end(FILE **in, FILE **out, pid_t child) {
     if (*in) fclose(*in);
     if (*out) fclose(*out);
     *in = *out = NULL; if (child > 0) waitpid(child, NULL, 0);
@@ -268,7 +278,8 @@ static void setup_register(const char *id, const char *key) {
 listed:
     pthread_mutex_unlock(&totk_shader_lock);
 }
-static const char setup_answers[] = "\"tex\": {}, \"img\": {}, \"attr\": {}, \"fout\": {}";   /* the default bind state (aot_shaders.py) */
+/* the default bind state (aot_shaders.py) */
+static const char setup_answers[] = "\"tex\": {}, \"img\": {}, \"attr\": {}, \"fout\": {}";
 static void *setup_translate_worker(void *unused) {
     (void)unused; setpriority(PRIO_PROCESS, (id_t)gettid(), 10);
     FILE *in = NULL, *out = NULL; pid_t child = 0; const char *dir = totk_cache_dir();
@@ -279,7 +290,8 @@ static void *setup_translate_worker(void *unused) {
         dm_android_sha256_update(&c, s->id, 64); dm_android_sha256_update(&c, setup_answers, sizeof setup_answers - 1); dm_android_sha256_final(md, &c);
         char key[17], path[1200]; totk_hex(md, 8, key);
         snprintf(path, sizeof path, "%s/%s.variants", dir, s->id);
-        { struct stat st; if (!stat(path, &st) && st.st_size >= 17) { __atomic_add_fetch(&setup.present, 1, __ATOMIC_RELAXED); continue; } }   /* the shader has a variant already */
+        /* the shader has a variant already */
+        { struct stat st; if (!stat(path, &st) && st.st_size >= 17) { __atomic_add_fetch(&setup.present, 1, __ATOMIC_RELAXED); continue; } }
         if (!in && !setup_service(&in, &out, &child)) { LOG("[shader-setup] translator did not start"); break; }
         uint32_t length = s->code_size, c1o = su_rd32(s->control + 0x700); size_t skip = s->st == 5 ? 0 : 0x30;
         if (length <= skip) { __atomic_add_fetch(&setup.failed, 1, __ATOMIC_RELAXED); continue; }
@@ -296,7 +308,8 @@ static void *setup_translate_worker(void *unused) {
         char reply[2048]; if (!fgets(reply, sizeof reply, out)) { LOG("[shader-setup] translator exited at %s", key); setup_service_end(&in, &out, child); unlink(path); continue; }
         unlink(path);
         if (!strstr(reply, "\"ok\": true")) { if (__atomic_add_fetch(&setup.failed, 1, __ATOMIC_RELAXED) <= 5) LOG("[shader-setup] %s (%.16s) failed: %.200s", key, s->id, reply); continue; }
-        snprintf(path, sizeof path, "%s/%s.aot", dir, key); f = fopen(path, "w"); if (f) fclose(f);   /* the warm-up skips it until used */
+        /* the warm-up skips it until used */
+        snprintf(path, sizeof path, "%s/%s.aot", dir, key); f = fopen(path, "w"); if (f) fclose(f);
         setup_register(s->id, key);
         if (!(__atomic_add_fetch(&setup.translated, 1, __ATOMIC_RELAXED) % 1000))
             LOG("[shader-setup] %llu translated, %llu there already, %llu failed, of %zu", (unsigned long long)setup.translated, (unsigned long long)setup.present, (unsigned long long)setup.failed, setup.count);
@@ -331,7 +344,8 @@ static void *setup_thread(void *unused) {
     uint64_t t1 = dm_android_clock_ns(CLOCK_MONOTONIC);
     LOG("[shader-setup] %zu shaders in %zu RomFS files (%.0f MB read, %.0f MB decompressed) in %.1f s", setup.count, setup.nfiles,
         setup.scanned_bytes / 1e6, setup.decoded_bytes / 1e6, (t1 - t0) / 1e9);
-    { const char *list = getenv("TOTK_SHADER_SETUP_LIST");   /* the ids found, one a line (checked against the PC inventory) */
+    /* the ids found, one a line (checked against the PC inventory) */
+    { const char *list = getenv("TOTK_SHADER_SETUP_LIST");
       FILE *f = list && *list ? fopen(list, "w") : NULL; if (f) { for (size_t i = 0; i < setup.count; i++) fprintf(f, "%s %d\n", setup.list[i]->id, setup.list[i]->st); fclose(f); } }
     int workers = getenv("TOTK_SHADER_SETUP_JOBS") ? atoi(getenv("TOTK_SHADER_SETUP_JOBS")) : 3; if (workers < 1) workers = 1; if (workers > 8) workers = 8;
     for (int i = 0; i < workers; i++) pthread_create(&t[i], NULL, setup_translate_worker, NULL);
@@ -345,10 +359,12 @@ static void *setup_thread(void *unused) {
     return NULL;
 }
 /* From the first present (the device, the translator's request constants and the game's depth mode are known). */
-static int prepare_mode(void); static void prepare_start(void);   /* nvn_vulkan_prepare.inc */
+/* nvn_vulkan_prepare.inc */
+static int prepare_mode(void); static void prepare_start(void);
 static void shader_setup_start(void) {
     static int started; if (started) return; started = 1;
-    if (prepare_mode()) { prepare_start(); return; }   /* the setup runs there, then the libraries */
+    /* the setup runs there, then the libraries */
+    if (prepare_mode()) { prepare_start(); return; }
     const char *e = getenv("TOTK_SHADER_SETUP"); if (e && !atoi(e)) return;
     pthread_t t; if (!pthread_create(&t, NULL, setup_thread, NULL)) pthread_detach(t);
 }

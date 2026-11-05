@@ -157,7 +157,8 @@ def convert_sav(blob, strings, every, label):
         h = words[i]
         struct.pack_into('<I', out, 4 * i, h)
         if h in strings:
-            raw += 1   # four characters: stays
+            # four characters: stays
+            raw += 1
         else:
             struct.pack_into('<I', out, 4 * i + 4, words[i + 1])
             unknown += h not in every

@@ -35,7 +35,8 @@ final class Setup {
     static final int E_NOT_FILE = -100, E_NOT_OPENED = -101, E_NO_READER = -102;
 
     static final int BASE = 0, UPDATE = 1;
-    static final int MAX_KEYS = 1 << 20;   // keys.c MAX_KEYS_FILE
+    // keys.c MAX_KEYS_FILE
+    static final int MAX_KEYS = 1 << 20;
     /** A folder's walk: the depth and entries listed, the files opened and for how long. Each file opened costs a header read,
         never the file (the reader reads its tables: at most a few MB of a hostile file, a few KB of any other). */
     static final int MAX_DEPTH = 6, MAX_LISTED = 20000, MAX_OPENED = 200;
@@ -107,9 +108,11 @@ final class Setup {
     private final File dir, keys, state, reported;
     private final Reader reader;
     private volatile Doc base, update;
-    private volatile boolean checked;   // the pair opened as the game opens it
+    // the pair opened as the game opens it
+    private volatile boolean checked;
     private volatile String keysProblem, baseProblem, updateProblem, pairWhy;
-    private volatile List<Doc> retry = new ArrayList<>();   // files the keys could not read: looked at again with new keys
+    // files the keys could not read: looked at again with new keys
+    private volatile List<Doc> retry = new ArrayList<>();
     long scanLimitMs = 30000;
 
     /** reader: null in the game's process, which only reads what was saved. */
@@ -170,7 +173,8 @@ final class Setup {
             Files.move(tmp, to.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             return true;
         } catch (IOException | RuntimeException e) {
-            try { Files.deleteIfExists(tmp); } catch (IOException | RuntimeException ignored) { /* its next write replaces it */ }
+            // a leftover temporary file is replaced by the next write
+            try { Files.deleteIfExists(tmp); } catch (IOException | RuntimeException ignored) { }
             return false;
         }
     }
@@ -247,7 +251,8 @@ final class Setup {
                 if (!seen.add(id)) continue;
                 List<Entry> entries;
                 try { entries = tree.children(id); }
-                catch (IOException | RuntimeException e) { if (depth == 0) throw new IOException(e); continue; }   // a subfolder that cannot be read is skipped
+                // a subfolder that cannot be read is skipped
+                catch (IOException | RuntimeException e) { if (depth == 0) throw new IOException(e); continue; }
                 for (Entry e : entries) {
                     if (++listed > MAX_LISTED) { cut[0] = true; next.clear(); break; }
                     if (e.folder) next.add(e.id);
@@ -312,7 +317,8 @@ final class Setup {
             if (bases > 1 && update == null) refuse(UPDATE, BOTH_BASE);
             if (updates > 1 && base == null) refuse(BASE, BOTH_UPDATE);
             if (keysWhy != null) others.add(NEEDS_KEYS);
-            int row = newBase != null && slot == BASE || newUpdate != null && slot == UPDATE ? 1 - slot : slot;   // the row pressed, unless a file just filled it
+            // the row pressed, unless a file just filled it
+            int row = newBase != null && slot == BASE || newUpdate != null && slot == UPDATE ? 1 - slot : slot;
             for (String why : others) { refuse(row, why); row = 1 - row; }
         }
         recheck();
@@ -330,7 +336,8 @@ final class Setup {
         if (r.code == E_KEY_MISSING || r.code == E_KEY_WRONG) keysProblem = why;
         else {
             pairWhy = why;
-            if (r.code == E_TICKET) baseProblem = updateProblem = why;   // the reader does not say which
+            // the reader does not say which
+            if (r.code == E_TICKET) baseProblem = updateProblem = why;
             else set(r.text.contains("update") ? UPDATE : BASE, why);
         }
     }
@@ -380,7 +387,8 @@ final class Setup {
         try {
             String[] f = new String(Files.readAllBytes(reported.toPath()), StandardCharsets.UTF_8).split("\t", 2);
             if (f.length == 2 && (f[0].equals("0") || f[0].equals("1"))) set(Integer.parseInt(f[0]), f[1]);
-        } catch (IOException | RuntimeException e) { /* the page still opens, and the next start tells again */ }
+        // the page still opens, and the next start tells again
+        } catch (IOException | RuntimeException e) { }
         reported.delete();
         return true;
     }

@@ -9,7 +9,8 @@
 #define REL_SIZE 0x14u
 #define SUB_SIZE 0x10u
 #define MAX_TABLE (256u << 20)
-#define CHUNK (1u << 20)     /* a long run is read and decrypted in steps, so the bytes are still in cache */
+/* a long run is read and decrypted in steps, so the bytes are still in cache */
+#define CHUNK (1u << 20)
 
 /* Reads a table and checks its outer node. *total is where its ranges end. */
 static int table_read(const tokc_section *s, const uint8_t *info, const char *what, uint8_t **out, uint64_t *size_out,

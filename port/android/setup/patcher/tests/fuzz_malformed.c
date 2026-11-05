@@ -62,7 +62,8 @@ static size_t find_mod0(const uint8_t *flat, const size_t off[3], const size_t l
 }
 
 static int run(const uint8_t *nso, size_t size) {
-    uint8_t *in = malloc(size ? size : 1);       /* exact size: the sanitizer sees any read past it */
+    /* exact size: the sanitizer sees any read past it */
+    uint8_t *in = malloc(size ? size : 1);
     memcpy(in, nso, size);
     tokp_layout l;
     char err[200];
@@ -111,21 +112,26 @@ int main(int argc, char **argv) {
         if (how >= 4) { src = flat; m = flat_size; }
         memcpy(work, src, m);
         switch (how) {
-            case 0:     /* truncated */
+            /* truncated */
+            case 0:
                 m = below(4) ? below(m) : below(0x200);
                 break;
-            case 1:     /* header bytes */
+            /* header bytes */
+            case 1:
                 for (size_t k = 1 + below(8); k; k--) work[below(0x100)] ^= (uint8_t)(1u << below(8));
                 break;
-            case 2: {   /* header fields */
+            /* header fields */
+            case 2: {
                 static const unsigned at[] = {0xC, 0x10, 0x14, 0x18, 0x20, 0x24, 0x28, 0x30, 0x34, 0x38, 0x3C, 0x60, 0x64, 0x68};
                 for (size_t k = 1 + below(3); k; k--) wr32(work + at[below(sizeof at / sizeof *at)], odd_value(m));
                 break;
             }
-            case 3:     /* compressed data */
+            /* compressed data */
+            case 3:
                 for (size_t k = 1 + below(64); k; k--) work[0x100 + below(m - 0x100)] = (uint8_t)rnd();
                 break;
-            case 4:     /* the MOD0 offset, and the header it leads to; both also at the very end of the image */
+            /* the MOD0 offset, and the header it leads to; both also at the very end of the image */
+            case 4:
                 switch (below(4)) {
                     case 0: wr32(work + off[0] + 4, odd_value(m)); break;
                     case 1: wr32(work + off[0] + 4, (uint32_t)(end - below(40))); break;
@@ -133,7 +139,8 @@ int main(int argc, char **argv) {
                     default: if (mod0) wr32(work + mod0 + 16, (uint32_t)(end - below(40) - rd32(work + off[0] + 4))); break;
                 }
                 break;
-            case 5:     /* .eh_frame_hdr: encodings, count, table */
+            /* .eh_frame_hdr: encodings, count, table */
+            case 5:
                 if (mod0) {
                     size_t eh = mod0 + (size_t)(int32_t)rd32(work + mod0 + 16);
                     if (eh + 0x40 < m) {
@@ -143,18 +150,20 @@ int main(int argc, char **argv) {
                     }
                 }
                 break;
-            case 6: {   /* the end of the table: starts that run past everything */
+            /* the end of the table: starts that run past everything */
+            case 6: {
                 if (mod0) {
                     size_t eh = mod0 + (size_t)(int32_t)rd32(work + mod0 + 16);
                     if (eh + 16 < m) { work[eh + 3] = 0x04; wr32(work + eh + 8, 0xFFFFFF); }
                 }
                 break;
             }
-            case 7:     /* text */
+            /* text */
+            case 7:
                 for (size_t k = 1 + below(200); k; k--)
                     wr32(work + off[0] + (below(len[0] / 4 - 2) + 2) * 4, words[below(sizeof words / sizeof *words)]);
                 break;
-            default:    /* anything */
+            default:
                 for (size_t k = 1 + below(1000); k; k--) work[below(m)] = (uint8_t)rnd();
                 break;
         }

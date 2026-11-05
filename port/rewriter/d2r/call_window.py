@@ -48,7 +48,8 @@ def prepare_call(prefix_word, prefix_address, call_address, patch_address,
     words = [
         prefix_word,
         0xF8000000 | ((-16 & 0x1FF) << 12) | (31 << 5) | scratch,
-        0xD53BD060 | 30,  # mrs x30,tpidrro_el0
+        # mrs x30,tpidrro_el0
+        0xD53BD060 | 30,
         0x90000000 | ((pages & 3) << 29) | (((pages >> 2) & 0x7FFFF) << 5) | scratch,
         0xF9400000 | (((key_page_address & 4095) // 8 + key_index) << 10) | (scratch << 5) | scratch,
         0x8B000000 | (scratch << 16) | (30 << 5) | 30,

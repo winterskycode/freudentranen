@@ -20,11 +20,16 @@ final class ActionLayout {
     /* The actions and buttons as assets/actions.tsv lists them (the in-game menu shows the same table; load first) */
     static String[] NAMES, LABELS, HELP;
     static int ACTIONS;
-    private static int[] GAME_BUTTON;   // the Switch button the game gives each action (controller_switch_names index)
-    private static boolean[] HELD;      // read while held (the game reads no held stick clicks)
-    static int[] CARRY;                 // the buttons an action can go on, in the order left / right steps
-    private static int[] SWITCH_PHYSICAL;   // the physical button pressing the Switch layout's A, B, X, Y
-    private static String[] SHORT, LABEL_SHORT;   // physical buttons as shown: by position, face buttons by printed label
+    // the Switch button the game gives each action (controller_switch_names index)
+    private static int[] GAME_BUTTON;
+    // read while held (the game reads no held stick clicks)
+    private static boolean[] HELD;
+    // the buttons an action can go on, in the order left / right steps
+    static int[] CARRY;
+    // the physical button pressing the Switch layout's A, B, X, Y
+    private static int[] SWITCH_PHYSICAL;
+    // physical buttons as shown: by position, face buttons by printed label
+    private static String[] SHORT, LABEL_SHORT;
 
     /** Reads assets/actions.tsv once; a table that does not hold together stops the startup screen with the reason. */
     static synchronized void load(Context c) {
@@ -56,7 +61,8 @@ final class ActionLayout {
         return v;
     }
 
-    final int[] button = new int[ACTIONS];   // physical button (PHYSICAL index), -1 = none (ACTIONS: load() first)
+    // physical button (PHYSICAL index), -1 = none (ACTIONS: load() first)
+    final int[] button = new int[ACTIONS];
     private final File file;
 
     ActionLayout(File file) { this.file = file; reset(); read(); }
@@ -68,7 +74,6 @@ final class ActionLayout {
     void reset(int a) { button[a] = defaultButton(a); }
     boolean changed(int a) { return button[a] != defaultButton(a); }
     int changes() { int n = 0; for (int a = 0; a < ACTIONS; a++) if (changed(a)) n++; return n; }
-    /** Whether action a can go on physical button p */
     static boolean carries(int a, int p) {
         if (p < 0) return true;
         boolean ok = false; for (int c : CARRY) ok |= c == p;

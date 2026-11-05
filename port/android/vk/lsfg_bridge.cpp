@@ -14,7 +14,8 @@
 #include <vector>
 #include <cstdio>
 
-extern "C" PFN_vkGetInstanceProcAddr lsfg_vk_get_instance_proc_addr;   // third_party/lsfg_framegen/src/core/instance.cpp
+// third_party/lsfg_framegen/src/core/instance.cpp
+extern "C" PFN_vkGetInstanceProcAddr lsfg_vk_get_instance_proc_addr;
 
 namespace {
 bool g_performance;
@@ -57,7 +58,8 @@ int lsfg_bridge_present(int context) { return lsfg_bridge_present_at(context, nu
 // picture and this one); n < 0: every picture at its fixed timestamp
 int lsfg_bridge_present_at(int context, const float *timestamps, int n) {
     try {
-        const std::vector<int> none;   // inSem -1, no outSem: no semaphores, ordered by the shared queue
+        // inSem -1, no outSem: no semaphores, ordered by the shared queue
+        const std::vector<int> none;
         const std::vector<float> at(timestamps, timestamps + (n > 0 ? n : 0));
         if (n < 0) { if (g_performance) LSFG_3_1P::presentContext(context, -1, none); else LSFG_3_1::presentContext(context, -1, none); }
         else if (g_performance) LSFG_3_1P::presentContext(context, -1, none, at);
@@ -72,4 +74,4 @@ void lsfg_bridge_finalize(void) {
     catch (const std::exception &e) { note("finalize", e); }
 }
 
-}  // extern "C"
+}

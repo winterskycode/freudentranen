@@ -32,7 +32,8 @@ def adb(*args, check=True, binary=False):
 
 
 def as_app(cmd, **kw):
-    return adb('exec-out', 'run-as', APP, 'sh', '-c', cmd, **kw)   # exec-out passes the command as it is
+    # exec-out passes the command as it is
+    return adb('exec-out', 'run-as', APP, 'sh', '-c', cmd, **kw)
 
 
 def account(profile):
@@ -45,7 +46,8 @@ def account(profile):
     if len(raw) != 16 or not any(raw):
         raise SystemExit(f'files/{profile}/account.uid missing or invalid: start the game once with this profile')
     lo, hi = struct.unpack('<QQ', raw)
-    return f'{hi:016x}{lo:016x}'   # as the game and save_manager.py name the folder
+    # as the game and save_manager.py name the folder
+    return f'{hi:016x}{lo:016x}'
 
 
 def device_sums(path):
@@ -132,7 +134,7 @@ def main():
         print(f'importing {source}: {", ".join(slots)}')
         backup(a.profile, acct)
         put(source, a.profile, acct)
-    else:   # restore
+    else:
         name = a.target
         if not as_app(f'test -d files/save-backups/{name} && echo yes', check=False).strip():
             raise SystemExit(f'no backup {name} (saves.py backups lists them)')

@@ -113,7 +113,8 @@ one_case() {
 }
 export -f one_case same_dirs
 export PY TOOL CLI
-run_cases() {    # <dir> <label>
+# <dir> <label>
+run_cases() {
   find "$1" -maxdepth 1 -type f | sort | xargs -P "$J" -I{} bash -c 'one_case {}' > "$1.results" 2>&1
   local ok refused bad
   ok=$(grep -c ': ok$' "$1.results"); refused=$(grep -c ': refused$' "$1.results"); bad=$(grep -vc -e ': ok$' -e ': refused$' "$1.results")

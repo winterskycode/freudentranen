@@ -69,7 +69,8 @@ static void portable_decrypt(const uint8_t rk[176], const uint8_t in[16], uint8_
     uint8_t s[16], t[16];
     for (int i = 0; i < 16; i++) s[i] = in[i] ^ rk[160 + i];
     for (int r = 9; r >= 0; r--) {
-        for (int i = 0; i < 16; i++) t[(i + 4 * (i & 3)) & 15] = inv_sbox[s[i]];   /* InvShiftRows, InvSubBytes */
+        /* InvShiftRows, InvSubBytes */
+        for (int i = 0; i < 16; i++) t[(i + 4 * (i & 3)) & 15] = inv_sbox[s[i]];
         for (int i = 0; i < 16; i++) t[i] ^= rk[16 * r + i];
         if (!r) { memcpy(s, t, 16); break; }
         for (int c = 0; c < 16; c += 4) {

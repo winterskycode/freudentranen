@@ -18,7 +18,8 @@ static void frz_note(uintptr_t address, uint64_t size) {
     frz_ranges[frz_nranges++] = (frz_range){address, address + size, NULL};
 }
 static int frz_range_cmp(const void *a, const void *b) { const frz_range *x = a, *y = b; return x->lo < y->lo ? -1 : x->lo > y->lo; }
-void mtl_freeze_frozen(void) {   /* the recording ended: keep the GPU-written guest bytes as they are now */
+/* the recording ended: keep the GPU-written guest bytes as they stand */
+void mtl_freeze_frozen(void) {
     frz_noting = 0; mtl_finish();
     if (frz_nranges) qsort(frz_ranges, (size_t)frz_nranges, sizeof *frz_ranges, frz_range_cmp);
     int k = -1; for (int i = 0; i < frz_nranges; i++) { if (k >= 0 && frz_ranges[i].lo <= frz_ranges[k].hi) { if (frz_ranges[i].hi > frz_ranges[k].hi) frz_ranges[k].hi = frz_ranges[i].hi; } else frz_ranges[++k] = frz_ranges[i]; }
@@ -93,25 +94,28 @@ void mtl_freeze_snapshot(void) {
     }
     frz_snapshot_pools();
     frz_all_memory_barrier();
-    for (image_entry *e = image_list; e; e = e->next) { e->last_stage = 0; e->last_access = 0; }   /* the barrier above synchronised them all */
+    /* the barrier above synchronised them all */
+    for (image_entry *e = image_list; e; e = e->next) { e->last_stage = 0; e->last_access = 0; }
     mtl_wait(mtl_sub_commit(), UINT64_MAX);
     LOG("[freeze] snapshot: %u images, %.1f MiB", count, bytes / 1048576.0);
 }
-/* An image the game frees while a frame is frozen (image_retire_locked; its entry is freed once its fence passes) leaves
-   the replay: restoring into it copied into a destroyed image (tu_CmdCopyImage2 on a null image, 3 of 7 freezes on
-   2026-10-24). Its shadow stays until mtl_freeze_release, when no restore can still be running. */
+/* An image the game frees while a frame is frozen (image_retire_locked; its entry is freed once its fence passes)
+   leaves the replay: restoring into it would copy into a destroyed image (tu_CmdCopyImage2 on a null image). Its shadow
+   stays until mtl_freeze_release, when no restore can still be running. */
 static void frz_forget_image(const image_entry *e) {
     for (frz_shadow *s = frz_shadows; s; s = s->next) if (s->e == e) s->e = NULL;
 }
 void mtl_freeze_restore(void) {
     if (!frz_shadows && !frz_pools) return;
-    if (frz_nranges) { mtl_finish();   /* the last replay's write-backs have landed: now overwrite them */
+    /* the last replay's write-backs have landed: overwrite them */
+    if (frz_nranges) { mtl_finish();
         for (int i = 0; i < frz_nranges; i++) if (frz_ranges[i].bytes) { size_t n = frz_ranges[i].hi - frz_ranges[i].lo; dm_guest_write_prepare((void *)frz_ranges[i].lo, n); memcpy((void *)frz_ranges[i].lo, frz_ranges[i].bytes, n); } }
     mtl_sub_begin(); graphics_pass_end(); frz_all_memory_barrier();
     for (frz_shadow *s = frz_shadows; s; s = s->next) if (s->e) frz_copy(s->e, s->image, s->e->image);
     for (frz_pool *f = frz_pools; f; f = f->next) { VkBufferCopy c = {.size = f->size}; vkCmdCopyBuffer(command, f->buffer, f->source, 1, &c); }
     frz_all_memory_barrier();
-    for (image_entry *e = image_list; e; e = e->next) { e->last_stage = 0; e->last_access = 0; }   /* the barrier above synchronised them all */
+    /* the barrier above synchronised them all */
+    for (image_entry *e = image_list; e; e = e->next) { e->last_stage = 0; e->last_access = 0; }
     mtl_sub_commit();
 }
 void mtl_freeze_release(void) {
@@ -126,7 +130,8 @@ void mtl_freeze_release(void) {
 void *mtl_sub_ucap_clone(const void *p) {
     const ucap *c = p; if (!c) return NULL;
     ucap *d = calloc(1, sizeof *d); if (!d) die("uniform capture clone");
-    *d = *c; d->r = NULL; d->off = NULL; d->bytes = NULL; d->buf = (vk_buffer){0}; d->borrowed = 0;   /* a clone is plain memory: its blocks take the arena path */
+    /* a clone is plain memory: its blocks take the arena path */
+    *d = *c; d->r = NULL; d->off = NULL; d->bytes = NULL; d->buf = (vk_buffer){0}; d->borrowed = 0;
     if (c->n) {
         size_t total = c->off[c->n - 1] + (size_t)(c->r[c->n - 1].hi - c->r[c->n - 1].lo);
         d->r = malloc(sizeof *d->r * (size_t)c->n); d->off = malloc(sizeof *d->off * (size_t)c->n); d->bytes = malloc(total ? total : 1);

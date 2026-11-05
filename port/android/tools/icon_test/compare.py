@@ -20,7 +20,8 @@ from fontTools.ttLib import TTFont
 
 FONTS = ['Font/Font.Nin_NX_NVN.bfarc.zs', 'Font/Font_CNzh.Nin_NX_NVN.bfarc.zs', 'Font/Font_KRko.Nin_NX_NVN.bfarc.zs', 'Font/Font_TWzh.Nin_NX_NVN.bfarc.zs']
 LAYOUT = 'UI/LayoutArchive/Common.Product.140.Nin_NX_NVN.blarc.zs'
-LETTERS = {0xE044, 0xE045, 0xE046, 0xE047, 0xE052, 0xE05E}   # the icons with letters on them
+# the icons with letters on them
+LETTERS = {0xE044, 0xE045, 0xE046, 0xE047, 0xE052, 0xE05E}
 LETTER_MASKS = {'Nt_KeyTexL_00', 'Nt_KeyTexZL_00', 'Nt_KeyTexLSt_00', 'Nt_KeyTexLSt_01'}
 problems = []
 
@@ -92,7 +93,8 @@ def compare_sarc(m, new, old, changed):
             same = same and new[slice(*a[k])] == old[slice(*b[k])]
     def low(o):
         return o & -o if o else 1 << 30
-    for x, y in zip(nodes, onodes):   # each member at least as aligned as the game has it, up to the PC tool's 8 KiB limit
+    # each member at least as aligned as the game has it, up to the PC tool's 8 KiB limit
+    for x, y in zip(nodes, onodes):
         same = same and x[2] % min(low(y[2]), 0x2000) == 0
     used = sorted(a.values()); gaps = zip([(0, start)] + used, used)
     same = same and all(not any(new[p[1]:q[0]]) for p, q in gaps if p[1] > start)
@@ -286,7 +288,8 @@ def main():
                 if name in LETTER_MASKS:
                     d = [(i % w, i // w) for i in range(w * h) if mine[i] != pcm[i]]
                     box = min(p[0] for p in d), min(p[1] for p in d), max(p[0] for p in d), max(p[1] for p in d)
-                    edge = 6   # the key's outline is the same: no difference at the border
+                    # the key's outline is the same: no difference at the border
+                    edge = 6
                     check(box[0] > edge and box[1] > edge and box[2] < w - edge and box[3] < h - edge, f'BNTX: {name}: {len(d)} of {w * h} pixels differ from the PC mod, in the box {box}: the letters')
                 else:
                     check(mine == pcm, f'BNTX: {name} byte-identical to the PC mod')

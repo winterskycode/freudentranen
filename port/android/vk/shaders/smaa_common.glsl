@@ -3,7 +3,8 @@
 // the edge detection's discard (no edge in this pixel) becomes "no edges".
 // Include after the pass's own bindings; a pass may define SMAASamplePoint first (the edge pass gamma-encodes with it).
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(push_constant) uniform Push { vec4 metrics; vec4 sub; } pc;   // 1/width, 1/height, width, height; the subsample indices (T2x)
+// 1/width, 1/height, width, height; the subsample indices (T2x)
+layout(push_constant) uniform Push { vec4 metrics; vec4 sub; } pc;
 #define SMAA_RT_METRICS pc.metrics
 #ifndef SMAA_PRESET_LOW
 #ifndef SMAA_PRESET_MEDIUM

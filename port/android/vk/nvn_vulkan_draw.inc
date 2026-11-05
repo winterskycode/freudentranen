@@ -1,5 +1,4 @@
-static void dynres_note(float w, float h, uint32_t target_w, uint32_t target_h);   /* nvn_vulkan_framegen.inc (TOTK_DYNRES_STATS) */
-// 图形管线与绘制；与描述符/计算绑定分开以便独立优化。
+static void dynres_note(float w, float h, uint32_t target_w, uint32_t target_h);
 // Graphics pipelines and draws, separated from descriptor/compute binding for independent optimization.
 static VkBlendFactor blend_factor(unsigned factor) {
     switch(factor){case 1:return VK_BLEND_FACTOR_ZERO;case 2:return VK_BLEND_FACTOR_ONE;case 3:return VK_BLEND_FACTOR_SRC_COLOR;case 4:return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;case 5:return VK_BLEND_FACTOR_SRC_ALPHA;case 6:return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;case 7:return VK_BLEND_FACTOR_DST_ALPHA;case 8:return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;case 9:return VK_BLEND_FACTOR_DST_COLOR;case 10:return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;case 11:return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;case 0x61:return VK_BLEND_FACTOR_CONSTANT_COLOR;case 0x62:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;case 0x63:return VK_BLEND_FACTOR_CONSTANT_ALPHA;case 0x64:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;default:return VK_BLEND_FACTOR_ONE;}
@@ -20,7 +19,7 @@ static uint32_t quad_indices(uint32_t *out,unsigned primitive,const void *input,
         if(primitive==7){out[n++]=v[1];out[n++]=v[2];used=0;}else{out[n++]=v[2];out[n++]=v[0];v[0]=v[2];v[1]=v[3];used=2;}}
     return n;
 }
-static VkPrimitiveTopology topology(unsigned primitive){switch(primitive){case 0:return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;case 1:return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;case 3:return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;case 4:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;case 5:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;case 6:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;case 7:case 8:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;   /* quad_indices */default:die("Vulkan primitive %u pending",primitive);return 0;}}
+static VkPrimitiveTopology topology(unsigned primitive){switch(primitive){case 0:return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;case 1:return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;case 3:return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;case 4:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;case 5:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;case 6:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;case 7:case 8:return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; default:die("Vulkan primitive %u pending",primitive);return 0;}}
 /* the attachment's format: its view's, else its texture object's (storage-shared images are mutable) */
 static VkFormat attachment_format(image_entry *e,const tex_t *t,const view_t *v) {
     VkFormat f=vk_format(v&&v->set_format?v->format:t->d.format);return e->mutable_format&&f?f:e->format;
@@ -29,22 +28,23 @@ static VkImageView attachment_view(image_entry *e,const view_t *v,VkFormat forma
     return image_view_formatted(e,VK_IMAGE_VIEW_TYPE_2D,texture_range(e,v),(VkComponentMapping){0},format)->view;
 }
 #include "nvn_vulkan_pass.inc"
-static int smaa_scene(void);   /* nvn_vulkan_smaa.inc */
-static int asr_upscale_draw(const shader_entry *fs);   /* nvn_vulkan_asr.inc */
-static int taa_enabled(void);static void taa_compose(const shader_entry *fs);static void taa_before_draw(const shader_entry *fs);   /* nvn_vulkan_taa.inc */
+static int smaa_scene(void);
+static int asr_upscale_draw(const shader_entry *fs);
+static int taa_enabled(void);static void taa_compose(const shader_entry *fs);static void taa_before_draw(const shader_entry *fs);
 static void taa_viewport(const VkViewport *viewport,const image_entry *depth,unsigned colors,const tex_t *c0,const shader_entry *vs,const shader_entry *fs);
-static void fg_before_draw(const shader_entry *vs);static void fg_trace_draw(const shader_entry *vs,const shader_entry *fs);static void fg_after_pass(void);   /* nvn_vulkan_framegen.inc */
+static void fg_before_draw(const shader_entry *vs);static void fg_trace_draw(const shader_entry *vs,const shader_entry *fs);static void fg_after_pass(void);
 
-// 管线按真正的固定状态复用；视口、剪裁、颜色常量和模板掩码/参考值动态设置。
 // Reuse pipelines by actual fixed state; viewport, scissor, blend constants and stencil masks/reference are dynamic.
 typedef struct {
     shader_entry *vs,*fs; VkFormat formats[9]; uint32_t colors,primitive,attachments,depth_attachment,color_indices[8],required_subgroup_size;
     va_st attributes[16]; vs_st streams[16]; color_st color; chmask_st mask;
     blend_st blend[8]; poly_st polygon; ds_st depth; ms_st multisample;
-    uint8_t depth_clamp, raster_discard, pad_[2];   /* TOTK render state */
+    uint8_t depth_clamp, raster_discard, pad_[2];
 } pipeline_key;
-typedef struct pipeline_entry { pipeline_key key; VkPipeline pipeline; struct pipeline_entry *next; _Atomic int ready; /* 1 built, 0 building in the background, -1 failed */ } pipeline_entry;
-#include "nvn_vulkan_plan.inc"   /* part 1: the draw plan */
+/* 1 built, 0 building in the background, -1 failed */
+typedef struct pipeline_entry { pipeline_key key; VkPipeline pipeline; struct pipeline_entry *next; _Atomic int ready; } pipeline_entry;
+/* part 1: the draw plan */
+#include "nvn_vulkan_plan.inc"
 static pipeline_entry *graphics_pipelines[2048];
 /* TOTK_VK_PIPEMISS=1: for each new graphics pipeline, the key fields that differ from the closest existing pipeline
    (fewest differing bytes), counted per field and logged every 2000 misses: finds state that churns pipelines. */
@@ -77,7 +77,9 @@ static void pipeline_miss_explain(const pipeline_key *k) {
    keys; those draw solid magenta (full-screen passes excepted). Read about once a second; a change bumps magenta_gen, which is
    part of the pipeline key, so every pipeline is rebuilt with the new filter (the old ones are kept: debug only). */
 static unsigned long long magenta_n,magenta_k;static char magenta_list[16384];static uint8_t magenta_gen;
-static char depthall_list[4096];   /* <files>/depthall.txt: these fragment shaders' draws test ALWAYS and write depth (read back the depth a draw produces) */
+/* <files>/depthall.txt: these fragment shaders' draws test ALWAYS and write depth (read back the depth a draw
+   produces) */
+static char depthall_list[4096];
 /* Live shader replacement (debug): <files>/override/<key>.spv replaces that shader's SPIR-V while the game runs (with
    freeze-frame: edit a shader and see the same frame again in a second). Polled about twice a second; a new, changed or
    deleted file bumps override_gen (part of the pipeline key) so pipelines are rebuilt; deleting restores the original. */
@@ -91,7 +93,8 @@ static void shader_override_poll(void){
     if(d){struct dirent *e;while((e=readdir(d))){size_t n=strlen(e->d_name);if(n!=20||strcmp(e->d_name+16,".spv"))continue;
         char key[17];memcpy(key,e->d_name,16);key[16]=0;char path[700];snprintf(path,sizeof path,"%s/%s",dir,e->d_name);struct stat st;if(stat(path,&st))continue;
         shader_entry *s=NULL;for(shader_entry *x=shader_list;x;x=x->next)if(!strcmp(x->key,key)){s=x;break;}
-        if(!s)continue;   /* not loaded (yet): tried again next time */
+        /* not loaded (yet): tried again next time */
+        if(!s)continue;
         shader_override *o=shader_overrides;while(o&&o->s!=s)o=o->next;
         if(o){o->seen=1;if(o->mtime==(int64_t)st.st_mtime)continue;}
         FILE *f=fopen(path,"rb");if(!f)continue;uint32_t *code=malloc((size_t)st.st_size+4);size_t bytes=code?fread(code,1,(size_t)st.st_size,f):0;fclose(f);
@@ -107,9 +110,9 @@ static void shader_override_poll(void){
     for(shader_override **link=&shader_overrides;*link;){shader_override *o=*link;if(o->seen){link=&o->next;continue;}
         shader_entry *s=o->s;s->module=o->orig_module;s->spirv=o->orig_spirv;s->spirv_words=o->orig_words;s->linked=o->orig_linked;s->compute_pipeline=VK_NULL_HANDLE;
         LOG("[override] %s: original restored",s->key);*link=o->next;free(o);changed=1;}
-    /* 0 while none is active: pipelines with an override are built on this thread and stay out of the warm-up list
-       (a forgotten override from 2026-10-24 kept every new pipeline off the background builders for days); the
-       sequence keeps a re-applied override from matching pipelines built with an earlier one */
+    /* 0 while none is active: pipelines with an override are built on this thread and stay out of the warm-up list, so
+       a forgotten override keeps every new pipeline off the background builders; the sequence keeps a re-applied
+       override from matching pipelines built with an earlier one */
     static uint8_t seq;if(changed){if(!++seq)seq=1;override_gen=shader_overrides?seq:0;}
 }
 /* a magenta or depthall change: a new generation while either is on (pipelines rebuilt, built on this thread), 0 when
@@ -150,7 +153,7 @@ static void shader_enable_early_tests(shader_entry *s) {
     char path[1100];snprintf(path,sizeof path,"%s/%s.early",totk_cache_dir(),s->key);FILE *f=fopen(path,"w");if(f)fclose(f);
     LOG("[vulkan-early-tests] %s: EarlyFragmentTests (NVN early fragment tests); %llu shaders, %llu pipelines dropped so far",s->key,(unsigned long long)early_tests_shaders,(unsigned long long)early_tests_pipelines);
 }
-static void gpl_retire_poll(void);static void gpl_report(void);   /* nvn_vulkan_gpl.inc */
+static void gpl_retire_poll(void);static void gpl_report(void);
 static uint64_t pipeline_last_hits,pipeline_hash_calls;
 static void graphics_pipeline_report(void) {
     static uint64_t frame,last_hits,hash_calls;
@@ -163,7 +166,6 @@ static void graphics_pipeline_report(void) {
 }
 #include "nvn_vulkan_cmd_state.inc"
 #include "nvn_vulkan_bindstats.inc"
-// 无片元着色器：全程序共用一份空描述符布局；运行期与预热共享同一对象，管线布局缓存键一致。
 // No fragment shader: one empty descriptor-set layout for every program, one object shared by runtime and warm-up so layout cache keys agree.
 static shader_entry *graphics_empty_shader(void) {
     static shader_entry empty={.stage=1,.set=1};
@@ -172,8 +174,6 @@ static shader_entry *graphics_empty_shader(void) {
         pthread_mutex_unlock(&graphics_object_lock);}
     return &empty;
 }
-// 逐字段从 key 派生图形管线创建状态，运行期与预热共用；动态值（视口/剪裁/混合常量/深度偏置/模板掩码与参考）
-// 保持零或占位，真正取值由每次绘制的动态状态提交，创建结果只依赖固定状态，两处调用因此字节级一致。
 // Derive graphics pipeline creation state from the key, shared by runtime and warm-up; dynamic values (viewport, scissor,
 // blend constants, depth bias, stencil masks/reference) stay zero/placeholder and are applied per draw as dynamic state,
 // so creation results depend on fixed state only and both callers agree byte for byte.
@@ -206,7 +206,6 @@ static VkResult graphics_pipeline_create(const pipeline_key *key,shader_entry *v
 }
 static VkResult graphics_pipeline_build(const pipeline_key *key,shader_entry *vs,shader_entry *fs,graphics_pass_entry *pass,VkPipelineLayout layout,VkPipeline *pipeline,int fatal,unsigned part) {
     if(key->colors>8){if(!fatal)return VK_ERROR_INITIALIZATION_FAILED;die("Vulkan color attachments %u pending",key->colors);}
-    // key->primitive 已是拓扑转换后的 VkPrimitiveTopology；运行期只可能产出点/线/三角形六种，其余一律拒绝。
     // key->primitive is already the converted VkPrimitiveTopology; the runtime only ever produces the six point/line/triangle kinds, anything else is rejected.
     if(key->primitive>VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN){if(!fatal)return VK_ERROR_INITIALIZATION_FAILED;die("Vulkan primitive %u pending",key->primitive);}
     VkVertexInputAttributeDescription attrs[16];VkVertexInputBindingDescription streams[16];unsigned nattr=0,nstream=0;uint8_t stream_used[16]={0};
@@ -219,7 +218,7 @@ static VkResult graphics_pipeline_build(const pipeline_key *key,shader_entry *vs
         streams[nstream++]=(VkVertexInputBindingDescription){i,s->stride,s->divisor?VK_VERTEX_INPUT_RATE_INSTANCE:VK_VERTEX_INPUT_RATE_VERTEX};}
     VkPipelineVertexInputStateCreateInfo vertex={.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,.vertexBindingDescriptionCount=nstream,.pVertexBindingDescriptions=streams,.vertexAttributeDescriptionCount=nattr,.pVertexAttributeDescriptions=attrs};
     /* Strips and fans restart at the all-ones index, as NVN does with restart on (the game's terrain strips use 0xFFFF;
-       without it each 0xFFFF fetched a far-away vertex: spiky terrain over lakes and shores). Lists cannot restart. */
+       without it each 0xFFFF fetches a far-away vertex: spiky terrain over lakes and shores). Lists cannot restart. */
     VkBool32 restart=key->primitive==VK_PRIMITIVE_TOPOLOGY_LINE_STRIP||key->primitive==VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP||key->primitive==VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
     VkPipelineInputAssemblyStateCreateInfo assembly={.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,.topology=key->primitive,.primitiveRestartEnable=restart};
     VkViewport viewport={0,0,1,1,0,1};VkRect2D scissor={{0,0},{1,1}};
@@ -237,17 +236,19 @@ static VkResult graphics_pipeline_build(const pipeline_key *key,shader_entry *vs
 #include "exp_magenta_spv.inc"
         };VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=sizeof code,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,NULL,&exp_magenta));}}
     VkPipelineRasterizationProvokingVertexStateCreateInfoEXT provoking={.sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT,.provokingVertexMode=VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT};
-    if(provoking_last)raster.pNext=&provoking;   /* NVN's default (nvnCommandBufferSetProvokingVertexMode 0) */
+    /* NVN's default (nvnCommandBufferSetProvokingVertexMode 0) */
+    if(provoking_last)raster.pNext=&provoking;
     if(depthall_list[0]&&fs->module&&strstr(depthall_list,fs->key)){ds.depthTestEnable=VK_TRUE;ds.depthWriteEnable=VK_TRUE;ds.depthCompareOp=VK_COMPARE_OP_ALWAYS;}
     if(exp_nocull)raster.cullMode=VK_CULL_MODE_NONE;if(exp_nodepth)ds.depthTestEnable=VK_FALSE;if(exp_nostencil)ds.stencilTestEnable=VK_FALSE;
     VkPipelineColorBlendAttachmentState blend[8];for(unsigned i=0;i<key->colors;i++){blend_st b=key->blend[i];blend[i]=(VkPipelineColorBlendAttachmentState){.blendEnable=(key->color.blend_en>>i)&1,.srcColorBlendFactor=blend_factor(b.src_rgb),.dstColorBlendFactor=blend_factor(b.dst_rgb),.colorBlendOp=blend_operation(b.eq_rgb),.srcAlphaBlendFactor=blend_factor(b.src_a),.dstAlphaBlendFactor=blend_factor(b.dst_a),.alphaBlendOp=blend_operation(b.eq_a),.colorWriteMask=(key->mask.mask>>(4*i))&15};
         /* TOTK: a target the fragment shader does not write keeps its contents (Maxwell / Ryujinx); in Vulkan an unwritten
-           output writes undefined values (zeros on Adreno), which erased G-buffer targets later draws leave alone */
+           output writes undefined values (zeros on Adreno), erasing G-buffer targets later draws leave alone */
         if(!(fs->frag_out_mask>>i&1))blend[i].colorWriteMask=0;}
     VkPipelineColorBlendStateCreateInfo color={.sType=VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,.flags=(key->pad_[1]&0x40)&&key->colors?VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT:0,.attachmentCount=key->colors,.pAttachments=blend};
     VkPipelineShaderStageCreateInfo stages[2]={{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=graphics_vs_module(vs,fs),.pName="main"},{.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=fs->module,.pName="main"}};
     if(exp_magenta_on&&fs->module)stages[1].module=exp_magenta;
-    unsigned vs_attrs=0;for(unsigned i=0;i<16;i++)vs_attrs+=vs->attributes[i]!=0;   /* full-screen passes read at most one: never magenta (they would cover everything) */
+    /* full-screen passes read at most one: never magenta (they would cover everything) */
+    unsigned vs_attrs=0;for(unsigned i=0;i<16;i++)vs_attrs+=vs->attributes[i]!=0;
     if(exp_magenta&&fs->module&&vs_attrs>=2&&((magenta_n&&strtoull(fs->key,NULL,16)%magenta_n==magenta_k)||(magenta_list[0]&&strstr(magenta_list,fs->key)))){stages[1].module=exp_magenta;LOG("[vulkan] magenta: %s",fs->key);}
     VkDynamicState dynamic_states[16]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR,VK_DYNAMIC_STATE_BLEND_CONSTANTS,VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK,VK_DYNAMIC_STATE_STENCIL_WRITE_MASK,VK_DYNAMIC_STATE_STENCIL_REFERENCE,VK_DYNAMIC_STATE_DEPTH_BIAS};
     unsigned ndynamic=7;
@@ -268,25 +269,28 @@ static VkResult graphics_pipeline_build(const pipeline_key *key,shader_entry *vs
         return gpl_library_finish(part,&pi,key,vs,fs,pass,&vertex,&assembly,&raster,&multi,&ds,&color,&dynamic,stages,subgroup,pipeline);}
     return pipeline_create_graphics(&pi,pipeline);
 }
-#include "nvn_vulkan_gpl.inc"   /* graphics pipeline libraries */
-/* Background pipeline creation (TOTK_VK_ASYNC_PSO, default on; 0: on the translation thread as before). A draw whose
-   graphics pipeline is new queues it here and is skipped, and so is every draw with that pipeline until it is built
-   (a compile is 5-70 ms on Turnip: in the frame it was a hitch, now the object shows a few frames late). Draws whose
-   shaders write buffers or images are never skipped (the game may read their results back): those compile at once.
+#include "nvn_vulkan_gpl.inc"
+/* Background pipeline creation (TOTK_VK_ASYNC_PSO, default on; 0: on the translation thread). A draw whose graphics
+   pipeline is new queues it here and is skipped, and so is every draw with that pipeline until it is built (a compile
+   is 5-70 ms on Turnip: a hitch in the frame, where this way the object shows a few frames late). Draws whose shaders
+   write buffers or images are never skipped (the game may read their results back): those compile at once.
    Workers use the warm-up's path (graphics_pipeline_create: same driver cache keys); the pipeline cache is internally
    synchronized, entries are append-only, a worker publishes the pipeline before setting ready. */
-typedef struct async_pso_job { pipeline_entry *entry; shader_entry *vs,*fs; graphics_pass_entry *pass; VkPipelineLayout layout; struct async_pso_job *next; int upgrade; /* 1: the entry draws with a fast-linked pipeline; swap in the whole one (nvn_vulkan_gpl.inc) */ } async_pso_job;
+/* 1: the entry draws with a fast-linked pipeline; swap in the whole one (nvn_vulkan_gpl.inc) */
+typedef struct async_pso_job { pipeline_entry *entry; shader_entry *vs,*fs; graphics_pass_entry *pass; VkPipelineLayout layout; struct async_pso_job *next; int upgrade; } async_pso_job;
 static pthread_mutex_t async_pso_lock=PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t async_pso_cv=PTHREAD_COND_INITIALIZER;
 static async_pso_job *async_pso_head,**async_pso_tail=&async_pso_head;
 static int async_pso_state=-1;
 static _Atomic uint64_t async_pso_built,async_pso_failed,async_pso_skipped,async_pso_queued,async_pso_ns;
 static void *async_pso_main(void *unused) {
-    (void)unused;pthread_setname_np(pthread_self(),"totk-pso");totk_pin_self("TOTK_PSO_CPUS","all");   /* not the translation thread's core, which created it */
-    /* below the game's threads: during a streaming burst the two compile threads ran 100 ms each on cores the game's
-       own threads were waiting for (Zora Domain scheduler trace, 2026-11-01); a compile may wait, the frame may not.
-       TOTK_PSO_NICE (default 10, 0 keeps the normal priority) */
+    /* not the translation thread's core, which created it */
+    (void)unused;pthread_setname_np(pthread_self(),"totk-pso");totk_pin_self("TOTK_PSO_CPUS","all");
+    /* below the game's threads: during a streaming burst the two compile threads can run 100 ms each on cores the game's
+       own threads are waiting for; a compile may wait, the frame may not. TOTK_PSO_NICE (default 10, 0 keeps the normal
+       priority) */
     { const char *e=getenv("TOTK_PSO_NICE");int nice=e?atoi(e):10;if(nice)setpriority(PRIO_PROCESS,(id_t)gettid(),nice); }
-    resource_create_quiet=1;pipeline_create_background=1;   /* the long-frame totals and slow-create details are the translation thread's */
+    /* the long-frame totals and slow-create details are the translation thread's */
+    resource_create_quiet=1;pipeline_create_background=1;
     for(;;){
         pthread_mutex_lock(&async_pso_lock);
         while(!async_pso_head)pthread_cond_wait(&async_pso_cv,&async_pso_lock);
@@ -295,7 +299,8 @@ static void *async_pso_main(void *unused) {
         uint64_t begin=dm_android_clock_ns(CLOCK_MONOTONIC);VkPipeline pipeline=VK_NULL_HANDLE;
         VkResult result=graphics_pipeline_create(&job->entry->key,job->vs,job->fs,job->pass,job->layout,&pipeline,0);
         atomic_fetch_add(&async_pso_ns,dm_android_clock_ns(CLOCK_MONOTONIC)-begin);
-        if(job->upgrade){   /* the entry keeps drawing with its fast-linked pipeline until now; a failed build keeps it */
+        /* the entry draws with its fast-linked pipeline up to this swap; a failed build keeps it */
+        if(job->upgrade){
             if(result==VK_SUCCESS){VkPipeline old=__atomic_exchange_n(&job->entry->pipeline,pipeline,__ATOMIC_ACQ_REL);gpl_retire(old);atomic_fetch_add(&gpl_upgraded,1);}
             free(job);continue;}
         if(result==VK_SUCCESS){job->entry->pipeline=pipeline;atomic_store_explicit(&job->entry->ready,1,memory_order_release);atomic_fetch_add(&async_pso_built,1);}
@@ -316,7 +321,8 @@ static int draw_targets_steady(image_entry *const *written,unsigned n) {
     for(unsigned i=0;i<n;i++)if(!written[i]->gpu_written||written[i]->gpu_write_frame+1<presents||written[i]->write_streak<skip_steady_frames())return 0;
     return n>0;
 }
-static void skip_trace(const char *what,image_entry *const *written,unsigned n,const shader_entry *vs,const shader_entry *fs) {   /* TOTK_VK_SKIP_TRACE=1 */
+/* TOTK_VK_SKIP_TRACE=1 */
+static void skip_trace(const char *what,image_entry *const *written,unsigned n,const shader_entry *vs,const shader_entry *fs) {
     static int on=-1;static unsigned said;if(on<0){const char *e=getenv("TOTK_VK_SKIP_TRACE");on=e&&atoi(e);}
     if(!on||said++>=3000)return;
     char t[400];int k=snprintf(t,sizeof t,"[vulkan-skip] frame %llu %s vs %s fs %s:",(unsigned long long)presents,what,vs->key,fs&&fs->module?fs->key:"-");
@@ -336,7 +342,6 @@ static void async_pso_queue_job(pipeline_entry *entry,shader_entry *vs,shader_en
     if(!upgrade)atomic_fetch_add(&async_pso_queued,1);
 }
 static void async_pso_queue(pipeline_entry *entry,shader_entry *vs,shader_entry *fs,graphics_pass_entry *pass,VkPipelineLayout layout) {async_pso_queue_job(entry,vs,fs,pass,layout,0);}
-// 真实创建才记录（缓存命中不写）；清单在 nvn_vulkan_warm.inc。
 // Record genuine creations only (cache hits write nothing); the manifest lives in nvn_vulkan_warm.inc.
 static void pso_record_graphics(const shader_entry *vs,const shader_entry *fs,const graphics_pass_key *pass,const pipeline_key *key);
 static int pso_warmed(const shader_entry *vs,const shader_entry *fs,const graphics_pass_key *pass,const pipeline_key *key);
@@ -359,13 +364,14 @@ static void ssbo_in_place_after_pass(void) {
 /* The pass a draw renders in, decided right before the draw begins it, after everything in its setup that can end a
    pass (a forwarded read's barrier: vertices a compute shader wrote; the scene copy before the UI; in-place storage
    writes' barriers). The open pass when it still matches (*continuing; a feedback read gets its in-pass barrier), else
-   a new pass after the attachments' barriers, taking over the deferred clears and block-sized targets. Decided earlier
-   (before 2026-10-26), a draw kept a pass its own setup then ended and began it again as it was: without the barriers a
-   new pass gets (square blocks in the clouds) and with the first draw's load ops, CLEAR or DONT_CARE (the cloud
-   particles cleared away, the cloud sea missing in 3 frames of 4). */
+   a new pass after the attachments' barriers, taking over the deferred clears and block-sized targets. Decided any
+   earlier, a draw would keep a pass its own setup then ended and begin it again as it was: without the barriers a new
+   pass gets (square blocks in the clouds) and with the first draw's load ops, CLEAR or DONT_CARE (the cloud particles
+   cleared away, the cloud sea missing in 3 frames of 4). */
 static graphics_frame_entry *draw_pass_decide(graphics_pass_entry *pass,graphics_pass_key *pass_key,VkAttachmentDescription *attachments,const VkAttachmentReference *colors,VkAttachmentReference depth,
                                               const VkImageView *views,image_entry *const *images,unsigned na,uint32_t width,uint32_t height,block_writeback *blocks,const int *block_load,unsigned nblocks,int *continuing) {
-    if(graphics_active_frame&&live_range("keyend",draw_count-live_frame_base))graphics_pass_end();   /* experiment: the pass ends right before the decision */
+    /* experiment: the pass ends right before the decision */
+    if(graphics_active_frame&&live_range("keyend",draw_count-live_frame_base))graphics_pass_end();
     /* the deferred clears baked into the pass as CLEAR load ops (pclear_attach): one done meanwhile as a transfer clear
        (the draw's setup used the image: the scene copy or SMAA before the UI) is loaded instead; cleared again, it would
        erase what was done to it since */
@@ -385,16 +391,17 @@ static graphics_frame_entry *draw_pass_decide(graphics_pass_entry *pass,graphics
     }
     graphics_pass_end();
     /* done by the pass's CLEAR load ops, which happen even when the draw is left out (its pipeline still building): the
-       image holds the clear from here on. Left unmarked, a never-populated target took a guest-memory upload over the
-       clear when the next draw sampled it -- the first Ultrahand frame read stale texels as object IDs and crashed on
-       them (2026-10-27). */
+       image holds the clear from here on. Left unmarked, a never-populated target would take a guest-memory upload over
+       the clear when the next draw samples it: the first Ultrahand frame reads stale texels as object IDs and crashes
+       on them. */
     for(unsigned k=0;k<pclear_attach_n;k++){TRACEIMG(&pclear_attach_e[k]->texture,"deferred clear as load op");pclear_forget(pclear_attach_e[k]);pclear_loadops++;image_gpu_written(pclear_attach_e[k]);}
     pclear_attach_n=0;
     for(unsigned i=0;i<nblocks;i++){if(block_load[i])block_copy(&blocks[i],0);block_writeback_add(blocks[i]);}
     synccheck_writer=synccheck_reader=diag_fs?diag_fs->key:NULL;
     for(unsigned i=0;i<na;i++)if(i==depth.attachment){attachment_write_real=state.depth.dw||(state.depth.st&&(state.stencil_faces[0].writeMask|state.stencil_faces[1].writeMask));
             image_access(images[i],VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);attachment_write_real=1;}
-        else {int fb=0;int slot=-1;for(int c=0;c<state.rt.n;c++)if(colors[c].attachment==i)slot=c;attachment_write_real=slot<0||((state.mask.mask>>(4*slot))&15)!=0;for(unsigned k=0;k<fb_count;k++)fb|=fb_images[k]==images[i];   /* sampled by this draw too: the barrier covers the read */
+        /* sampled by this draw too: the barrier covers the read */
+        else {int fb=0;int slot=-1;for(int c=0;c<state.rt.n;c++)if(colors[c].attachment==i)slot=c;attachment_write_real=slot<0||((state.mask.mask>>(4*slot))&15)!=0;for(unsigned k=0;k<fb_count;k++)fb|=fb_images[k]==images[i];
             if(fb)images[i]->fb_dirty=0;
             image_access(images[i],VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|(fb?VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:0),VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|(fb?VK_ACCESS_SHADER_READ_BIT:0));attachment_write_real=1;}
     return graphics_frame_get(pass,views,images,width,height);
@@ -407,11 +414,11 @@ static uint64_t rt_memo_hits;
 static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,const draw_plan *plan);
 static void draw_graphics(const p_draw *draw,const p_draw_idx *indexed,const draw_plan *plan) {
     /* measurement only: TOTK_VK_EXP=conddraw draws what a render condition turned off (gated clears stay off) */
-    if(state.render_disabled){static int all=-1;if(all<0)all=exp_env("conddraw");if(!all||!state.render_cond_off)return;}   /* TOTK: SetRenderEnable(false) */
+    /* TOTK: SetRenderEnable(false) */
+    if(state.render_disabled){static int all=-1;if(all<0)all=exp_env("conddraw");if(!all||!state.render_cond_off)return;}
     DRAW_SEG(-1);uint64_t phase=dm_cpu_phase_begin();draw_graphics_inner(draw,indexed,plan);dm_cpu_phase_end(DM_CPU_PHASE_DRAW,phase);
 }
 static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,const draw_plan *plan) {
-    // 零顶点/零实例的 NVN 绘制不访问索引和资源，也不增加遮挡样本。
     // NVN draws with zero vertices/instances access no indices/resources and add no occlusion samples.
     if ((draw && draw->count <= 0) || (indexed && (indexed->count <= 0 || !indexed->instances))) return;
     snapshot_prepare();
@@ -424,28 +431,33 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     else for(unsigned i=0;i<state.program->nstage;i++){shader_entry *s=program_shader(state.program,i);if(s->stage==0)vs=s;else if(s->stage==1)fs=s;else die("Vulkan graphics stage %u pending",s->stage);}
     if(!vs)die("Vulkan draw missing vertex stage");
     {uint64_t phase=dm_cpu_phase_begin();dependencies_prepare_draw(vs,fs,draw,indexed);dm_cpu_phase_end(DM_CPU_PHASE_DEPENDENCY,phase);}
-    // 只在已有通道自然结束后提前提交；绑定和资源版本获取尚未开始。
     // Submit early only after the previous pass naturally ended, before binding or acquiring resource versions.
-    if(graphics_active_frame&&async_chunk_due())graphics_pass_end();   /* mid-pass cut (ASYNC_CHUNK_SPLIT_DRAWS) */
+    /* mid-pass cut (ASYNC_CHUNK_SPLIT_DRAWS) */
+    if(graphics_active_frame&&async_chunk_due())graphics_pass_end();
     if(!graphics_active_frame)async_chunk_boundary_locked();
-    { static int every=-1;if(every<0){const char *x=getenv("TOTK_VK_EXP"),*r=exp_word(x,"restart",1);every=r?atoi(r):0;}   /* measurement only: TOTK_VK_EXP=restart<N> ends the pass before every Nth draw (the cost of a same-framebuffer restart) */
+    /* measurement only: TOTK_VK_EXP=restart<N> ends the pass before every Nth draw (the cost of a same-framebuffer
+       restart) */
+    { static int every=-1;if(every<0){const char *x=getenv("TOTK_VK_EXP"),*r=exp_word(x,"restart",1);every=r?atoi(r):0;}
       static unsigned n;if(every>0&&graphics_active_frame&&++n%(unsigned)every==0)graphics_pass_end();
       if(graphics_active_frame&&live_range("restart",draw_count-live_frame_base))graphics_pass_end(); }
     if(!fs)fs=graphics_empty_shader();
-    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_QUERYFS");on=x&&atoi(x);}   /* fragment shaders drawn inside a live samples count (the game's occlusion feedback) */
+    /* fragment shaders drawn inside a live samples count (the game's occlusion feedback) */
+    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_QUERYFS");on=x&&atoi(x);}
       if(on&&graphics_shader_writes(fs)){static struct { const char *key; unsigned n; } w[64];static unsigned nw;static uint64_t lastw;unsigned i=0;while(i<nw&&w[i].key!=fs->key)i++;
         if(i==nw&&nw<64)w[nw++]=(typeof(w[0])){fs->key,0};if(i<64)w[i].n++;
         if(presents>=lastw+300){if(lastw)for(unsigned k=0;k<nw;k++)LOG("[vulkan-storefs] %s %.2f draws/frame with storage writes",w[k].key,w[k].n/300.);lastw=presents;nw=0;}}
       if(on&&graphics_query_open){static struct { const char *key; unsigned n; } q[64];static unsigned nq;static uint64_t last;unsigned i=0;while(i<nq&&q[i].key!=fs->key)i++;
         if(i==nq&&nq<64)q[nq++]=(typeof(q[0])){fs->key,0};if(i<64)q[i].n++;
         if(presents>=last+300){if(last)for(unsigned k=0;k<nq;k++)LOG("[vulkan-queryfs] %s %.2f draws/frame inside a live samples count",q[k].key,q[k].n/300.);last=presents;nq=0;}} }
-    if(taa_enabled()==2&&asr_upscale_draw(fs))return;   /* TOTK_TAA=asr: ASR wrote the canvas in place of the game's upscale */
+    /* TOTK_TAA=asr: ASR wrote the canvas in place of the game's upscale */
+    if(taa_enabled()==2&&asr_upscale_draw(fs))return;
     int compose_hook=taa_enabled()||smaa_scene();
-    if(compose_hook)taa_before_draw(fs);   /* TOTK_TAA / SMAA: the first draw reading compose's output resolves it first */
-    int taa_draw=compose_hook&&fs->module&&!strncmp(fs->game_id,"0ac9a54938974396",16);   /* the compose draw: note its target */
+    /* TOTK_TAA / SMAA: the first draw reading compose's output resolves it first */
+    if(compose_hook)taa_before_draw(fs);
+    /* the compose draw: note its target */
+    int taa_draw=compose_hook&&fs->module&&!strncmp(fs->game_id,"0ac9a54938974396",16);
     if(taa_draw)taa_compose(fs);
     post_op *const *output_scope=post_copy_tail;forward_scope_marker=output_scope;
-    // 初始化列表的求值顺序在 C 里未定义；第二个集合的动态偏移接在第一个之后，必须按序调用。
     // Initializer-list evaluation order is unspecified in C; the second set's dynamic offsets follow the first,
     // so the two binds must be ordered statements.
     uint32_t dynamic_offsets[256];unsigned dynamic_count=0;
@@ -470,9 +482,11 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     if(rtm.valid&&rtm.gen==image_generation&&!memcmp(&rtm.rt,&state.rt,sizeof state.rt)){rt_hit=1;
         for(int i=0;i<state.rt.n&&rt_hit;i++)if(state.rt.color[i]&&state.rt.color[i]->serial!=rtm.serial[i])rt_hit=0;
         if(rt_hit&&state.rt.depth&&state.rt.depth->serial!=rtm.serial[8])rt_hit=0;
-        for(unsigned k=0;k<rtm.na&&rt_hit;k++)if(rtm.images[k]->populated!=rtm.populated[k]||rtm.images[k]->pclear)rt_hit=0;}   /* a deferred clear is baked into the pass (pclear_attach): built afresh */
+        /* a deferred clear is baked into the pass (pclear_attach): built afresh */
+        for(unsigned k=0;k<rtm.na&&rt_hit;k++)if(rtm.images[k]->populated!=rtm.populated[k]||rtm.images[k]->pclear)rt_hit=0;}
     if(rt_hit){na=rtm.na;width=rtm.width;height=rtm.height;memcpy(images,rtm.images,sizeof images);memcpy(views,rtm.views,sizeof views);memcpy(attachments,rtm.attachments,sizeof attachments);memcpy(colors,rtm.colors,sizeof colors);depth=rtm.depth;pass_key=rtm.pass_key;pass=rtm.pass;rt_memo_hits++;
-        for(unsigned k=0;k<na;k++)written[nwritten++]=images[k];}   /* the attachments this draw writes, as the loop records them */
+        /* the attachments this draw writes, as the loop records them */
+        for(unsigned k=0;k<na;k++)written[nwritten++]=images[k];}
     else{
     for(int i=0;i<state.rt.n;i++){
         colors[i]=(VkAttachmentReference){VK_ATTACHMENT_UNUSED,VK_IMAGE_LAYOUT_GENERAL};if(!state.rt.color[i])continue;image_entry *e=image_get(state.rt.color[i]);const view_t *v=state.rt.has_cview[i]?&state.rt.cview[i]:NULL;
@@ -490,19 +504,19 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
         width=x1<1?1:x1>16384?16384:(uint32_t)ceil(x1);height=y1<1?1:y1>16384?16384:(uint32_t)ceil(y1);
     }
     pass_key=graphics_pass_key_make(na,state.rt.n,attachments,colors,depth);
-    pass=graphics_pass_get(pass_key,attachments,colors,depth,1);   /* this draw's own; pipelines are built against it (compatible with the open pass when that is kept) */
+    /* this draw's own; pipelines are built against it (compatible with the open pass when that is kept) */
+    pass=graphics_pass_get(pass_key,attachments,colors,depth,1);
     if(na&&!nblocks&&!pclear_attach_n){rtm.valid=1;rtm.rt=state.rt;rtm.gen=image_generation;for(int i=0;i<8;i++)rtm.serial[i]=i<state.rt.n&&state.rt.color[i]?state.rt.color[i]->serial:0;rtm.serial[8]=state.rt.depth?state.rt.depth->serial:0;
         for(unsigned k=0;k<na;k++)rtm.populated[k]=images[k]->populated;rtm.na=na;rtm.width=width;rtm.height=height;memcpy(rtm.images,images,sizeof images);memcpy(rtm.views,views,sizeof views);memcpy(rtm.attachments,attachments,sizeof attachments);memcpy(rtm.colors,colors,sizeof colors);rtm.depth=depth;rtm.pass_key=pass_key;rtm.pass=pass;}
     else rtm.valid=0;}
     graphics_frame_entry *frame;int continuing=0;
-    if(nblocks&&fb_count){for(unsigned k=0;k<fb_count;k++)image_access(fb_images[k],VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,VK_ACCESS_SHADER_READ_BIT);fb_count=0;}   /* block-sized targets: the old way (before the pipeline key: no feedback-loop variant) */
-    // 只复制索引真正可访问的顶点前缀，避免每次绘制读取整段大型绑定池。
+    /* block-sized targets have no feedback-loop variant: synchronized here, ahead of the pipeline key */
+    if(nblocks&&fb_count){for(unsigned k=0;k<fb_count;k++)image_access(fb_images[k],VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,VK_ACCESS_SHADER_READ_BIT);fb_count=0;}
     // Copy only the vertex prefix reachable by the actual indices, rather than the entire large bound pool for every draw.
     VkBuffer index_buffer=VK_NULL_HANDLE;VkIndexType index_type=VK_INDEX_TYPE_UINT16;uint32_t index_count=indexed?(uint32_t)indexed->count:0;uint64_t index_off=0;int index_in_place=0;
     int64_t highest=draw?(int64_t)draw->first+draw->count-1:0;
     if(indexed){unsigned size=indexed->itype==0?1:indexed->itype==1?2:4;uint64_t bytes=(uint64_t)indexed->count*size;
         if(bytes>UINTPTR_MAX-indexed->ibuf)die("Vulkan draw index range overflow");
-        // 这里在可能发生的 vertex dependency flush 后重新取得快照，不保留 preflight 的 handle。
         // Reacquire after any vertex-dependency flush rather than retaining the preflight handle.
         vk_buffer raw={0};uint32_t maximum=0;
         if(inplace_on()){if(size!=1&&!quad_primitive(indexed->prim)){VkBuffer pool=zc_buffer_at(indexed->ibuf,bytes,&index_off);if(pool){raw.buffer=pool;index_in_place=1;inplace_index++;}else{inplace_fallback++;inplace_why[IF_INDEX_POOL]++;inplace_classify(indexed->ibuf,bytes);}}else{inplace_fallback++;inplace_why[IF_INDEX_KIND]++;}}
@@ -510,7 +524,8 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
         if(quad_primitive(indexed->prim)){post_op *p=post_new(3);p->source=buffer_create((uint64_t)quad_index_bound(indexed->prim,indexed->count)*4+4);
             index_count=quad_indices((uint32_t*)p->source.mapped,indexed->prim,raw.mapped,size,indexed->count);indices=p->source;
             static int said;if(!said++)LOG("[vulkan] NVN indexed %s: %d %u-bit indices drawn as %u triangles",indexed->prim==7?"quads":"quad strip",indexed->count,size*8,index_count/3);size=4;}
-        else if(size==1){post_op *p=post_new(3);p->source=buffer_create((uint64_t)indexed->count*2);for(int i=0;i<indexed->count;i++){uint8_t v=((const uint8_t*)raw.mapped)[i];((uint16_t*)p->source.mapped)[i]=v==0xff?0xffff:v;}   /* the 8-bit restart index stays a restart */indices=p->source;}
+        /* the 8-bit restart index stays a restart */
+        else if(size==1){post_op *p=post_new(3);p->source=buffer_create((uint64_t)indexed->count*2);for(int i=0;i<indexed->count;i++){uint8_t v=((const uint8_t*)raw.mapped)[i];((uint16_t*)p->source.mapped)[i]=v==0xff?0xffff:v;} indices=p->source;}
         highest=(int64_t)maximum+indexed->base_vertex;index_buffer=indices.buffer;index_type=size==4?VK_INDEX_TYPE_UINT32:VK_INDEX_TYPE_UINT16;
     }
     /* non-indexed quads: indices from 0, drawn from draw->first (vertex ids stay first + i) */
@@ -529,22 +544,22 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     primitive=topology(draw?draw->prim:indexed->prim);}
     for(unsigned i=0;i<16;i++)if(stream_used[i]){const vs_st *s=&state.streams[i];const NVNbufferRange *v=&state.vertices[i];if(!v->address||!v->size)die("Vulkan missing vertex buffer %u",i);
         if(inplace_on()){uint64_t off;VkBuffer pool=zc_buffer_at(v->address,1,&off);if(pool){vertex_buffers[i]=pool;offsets[i]=off;inplace_vbuf++;continue;}inplace_fallback++;inplace_why[IF_VBUF_POOL]++;inplace_classify(v->address,v->size);}
-        uint64_t element=s->divisor?draw_last_instance(draw,indexed):(uint64_t)highest;   /* instance streams: up to the last instance (non-indexed instanced draws copied instance 0 only: particles read garbage) */uint64_t needed=index_in_place?v->size:element*s->stride+attribute_end[i];if(needed>v->size)needed=v->size;static fwd_memo vertex_memo[16];VkDescriptorBufferInfo fetched=forward_readonly_buffer_m(&vertex_memo[i],v->address,needed,1,VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);vertex_buffers[i]=fetched.buffer;offsets[i]=fetched.offset;}
-    // NVN 范围可反向或为常值，Vulkan 同样允许；默认 0..1 由状态初始化提供。
+        /* instance streams: up to the last instance (copying instance 0 only would leave particles reading garbage) */
+        uint64_t element=s->divisor?draw_last_instance(draw,indexed):(uint64_t)highest; uint64_t needed=index_in_place?v->size:element*s->stride+attribute_end[i];if(needed>v->size)needed=v->size;static fwd_memo vertex_memo[16];VkDescriptorBufferInfo fetched=forward_readonly_buffer_m(&vertex_memo[i],v->address,needed,1,VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);vertex_buffers[i]=fetched.buffer;offsets[i]=fetched.offset;}
     // NVN permits reversed or constant ranges, as does Vulkan; state initialization supplies the 0..1 default.
     float *v=state.viewports.v[0];VkViewport viewport={v[0],v[1],v[2]>0?v[2]:width,v[3]>0?v[3]:height,state.depth_range.n,state.depth_range.f};
-    // 限量记录实际范围供真机定位；最多 12 种，不执行读回或改变渲染。
     // Bound real-range diagnostics to 12 distinct pairs, without readbacks or rendering changes.
     static uint64_t depth_ranges_seen[12];static unsigned depth_ranges_count;uint64_t depth_range_bits;
     if(depth_ranges_count<12){memcpy(&depth_range_bits,&state.depth_range,sizeof depth_range_bits);unsigned i=0;while(i<depth_ranges_count&&depth_ranges_seen[i]!=depth_range_bits)i++;
         if(i==depth_ranges_count){depth_ranges_seen[depth_ranges_count++]=depth_range_bits;LOG("[vulkan-depth] range=%g,%g test=%u write=%u compare=%u target=%s",viewport.minDepth,viewport.maxDepth,(unsigned)state.depth.dt,(unsigned)state.depth.dw,(unsigned)state.depth.df,state.rt.depth?"depth":"color-only");}}
     int x=state.scissor.x>0?state.scissor.x:0,y=state.scissor.y>0?state.scissor.y:0;int sw=state.scissor.w>0?state.scissor.w:width,sh=state.scissor.h>0?state.scissor.h:height;if(x+sw>(int)width)sw=width-x;if(y+sh>(int)height)sh=height-y;if(sw<0||sh<0)die("Vulkan scissor outside target");VkRect2D scissor={{x,y},{sw,sh}};
-    // Metal 的裁剪空间 Y 向上，Vulkan 的正高度视口 Y 向下；用负高度保持 NVN 画面方向。
     // Metal clip Y points up while Vulkan's positive viewport points down; a negative viewport preserves NVN orientation.
     { static uint64_t larger;if((viewport.width>width+0.5f||viewport.height>height+0.5f)&&width>=512){larger++;if(larger<=20||!(larger%2000))LOG("[vulkan-dynres] frame %llu: viewport %gx%g on a %ux%u target (%llu so far)",(unsigned long long)presents,viewport.width,viewport.height,width,height,(unsigned long long)larger);} }
-    if(depth.attachment!=VK_ATTACHMENT_UNUSED&&state.rt.n>=3)dynres_note(viewport.width,viewport.height,width,height);   /* frame generation's depth, TOTK_DYNRES_STATS */
+    /* frame generation's depth, TOTK_DYNRES_STATS */
+    if(depth.attachment!=VK_ATTACHMENT_UNUSED&&state.rt.n>=3)dynres_note(viewport.width,viewport.height,width,height);
     viewport.y += viewport.height; viewport.height = -viewport.height;
-    taa_viewport(&viewport,depth.attachment!=VK_ATTACHMENT_UNUSED?images[depth.attachment]:NULL,state.rt.n,state.rt.n?state.rt.color[0]:NULL,vs,fs);   /* TOTK_TAA: the G-buffer pass's size */
+    /* TOTK_TAA: the G-buffer pass's size */
+    taa_viewport(&viewport,depth.attachment!=VK_ATTACHMENT_UNUSED?images[depth.attachment]:NULL,state.rt.n,state.rt.n?state.rt.color[0]:NULL,vs,fs);
     if(keyed){key=plan->key;dyn_depth=plan->dyn_depth;dyn_polygon=plan->dyn_polygon;}
     else{
     key=(pipeline_key){.vs=vs,.fs=fs,.colors=state.rt.n,.primitive=primitive,.color=state.color,.mask=state.mask,.polygon=state.polygon,.depth=depth.attachment!=VK_ATTACHMENT_UNUSED?state.depth:(ds_st){0},.multisample=state.multisample,.attachments=na,.depth_attachment=depth.attachment,.depth_clamp=(uint8_t)state.depth_clamp,.raster_discard=(uint8_t)state.raster_discard};
@@ -555,7 +570,7 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     if(depth.attachment!=VK_ATTACHMENT_UNUSED)key.formats[8]=attachments[depth.attachment].format;
     for(unsigned i=0;i<16;i++){if(state.attributes[i].fmt&&vs->attributes[i])key.attributes[i]=state.attributes[i];if(stream_used[i])key.streams[i]=state.streams[i];}
     /* The state words are the game's NVN objects copied as they are: bits beyond the fields we use differ between
-       otherwise equal states and made new pipelines. Keep only the fields. */
+       otherwise equal states and would make new pipelines. Keep only the fields. */
     {poly_st p={0};p.cull=key.polygon.cull;p.front=key.polygon.front;p.mode=key.polygon.mode;p.offset_en=key.polygon.offset_en;key.polygon=p;
      color_st c={0};c.blend_en=key.color.blend_en;c.logic_op=key.color.logic_op;c.alpha_func=key.color.alpha_func;key.color=c;
      ds_st d={0};d.dt=key.depth.dt;d.dw=key.depth.dw;d.df=key.depth.df;d.st=key.depth.st;d.sf_f=key.depth.sf_f;d.sf_b=key.depth.sf_b;d.fail_f=key.depth.fail_f;d.zfail_f=key.depth.zfail_f;
@@ -568,14 +583,14 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     }
     /* top bit: built with the feedback-loop flag; 0x40: also in rasterization order (rorder_ok), for a feedback draw whose
        fragments can overlap each other: more than two triangles or more than one instance (a decal quad cannot) */
-    int overlap=0,writes_read=0;   /* the draw writes a target it samples (write mask and shader output) */
+    /* the draw writes a target it samples (write mask and shader output) */
+    int overlap=0,writes_read=0;
     for(unsigned i=0;i<8;i++)if(fb_slots>>i&1&&(state.mask.mask>>(4*i)&15)&&fs&&fs->frag_out_mask>>i&1)writes_read=1;
     if(fb_count&&rorder_ok){int prim=draw?draw->prim:indexed->prim,n=draw?draw->count:indexed->count,inst=draw?draw->instances:indexed->instances;
         overlap=writes_read&&(inst>1||(prim==4?n/3:prim==5||prim==6?n-2:n)>2);}
     { static uint64_t last,f,w,o;if(fb_count){f++;w+=writes_read;o+=overlap;}
       if(presents>=last+600){if(last&&f)LOG("[vulkan-feedback] a frame: %.1f feedback draws, %.1f write a target they sample, %.1f of those can overlap themselves (rasterization order)",f/600.0,w/600.0,o/600.0);last=presents;f=w=o=0;} }
     key.pad_[0]=magenta_gen;key.pad_[1]=(override_gen&0x3f)|(fb_count?0x80:0)|(overlap?0x40:0);
-    // 持久 pipeline 链只追加，queue_lock 串行访问；完整 key 相同才绕过哈希查找。
     // Persistent pipelines are append-only and accessed under queue_lock; only a full-key match bypasses hashing.
     DRAW_SEG(2);unsigned pipeline_bucket=0;pipeline_entry *cached=graphics_last_pipeline;
     if(cached&&!memcmp(&cached->key,&key,sizeof key))pipeline_last_hits++;
@@ -589,39 +604,47 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     if(!cached&&gpl_on()&&!magenta_gen&&!override_gen&&async_pso_on()&&!pso_warmed(vs,fs,&pass->key,&key)&&(gpl_prepared||!(background&&steady))){
         resource_create_start creation=resource_create_begin();pipeline_entry *e=calloc(1,sizeof *e);if(!e)die("Vulkan pipeline cache allocation");e->key=key;
         if(gpl_link(&key,vs,fs,pass,layout,&e->pipeline)==VK_SUCCESS){atomic_store(&e->ready,1);e->next=graphics_pipelines[pipeline_bucket];graphics_pipelines[pipeline_bucket]=e;pipeline_creations++;
-            resource_create_end(1,creation,vs->key,fs->module?fs->key:NULL);{static int keep=-1;if(keep<0){const char *x=getenv("TOTK_VK_GPL_NOUPGRADE");keep=x&&atoi(x);}if(!keep)async_pso_queue_job(e,vs,fs,pass,layout,1);}   /* TOTK_VK_GPL_NOUPGRADE=1 (diagnostic): fast-linked pipelines stay */pso_record_graphics(vs,fs,&pass->key,&key);cached=e;pipeline_reuses--;}
+            /* TOTK_VK_GPL_NOUPGRADE=1 (diagnostic): fast-linked pipelines stay */
+            resource_create_end(1,creation,vs->key,fs->module?fs->key:NULL);{static int keep=-1;if(keep<0){const char *x=getenv("TOTK_VK_GPL_NOUPGRADE");keep=x&&atoi(x);}if(!keep)async_pso_queue_job(e,vs,fs,pass,layout,1);} pso_record_graphics(vs,fs,&pass->key,&key);cached=e;pipeline_reuses--;}
         else free(e);}
     if(background&&steady&&!cached)skip_trace("queued, skipped",written,nwritten,vs,fs);else if(background&&!cached)skip_trace("built now, a kept target",written,nwritten,vs,fs);
-    if(background&&steady&&!cached){   /* built in the background (one the warm-up built is a driver-cache hit: made here) */
+    /* built in the background (one the warm-up built is a driver-cache hit: made here) */
+    if(background&&steady&&!cached){
         cached=calloc(1,sizeof *cached);if(!cached)die("Vulkan pipeline cache allocation");cached->key=key;
         cached->next=graphics_pipelines[pipeline_bucket];graphics_pipelines[pipeline_bucket]=cached;pipeline_creations++;
         async_pso_queue(cached,vs,fs,pass,layout);pso_record_graphics(vs,fs,&pass->key,&key);}
     if(!cached){resource_create_start creation=resource_create_begin();cached=calloc(1,sizeof *cached);if(!cached)die("Vulkan pipeline cache allocation");cached->key=key;
-        // 只有未命中才派生创建管线的状态；每 draw 的动态状态仍在下面独立提交。创建与预热共用 graphics_pipeline_create，驱动缓存键一致。
         // Derive pipeline-creation state only on a miss; per-draw dynamic state is applied separately below. Creation shares graphics_pipeline_create with warm-up so driver cache keys agree.
         VK_CHECK(graphics_pipeline_create(&key,vs,fs,pass,layout,&cached->pipeline,1));atomic_store(&cached->ready,1);
         cached->next=graphics_pipelines[pipeline_bucket];graphics_pipelines[pipeline_bucket]=cached;pipeline_creations++;resource_create_end(1,creation,vs->key,fs->module?fs->key:NULL);
-        if(!magenta_gen&&!override_gen)pso_record_graphics(vs,fs,&pass->key,&key);}else pipeline_reuses++;   /* bisection pipelines stay out of the warm-up list */
+        /* bisection pipelines stay out of the warm-up list */
+        if(!magenta_gen&&!override_gen)pso_record_graphics(vs,fs,&pass->key,&key);}else pipeline_reuses++;
     DRAW_SEG(3);graphics_last_pipeline=cached;
     {int ready=atomic_load_explicit(&cached->ready,memory_order_acquire);
-     if(ready<0){VK_CHECK(graphics_pipeline_create(&cached->key,vs,fs,pass,layout,&cached->pipeline,1));atomic_store(&cached->ready,1);}   /* the background build failed: here, with the error reported */
-     else if(!ready&&!steady){   /* still building, and a target that is kept: wait for it */
+     /* the background build failed: here, with the error reported */
+     if(ready<0){VK_CHECK(graphics_pipeline_create(&cached->key,vs,fs,pass,layout,&cached->pipeline,1));atomic_store(&cached->ready,1);}
+     /* still building, and a target that is kept: wait for it */
+     else if(!ready&&!steady){
          skip_trace("waits for its build, a kept target",written,nwritten,vs,fs);
          while(!(ready=atomic_load_explicit(&cached->ready,memory_order_acquire)))usleep(100);
          if(ready<0){VK_CHECK(graphics_pipeline_create(&cached->key,vs,fs,pass,layout,&cached->pipeline,1));atomic_store(&cached->ready,1);}}
-     else if(!ready){   /* still building: this draw is left out. If it ended the previous pass to start its own, the writebacks of
-                           compressed targets it queued for that pass (the stand-in, unchanged without the draw) are done now */
-         if(pclear_attach_n){graphics_pass_begin(draw_pass_decide(pass,&pass_key,attachments,colors,depth,views,images,na,width,height,blocks,block_load,nblocks,&continuing));graphics_pass_end();}   /* its CLEAR load ops still happen */
+     /* still building: this draw is left out. If it ended the previous pass to start its own, the writebacks of
+        compressed targets it queued for that pass (the stand-in, unchanged without the draw) are done now */
+     else if(!ready){
+         /* its CLEAR load ops still happen */
+         if(pclear_attach_n){graphics_pass_begin(draw_pass_decide(pass,&pass_key,attachments,colors,depth,views,images,na,width,height,blocks,block_load,nblocks,&continuing));graphics_pass_end();}
          if(!graphics_active_frame)block_writeback_flush();
          atomic_fetch_add(&async_pso_skipped,1);return;}}
     { char keys[40];if(gpu_watch_address()){snprintf(keys,sizeof keys,"vs %s fs %s",vs->key,fs&&fs->module?fs->key:"-");gpu_write_shaders=keys;}
       for(unsigned i=0;i<nwritten;i++)image_gpu_written(written[i]);
       gpu_write_shaders=NULL; }
-    { static const char *w=(const char *)1;static unsigned char n[60];static unsigned len;static uint64_t frame;   /* TOTK_VK_FSWATCH=<fs key>: its draws in each of 60 frames, a digit a frame */
+    /* TOTK_VK_FSWATCH=<fs key>: its draws in each of 60 frames, a digit a frame */
+    { static const char *w=(const char *)1;static unsigned char n[60];static unsigned len;static uint64_t frame;
       if(w==(const char *)1)w=getenv("TOTK_VK_FSWATCH");
       if(w&&*w){if(presents!=frame){if(frame&&++len==60){char d[61];for(unsigned i=0;i<60;i++)d[i]=(char)('0'+(n[i]>9?9:n[i]));d[60]=0;LOG("[fswatch] %s frames to %llu: %s",w,(unsigned long long)presents,d);len=0;memset(n,0,sizeof n);}frame=presents;}
           if(fs&&fs->module&&!strncmp(fs->key,w,16))n[len]++;} }
-    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SHADERCOUNT");on=x&&atoi(x);}   /* draws / instances / indices a frame by fragment shader, every 60 frames */
+    /* draws / instances / indices a frame by fragment shader, every 60 frames */
+    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SHADERCOUNT");on=x&&atoi(x);}
       if(on){static struct { const char *fs,*vs; uint64_t draws,inst,idx; } t[512];static unsigned n;static uint64_t last;
           const char *fk=fs&&fs->module?fs->key:"-";unsigned k=0;while(k<n&&(t[k].fs!=fk||t[k].vs!=vs->key))k++;
           if(k==n&&n<512){t[n].fs=fk;t[n].vs=vs->key;n++;}
@@ -645,7 +668,8 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     fg_before_draw(vs);
     frame=draw_pass_decide(pass,&pass_key,attachments,colors,depth,views,images,na,width,height,blocks,block_load,nblocks,&continuing);
     ssbo_in_place_before_pass(frame);
-    if(continuing&&graphics_active_frame!=frame){   /* not expected: nothing between the decision and here ends a kept pass */
+    /* not expected: nothing between the decision and here ends a kept pass */
+    if(continuing&&graphics_active_frame!=frame){
         static unsigned said;if(said++<8)LOG("[vulkan] 【红】a kept pass ended before its draw began it: decided again");
         frame=draw_pass_decide(pass,&pass_key,attachments,colors,depth,views,images,na,width,height,blocks,block_load,nblocks,&continuing);}
     graphics_pass_begin(frame);
@@ -661,9 +685,11 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     unsigned drawstat_slot=(unsigned)(async_current-async_batches);int drawstat_query=async_current?drawstat_draw_begin(drawstat_slot,command,vs->key,fs?fs->key:NULL,indexed?indexed->count:draw->count,indexed?indexed->instances:(uint32_t)draw->instances,primitive):-1;
     if(indexed){if(index_count){graphics_command_index(index_buffer,index_off,index_type);vkCmdDrawIndexed(command,index_count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);}}
     else if(index_buffer){if(index_count){graphics_command_index(index_buffer,0,index_type);vkCmdDrawIndexed(command,index_count,draw->instances>0?(uint32_t)draw->instances:1,0,draw->first,(uint32_t)draw->base_instance);}}
-    else vkCmdDraw(command,draw->count,draw->instances>0?(uint32_t)draw->instances:1,draw->first,(uint32_t)draw->base_instance);   /* TOTK: instanced DrawArrays */
+    /* TOTK: instanced DrawArrays */
+    else vkCmdDraw(command,draw->count,draw->instances>0?(uint32_t)draw->instances:1,draw->first,(uint32_t)draw->base_instance);
     drawstat_draw_end(drawstat_slot,command,drawstat_query);
-    for(unsigned i=0;i<nwritten;i++)written[i]->fb_dirty=1;   /* after the decision: a later draw sampling these needs the in-pass barrier */
+    /* after the decision: a later draw sampling these needs the in-pass barrier */
+    for(unsigned i=0;i<nwritten;i++)written[i]->fb_dirty=1;
     forward_record_outputs(output_scope,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
     DRAW_SEG(6);    graphics_probe_after_draw(fs&&fs->module?fs->key:NULL);
     draw_count++;passlog_draws++;if(!passtime_draws++)passtime_fs=fs&&fs->module?fs->key:NULL;passtime_written|=fs&&fs->module?fs->frag_out_mask:0;
@@ -674,9 +700,11 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
             PASSLOG("    %s %s binding %u type %#x handle %#x -> id %u %s serial %llu %ux%u fmt %#x target %d lv %u mem %p size %llu image-of %llu",st?"fs":"vs",bd->kind==4?"image":"texture",bd->binding,bd->type,handle,handle&0xfffff,d.valid?"":"(unregistered)",
                 d.valid?(unsigned long long)d.texture.serial:0ull,d.valid?d.texture.d.width:0,d.valid?d.texture.d.height:0,d.valid?d.texture.d.format:0,d.valid?d.texture.d.target:-1,
                 d.valid?d.texture.d.levels:0,d.valid?(void*)d.texture.mem:NULL,d.valid?(unsigned long long)d.texture.L.size:0ull,ie?(unsigned long long)ie->serial:0ull);}}
-    { static int ubowait=-1;if(ubowait<0)ubowait=exp_env("ubowait");   /* experiment: what the pass log's UBO reads do */
+    /* experiment: what the pass log's UBO reads do */
+    { static int ubowait=-1;if(ubowait<0)ubowait=exp_env("ubowait");
       if(ubowait&&!passlog_on())for(int st=0;st<2;st++)for(unsigned i=0;i<16;i++){const p_bind_buf *u=&state.ubo[st][i];if(u->addr&&u->size){float f[4];snapshot_read(u->addr,f,u->size<16?(uint32_t)u->size:16);}} }
-    { static int vtxwait=-1;if(vtxwait<0)vtxwait=exp_env("vtxwait");   /* experiment: the pass log's vertex-data reads */
+    /* experiment: the pass log's vertex-data reads */
+    { static int vtxwait=-1;if(vtxwait<0)vtxwait=exp_env("vtxwait");
       if(vtxwait&&!passlog_on())for(unsigned i=0;i<16;i++){va_st at=state.attributes[i];if(!at.fmt||!vs->attributes[i])continue;const NVNbufferRange *vb=&state.vertices[at.stream];float v[4];
           if(vb->address&&vb->size>at.offset)snapshot_read(vb->address+at.offset,v,16);} }
     if(passlog_on())for(int st=0;st<2;st++)for(unsigned i=0;i<16;i++){const p_bind_buf *u=&state.ubo[st][i];if(!u->addr||!u->size)continue;
@@ -690,8 +718,8 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     PASSLOG("  draw %s/%s %s count %d instances %d vp %g,%g %gx%g scissor %d,%d %dx%d blend %#x mask %#x",vs->key,fs->module?fs->key:"-",indexed?"indexed":"arrays",indexed?indexed->count:draw->count,indexed?indexed->instances:draw->instances,viewport.x,viewport.y,viewport.width,viewport.height,x,y,sw,sh,(unsigned)state.color.blend_en,(unsigned)state.mask.mask);
     /* Storage writes keep the pass: GPU readers of what they wrote barrier themselves (forward_read_barrier, forward_seed,
        image_access), and the host reads only after the batch's fence, so one shader-write -> host barrier at the commit
-       (mtl_sub_commit) covers them all. Ending the pass after every such draw split the open world's G-buffer into
-       ~45 one-draw passes a frame, each loading and storing 5-6 attachments. TOTK_VK_EXP=writepassend: the old way. */
+       (mtl_sub_commit) covers them all. Ending the pass after every such draw would split the open world's G-buffer into
+       ~45 one-draw passes a frame, each loading and storing 5-6 attachments. TOTK_VK_EXP=writepassend ends it. */
     if(graphics_shader_writes(vs)||graphics_shader_writes(fs)){
         if(inplace_on())inplace_pass_writes=1;
         static int split=-1;if(split<0)split=exp_env("writepassend");
@@ -702,8 +730,9 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     if (draw_count <= 12 && getenv("DM_VK_TRACE")) LOG("[vulkan] draw=%llu %s/%s rt=%ux%u vp=%g,%g %gx%g sc=%d,%d %dx%d mask=%#x cull=%u front=%u samples=%llu", (unsigned long long)draw_count, vs->key, fs->key, width, height, viewport.x, viewport.y, viewport.width, viewport.height, x, y, sw, sh, state.mask.mask, (unsigned)state.polygon.cull, (unsigned)state.polygon.front, (unsigned long long)samples_passed);
 }
 #define PLAN_PART2
-#include "nvn_vulkan_plan.inc"   /* part 2: the plan builder and the checks */
+/* part 2: the plan builder and the checks */
+#include "nvn_vulkan_plan.inc"
 #undef PLAN_PART2
 #include "nvn_vulkan_warm.inc"
-#include "nvn_vulkan_prepare.inc"   /* prepare mode: shaders translated and built before play */
-#include "nvn_vulkan_prefetch.inc"   /* program prefetch: shaders loaded and vertex-shader variants built as programs are made */
+#include "nvn_vulkan_prepare.inc"
+#include "nvn_vulkan_prefetch.inc"

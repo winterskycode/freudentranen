@@ -64,12 +64,14 @@ int main(int argc, char **argv) {
             for (uint64_t k = 1 + below(how == FZ_ALL ? 2000 : 12); k; k--) {
                 uint64_t at = below(r->len), v = odd_value(size);
                 unsigned w = widths[below(4)];
-                if (how == FZ_NAMES && below(2)) { v = 0x80 + below(0x80); w = 1; }   /* no terminator, bad UTF-8 */
+                /* no terminator, bad UTF-8 */
+                if (how == FZ_NAMES && below(2)) { v = 0x80 + below(0x80); w = 1; }
                 if (how == FZ_SYMBOLS || how == FZ_RELA || how == FZ_JMPREL) { at = at / 8 * 8; w = below(2) ? 8 : 4; }
                 fz_edit(&c, m, how, at, w, v);
             }
         } else switch (how - FZ_REGIONS) {
-            case 0: {   /* cut short, also just past each structure */
+            /* cut short, also just past each structure */
+            case 0: {
                 unsigned r = (unsigned)below(FZ_REGIONS);
                 uint64_t end = c.region[m][r].off + c.region[m][r].len;
                 cut[m] = below(2) ? 1 + below(size) : end > 40 ? end - below(40) : 1;
@@ -78,7 +80,8 @@ int main(int argc, char **argv) {
             }
             case 1: for (uint64_t k = 1 + below(2); k; k--) damage_layout(&c, m); break;
             case 2: damage_gates(&c, m); break;
-            default:   /* the NSO header, or too little of it */
+            /* the NSO header, or too little of it */
+            default:
                 if (below(3)) { for (uint64_t k = 1 + below(4); k; k--) { unsigned at = 0x90 + (unsigned)below(16); c.nso[m][at] = (uint8_t)rnd(); } }
                 else c.nso_size[m] = (size_t)below(0x100);
                 break;

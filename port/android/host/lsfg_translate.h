@@ -3,7 +3,8 @@
 #pragma once
 #include <string>
 
-#define LSFG_SHADER_COUNT 52   // the shaders of the table in lsfg_translate.cpp (Lsfg.java and vk/overlay.cpp count them)
+// the shaders of the table in lsfg_translate.cpp (Lsfg.java and vk/overlay.cpp count them)
+#define LSFG_SHADER_COUNT 52
 
 using lsfg_progress = void (*)(void *user, int done, int total);
 

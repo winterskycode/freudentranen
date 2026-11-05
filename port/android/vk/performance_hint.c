@@ -36,7 +36,8 @@ static uint64_t monotonic_ns(void) { struct timespec t; clock_gettime(CLOCK_MONO
 static void load_api(void) {
     const char *e = getenv("TOTK_ADPF");
     if (e && !strcmp(e, "0")) { fprintf(stderr, "[adpf] off (TOTK_ADPF=0)\n"); return; }
-    void *library = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);   /* kept open for the process's life */
+    /* kept open for the process's life */
+    void *library = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
     if (!library) { fprintf(stderr, "[adpf] libandroid not loadable\n"); return; }
 #define LOAD_HINT(field, name) do { void *symbol = dlsym(library, name); memcpy(&api.field, &symbol, sizeof api.field); } while (0)
     LOAD_HINT(manager, "APerformanceHint_getManager");
@@ -59,7 +60,8 @@ void dm_android_perf_hint_thread(void) {
     pthread_mutex_unlock(&hint_lock);
 }
 
-extern int nvn_frame_cap_get(void) __attribute__((weak));   /* hle_nvn.c: the uncapped clock's ceiling, 60 when paced */
+/* hle_nvn.c: the uncapped clock's ceiling, 60 when paced */
+extern int nvn_frame_cap_get(void) __attribute__((weak));
 static int64_t wanted_target(void) {
     int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 60;
     return (int64_t)(1e9 / (cap > 0 ? cap : 60));
@@ -97,7 +99,8 @@ void dm_android_perf_hint_frame(void) {
     uint64_t work = last_frame ? now - last_frame : 0; last_frame = now;
     if (session && work && work < 1000000000ull) {
         int64_t want = wanted_target();
-        if (want != target_ns && !api.update_target(session, want)) target_ns = want;   /* the cap changed */
+        /* the cap changed */
+        if (want != target_ns && !api.update_target(session, want)) target_ns = want;
         if (api.report(session, (int64_t)work)) report_errors++; else { reports++; work_sum += work; }
         if (reports && reports % 1200 == 0)
             fprintf(stderr, "[adpf] %llu reports (%llu errors), mean frame %.2f ms against target %.2f ms, %zu threads\n",

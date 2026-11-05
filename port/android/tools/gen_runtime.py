@@ -45,7 +45,8 @@ def main():
     (tree / 'build').mkdir(exist_ok=True)
     for cmd in ([py, tree / 'scripts/prepare_runtime.py', '--version', v],
                 [py, tree / 'scripts/prepare_romfs_backend.py', '--version', v],
-                *([[py, tree / 'scripts/prepare_romfs_backend.py', '--version', v, '--aoc']] if v.startswith('botw') else []),   # Breath of the Wild: aoc-config.txt for the add-on volumes
+                # Breath of the Wild: aoc-config.txt for the add-on volumes
+                *([[py, tree / 'scripts/prepare_romfs_backend.py', '--version', v, '--aoc']] if v.startswith('botw') else []),
                 [py, tree / 'scripts/prepare_shared_fonts.py', '--version', v]):
         r = subprocess.run([str(c) for c in cmd], cwd=tree, capture_output=True, text=True)
         if r.returncode:

@@ -345,7 +345,8 @@ static int cmd_chain(int argc, char **argv) {
             if (hash_image(game, image_hex)) { fprintf(stderr, "the RomFS image did not read\n"); return 1; }
             printf("ms: whole RomFS image hashed through the reader %.0f\n", now_ms() - t0);
         }
-        else {   /* without --full the file's own image hash stands in, and the size and index hash are still compared */
+        else {
+            /* without --full the file's own image hash stands in, and the size and index hash are still compared */
             char path[4096], *text = NULL, *at;
             uint8_t *live;
             size_t live_size;

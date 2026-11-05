@@ -9,7 +9,8 @@
 # stay in deps/src/noto-sans-cjk)
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd); DEPS=$HERE/../deps; SRC=$DEPS/src/noto-sans-cjk; OUT=$DEPS/out/fonts/SharedFont.otf; ICONS=$DEPS/out/icons/playstation.bin
-COMMIT=523d033d6cb47f4a80c58a35753646f5c3608a78   # notofonts/noto-cjk tag Sans2.004
+# notofonts/noto-cjk tag Sans2.004
+COMMIT=523d033d6cb47f4a80c58a35753646f5c3608a78
 FILE=NotoSansCJKsc-Regular.otf; FILE_SHA256=2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b
 BOLD=NotoSansCJKsc-Bold.otf; BOLD_SHA256=b5f0d1a190a7f9b43c310a8850630af12553df32c4c050543f9059732d9b4c0a
 FONTTOOLS=4.60.1; OUT_SHA256=571eecc7228b10992c8228569aaa7f97fc8dfb4d24f8b6a2c28e7f051fcc6b3c

@@ -34,7 +34,8 @@ static AMediaCodec *codec;
 static int running, wanted = -1, stride = RECORDER_W, slice = RECORDER_H;
 static pthread_t drain;
 static char dir[600];
-static uint8_t *config; static size_t config_size;   /* the encoder's SPS and PPS */
+/* the encoder's SPS and PPS */
+static uint8_t *config; static size_t config_size;
 static FILE *segment; static int segment_number; static int64_t segment_start;
 static uint64_t frames, dropped, packets;
 
@@ -43,7 +44,7 @@ int recorder_enabled(void) {
     return running;
 }
 
-static int segment_numbers(int *lowest, int *highest) {   /* the segments on disk */
+static int segment_numbers(int *lowest, int *highest) {
     *lowest = *highest = 0; DIR *d = opendir(dir); if (!d) return 0;
     int n = 0, lo = 0, hi = 0; struct dirent *e;
     while ((e = readdir(d))) { int k; if (sscanf(e->d_name, "seg-%d.rec", &k) == 1) { if (!n || k < lo) lo = k; if (!n || k > hi) hi = k; n++; } }
@@ -54,7 +55,8 @@ static void record(FILE *f, const uint8_t *data, uint32_t size, uint32_t flags, 
     fwrite(&size, 4, 1, f); fwrite(&flags, 4, 1, f); fwrite(&pts, 8, 1, f); fwrite(data, 1, size, f);
 }
 
-static int pinned = -1;   /* segments from this number on are being copied into a report (recorder_snapshot): kept */
+/* segments from this number on are being copied into a report (recorder_snapshot): kept */
+static int pinned = -1;
 /* The next segment, from a key frame at pts (lock held) */
 static void segment_next(int64_t pts) {
     if (segment) fclose(segment);
@@ -100,10 +102,12 @@ static int start(void) {
     AMediaFormat *f = AMediaFormat_new();
     AMediaFormat_setString(f, AMEDIAFORMAT_KEY_MIME, "video/avc");
     AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_WIDTH, RECORDER_W); AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_HEIGHT, RECORDER_H);
-    AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_COLOR_FORMAT, 21);   /* COLOR_FormatYUV420SemiPlanar: NV12 */
+    /* COLOR_FormatYUV420SemiPlanar: NV12 */
+    AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_COLOR_FORMAT, 21);
     AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_BIT_RATE, BIT_RATE); AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_FRAME_RATE, RECORDER_FPS);
     AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
-    AMediaFormat_setInt32(f, "color-standard", 1); AMediaFormat_setInt32(f, "color-range", 2); AMediaFormat_setInt32(f, "color-transfer", 3);   /* BT.709, limited, SDR */
+    /* BT.709, limited, SDR */
+    AMediaFormat_setInt32(f, "color-standard", 1); AMediaFormat_setInt32(f, "color-range", 2); AMediaFormat_setInt32(f, "color-transfer", 3);
     media_status_t s = AMediaCodec_configure(codec, f, NULL, NULL, AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
     AMediaFormat_delete(f);
     if (s != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK) { fprintf(stderr, "[recorder] encoder did not start (%d)\n", (int)s); AMediaCodec_delete(codec); codec = NULL; return 0; }
@@ -123,7 +127,8 @@ static void stop(void) {
     fprintf(stderr, "[recorder] off: %llu pictures, %llu dropped, %llu packets\n", (unsigned long long)frames, (unsigned long long)dropped, (unsigned long long)packets);
 }
 
-static pthread_mutex_t control = PTHREAD_MUTEX_INITIALIZER;   /* start / stop against frames */
+/* start / stop against frames */
+static pthread_mutex_t control = PTHREAD_MUTEX_INITIALIZER;
 void recorder_set(int on) {
     pthread_mutex_lock(&control);
     wanted = on != 0;
@@ -132,7 +137,8 @@ void recorder_set(int on) {
 }
 
 void recorder_frame(const uint8_t *nv12, uint64_t pts_ns) {
-    if (pthread_mutex_trylock(&control)) return;   /* being started or stopped */
+    /* being started or stopped */
+    if (pthread_mutex_trylock(&control)) return;
     if (!running) { pthread_mutex_unlock(&control); return; }
     ssize_t i = AMediaCodec_dequeueInputBuffer(codec, 0);
     if (i < 0) { dropped++; pthread_mutex_unlock(&control); return; }
@@ -148,9 +154,9 @@ void recorder_frame(const uint8_t *nv12, uint64_t pts_ns) {
 
 int recorder_snapshot(const char *to, int seconds) {
     if (!dir[0]) { const char *files = getenv("TOTK_FILES_DIR"); if (!files) return 0; snprintf(dir, sizeof dir, "%s/flight", files); }
-    /* The segments are pinned rather than copied under the lock: recording goes on meanwhile (holding the lock through
-       ~35 MB of copying stalled the encoder's output and dropped frames). The segment being written is copied as far
-       as it is flushed; a record cut short ends the replay there (ReportStore.mux). */
+    /* The segments are pinned rather than copied under the lock, so recording goes on meanwhile: holding the lock
+       through ~35 MB of copying would stall the encoder's output and drop frames. The segment being written is
+       copied as far as it is flushed; a record cut short ends the replay there (ReportStore.mux). */
     pthread_mutex_lock(&lock); if (segment) fflush(segment);
     int lo, hi, n = segment_numbers(&lo, &hi), want = seconds * 1000000 / SEGMENT_US + 1, copied = 0, first = hi - want + 1 > lo ? hi - want + 1 : lo;
     if (n) pinned = first;

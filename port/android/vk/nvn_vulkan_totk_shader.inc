@@ -1,16 +1,15 @@
-// TOTK runtime shader variants (replaces the D2R backend's offline-only shader_get).
+// TOTK runtime shader variants.
 // A shader is SHA-256(control section [ctl_key_len] + code) as in MacNativeGames' nvn_mtl.m prog_get; each translation
 // ("variant") depends on the translator's answers from the bound state (texture targets, image formats, vertex input and
 // colour output component classes; rt_answers there). Variants live in the shader cache (DM_VK_SHADERS) as
 // <key16>.spv / .meta (the D2R loader's files) / .deps, listed per shader in <shader>.variants; a miss is translated by
-// the service (totk_xlate --service --spirv-only, port/xlate) and cached. The translation blocks the submit thread for
-// now; pre-translated caches and background translation come later.
+// the service (totk_xlate --service --spirv-only, port/xlate) and cached. The translation blocks the submit thread.
 #include <dlfcn.h>
 #include <libgen.h>
 #include <spawn.h>
 #include <sys/stat.h>
 extern char **environ;
-int totk_depth_near_minus_w(void);   // hle_nvn.c: NVN_DEPTH_MODE_NEAR_IS_MINUS_W selected
+int totk_depth_near_minus_w(void);
 
 typedef struct { const char *tex[128]; char img[32][48]; uint8_t has_img[32]; const char *attr[16]; const char *fout[8]; } totk_answers;
 /* the slots a variant's .deps read: state elsewhere cannot change which variant matches (totk_state_sig) */
@@ -29,9 +28,11 @@ static const char *totk_cache_dir(void) {
     if (dir[0]) return dir;
     const char *e = getenv("DM_VK_SHADERS");
     if (!e || !*e) die("DM_VK_SHADERS (the shader cache) is not set");
-    snprintf(dir, sizeof dir, "%s", e);   /* with TOTK_VK_BINDLESS, the bindless cache (bindless_on set DM_VK_SHADERS) */
+    /* with TOTK_VK_BINDLESS, the bindless cache (bindless_on set DM_VK_SHADERS) */
+    snprintf(dir, sizeof dir, "%s", e);
     mkdir(dir, 0700);
-    char path[1100]; snprintf(path, sizeof path, "%s/host-subgroup-size.txt", dir);   // the D2R loader's profile check
+    // the D2R loader's profile check
+    char path[1100]; snprintf(path, sizeof path, "%s/host-subgroup-size.txt", dir);
     FILE *f = fopen(path, "w"); if (!f) die("shader cache %s not writable", dir);
     fprintf(f, "%u\n", gpu_subgroup_size); fclose(f);
     snprintf(path, sizeof path, "%s/request-profile.json", dir);
@@ -45,7 +46,8 @@ static const char *totk_cache_dir(void) {
 
 /* NVN format -> component class and image format name, NVN texture target -> translator type (nvn_mtl.m). */
 static const char *totk_fmt_class(int f) {
-    if (f >= 0x51 && f <= 0x68) return (f - 0x51) & 1 ? "sscaled" : "uscaled";   /* *_UI2F / *_I2F vertex formats, see vk_format */
+    /* *_UI2F / *_I2F vertex formats, see vk_format */
+    if (f >= 0x51 && f <= 0x68) return (f - 0x51) & 1 ? "sscaled" : "uscaled";
     switch (f) {
         case 0x6B: return "uscaled";
         case 0x6C: return "sscaled";
@@ -144,7 +146,8 @@ static char *totk_read_text(const char *path) {
     char *s = malloc((size_t)n + 1); if (!s || fread(s, 1, (size_t)n, f) != (size_t)n) { fclose(f); free(s); return NULL; }
     fclose(f); s[n] = 0; return s;
 }
-static totk_shader *totk_shader_of(const char *id) {   // caller holds totk_shader_lock
+// caller holds totk_shader_lock
+static totk_shader *totk_shader_of(const char *id) {
     unsigned b = (unsigned)strtoul((char[9]){id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], 0}, NULL, 16) & 1023;
     for (totk_shader *s = totk_shaders[b]; s; s = s->next) if (!strcmp(s->id, id)) return s;
     totk_shader *s = calloc(1, sizeof *s); if (!s) die("shader table");
@@ -154,7 +157,8 @@ static totk_shader *totk_shader_of(const char *id) {   // caller holds totk_shad
     for (char *line = index ? strtok(index, "\n") : NULL; line; line = strtok(NULL, "\n")) {
         if (strlen(line) != 16) continue;
         snprintf(path, sizeof path, "%s/%s.deps", totk_cache_dir(), line);
-        char *deps = totk_read_text(path); if (!deps) continue;   // incomplete translation: translated again on demand
+        // incomplete translation: translated again on demand
+        char *deps = totk_read_text(path); if (!deps) continue;
         totk_variant *v = calloc(1, sizeof *v); if (!v) die("variant table");
         memcpy(v->key, line, 16); v->deps = deps; v->mask = totk_deps_mask(deps); v->next = s->variants; s->variants = v;
     }
@@ -165,11 +169,13 @@ static void totk_service_start(void) {
     if (totk_xl_in) return;
     char exe[1100]; const char *e = getenv("TOTK_XLATE");
     if (e && *e) snprintf(exe, sizeof exe, "%s", e);
-    else {   // the APK ships the translator beside libtotk.so as libtotk_xlate.so (an executable)
+    // the APK ships the translator beside libtotk.so as libtotk_xlate.so (an executable)
+    else {
         Dl_info info; if (!dladdr((void *)totk_service_start, &info) || !info.dli_fname) die("translator: own library path unknown");
         char lib[1024]; snprintf(lib, sizeof lib, "%s", info.dli_fname); snprintf(exe, sizeof exe, "%s/libtotk_xlate.so", dirname(lib));
     }
-    int to[2], from[2]; if (pipe2(to, O_CLOEXEC) || pipe2(from, O_CLOEXEC)) die("translator pipes");   /* not inherited by the setup's translators (nvn_vulkan_shader_setup.inc) */
+    /* not inherited by the setup's translators (nvn_vulkan_shader_setup.inc) */
+    int to[2], from[2]; if (pipe2(to, O_CLOEXEC) || pipe2(from, O_CLOEXEC)) die("translator pipes");
     posix_spawn_file_actions_t fa; posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_adddup2(&fa, to[0], 0); posix_spawn_file_actions_adddup2(&fa, from[1], 1);
     posix_spawn_file_actions_addclose(&fa, to[1]); posix_spawn_file_actions_addclose(&fa, from[0]);
@@ -193,7 +199,7 @@ static void totk_service_start(void) {
 static int totk_request_constants(int st, char *out, size_t cap) {
     return snprintf(out, cap, "\"depth_minus_w\": %s, \"host_subgroup_size\": %u, \"vs_subgroups\": %s%s", totk_depth_near_minus_w() ? "true" : "false",
         gpu_subgroup_size,
-        gpu_vs_subgroups ? "true" : "false", bindless_on() ? ", \"bindless\": true" : "");   /* nvn_vulkan_bindless.inc */
+        gpu_vs_subgroups ? "true" : "false", bindless_on() ? ", \"bindless\": true" : "");
 }
 static void totk_hex(const uint8_t *p, size_t n, char *out) { static const char h[] = "0123456789abcdef"; for (size_t i = 0; i < n; i++) { out[2 * i] = h[p[i] >> 4]; out[2 * i + 1] = h[p[i] & 15]; } out[2 * n] = 0; }
 
@@ -214,7 +220,8 @@ static shader_entry *totk_variant_shader(const nvn_state *ns, const uint8_t *con
     totk_answers a; totk_answers_build(ns, st, &a);
     pthread_mutex_lock(&totk_shader_lock);
     totk_shader *s = totk_shader_of(id);
-    uint64_t ah = 1469598103934665603ull;   /* the answers' strings are static names except img (text): hash pointers and img text */
+    /* the answers' strings are static names except img (text): hash pointers and img text */
+    uint64_t ah = 1469598103934665603ull;
     for (int r = 0; r < 128; r++) { ah ^= (uint64_t)(uintptr_t)a.tex[r]; ah *= 1099511628211ull; }
     for (int r = 0; r < 32; r++) if (a.has_img[r]) for (const char *q = a.img[r]; *q; q++) { ah ^= (uint64_t)(r * 256 + (uint8_t)*q); ah *= 1099511628211ull; }
     for (int i = 0; i < 16; i++) { ah ^= (uint64_t)(uintptr_t)a.attr[i]; ah *= 1099511628211ull; }
@@ -233,7 +240,8 @@ static shader_entry *totk_variant_shader(const nvn_state *ns, const uint8_t *con
     dm_android_sha256_init(&c); dm_android_sha256_update(&c, id, 64); dm_android_sha256_update(&c, answers, an); dm_android_sha256_final(md, &c);
     char key[17]; totk_hex(md, 8, key);
     const char *dir = totk_cache_dir(); char path[1200];
-    size_t skip = st == 5 ? 0 : 0x30;   // graphics: the translator wants SPH + instructions, without the 0x30-byte NVN header
+    // graphics: the translator wants SPH + instructions, without the 0x30-byte NVN header
+    size_t skip = st == 5 ? 0 : 0x30;
     snprintf(path, sizeof path, "%s/%s.code", dir, key);
     FILE *f = fopen(path, "wb"); if (!f || fwrite(code + skip, 1, length - skip, f) != length - skip) die("write shader code %s", path); fclose(f);
     char *c1 = malloc(2 * (size_t)(length - c1o) + 1); if (!c1) die("c1 hex"); totk_hex(code + c1o, length - c1o, c1);
@@ -264,9 +272,9 @@ static shader_entry *totk_variant_shader(const nvn_state *ns, const uint8_t *con
 /* program_shader for TOTK: the stage comes from control+0x714 (0 vertex, 1 fragment, 5 compute). Per program and stage
    the last variant is kept with a signature of the state its answers come from, so unchanged state skips the lookup.
    The stage's last few (variant, signature) pairs are kept too (recent): a stage whose state alternates (one draw's,
-   then the next's) finds the pair whose signature matches again without the answers, their hash and the
-   shader lookup under its lock (~1.7% of the replay thread, 2026-10-24). The same rule as the last variant: a
-   variant whose .deps slots hold what they held when it matched matches again. */
+   then the next's) finds the pair whose signature matches again without the answers, their hash and the shader lookup
+   under its lock (~1.7% of the replay thread). The same rule as the last variant: a variant whose .deps slots hold what
+   they held when it matched matches again. */
 typedef struct { uint64_t sig; totk_mask mask; shader_entry *shader; } totk_recent_variant;
 typedef struct totk_program { const prog_t *program; uint64_t serial, sig[6]; shader_entry *shaders[6]; totk_mask mask[6]; char id[6][65]; totk_recent_variant recent[6][4]; unsigned recent_next[6]; struct totk_program *next; } totk_program;
 static totk_program *totk_programs[1024];
@@ -275,7 +283,7 @@ static uint64_t totk_state_sig(const nvn_state *ns, int st, const totk_mask *m) 
 #define TS_MIX(v) do { h ^= (uint64_t)(v); h *= 1099511628211ull; } while (0)
     /* only the slots the current variant's .deps read (m): elsewhere the state cannot change the match. Of a texture
        what the answers read (totk_answers_build): its kind, not its id, so other textures of the same kinds keep the
-       variant. It hashed all 128 + 32 slots of every stage of every draw. */
+       variant. */
     for (int w = 0; w < 2; w++) for (uint64_t bits = m->tex[w]; bits; bits &= bits - 1) {
         int r = w * 64 + __builtin_ctzll(bits); uint32_t t = ns->textures[st][r];
         TS_MIX(r); TS_MIX(t ? atomic_load_explicit(&texture_kinds[t & 0xfffff], memory_order_relaxed) & 0xff : 0); }
@@ -288,7 +296,7 @@ static uint64_t totk_state_sig(const nvn_state *ns, int st, const totk_mask *m) 
 #undef TS_MIX
     return h;
 }
-static void shader_enable_early_tests(shader_entry *s);   /* nvn_vulkan_draw.inc */
+static void shader_enable_early_tests(shader_entry *s);
 static shader_entry *program_shader_in(const nvn_state *ns, const prog_t *program, unsigned index) {
     if (index >= program->nstage || index >= 6) die("Vulkan program stage bounds");
     const uint8_t *control = program->sd[index].control, *code = (const uint8_t *)(uintptr_t)program->sd[index].data;
@@ -310,7 +318,8 @@ static shader_entry *program_shader_in(const nvn_state *ns, const prog_t *progra
         e->sig[index] = totk_state_sig(ns, (int)nvn_stage, &e->mask[index]);
         e->recent[index][e->recent_next[index]++ & 3] = (totk_recent_variant){ e->sig[index], e->mask[index], e->shaders[index] }; }
     if(nvn_stage==1&&e->shaders[index]&&!e->shaders[index]->early_tests){uint32_t flags;memcpy(&flags,control+0x718,4);if(flags&1)shader_enable_early_tests(e->shaders[index]);}
-    { static int dump=-1;if(dump<0){const char *x=getenv("TOTK_DUMP_CONTROL");dump=x&&atoi(x);}   /* diagnostics: each shader's NVN control section, once */
+    /* diagnostics: each shader's NVN control section, once */
+    { static int dump=-1;if(dump<0){const char *x=getenv("TOTK_DUMP_CONTROL");dump=x&&atoi(x);}
       if(dump&&e->shaders[index]&&!e->shaders[index]->control_dumped){const char *dir=getenv("TOTK_FILES_DIR");if(dir){char path[600];snprintf(path,sizeof path,"%s/control",dir);mkdir(path,0700);
           snprintf(path,sizeof path,"%s/control/%s.bin",dir,e->shaders[index]->key);FILE *f=fopen(path,"wb");if(f){fwrite(control,1,0x880,f);fclose(f);}}e->shaders[index]->control_dumped=1;} }
     return e->shaders[index];

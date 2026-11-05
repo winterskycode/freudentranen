@@ -20,7 +20,8 @@ import java.io.InputStream;
     Vulkan backend, nvn_vulkan.c backdrop_save), else a drawn sky. The startup page darkens its left side for the menu;
     the other pages dim all of it. */
 final class Backdrop extends View {
-    static Bitmap frame;   // decoded once per process, reread when the file changes
+    // decoded once per process, reread when the file changes
+    static Bitmap frame;
     private static long frameTime;
     private final boolean home;
 
@@ -49,7 +50,8 @@ final class Backdrop extends View {
         } catch (IOException | OutOfMemoryError e) { return null; }
     }
 
-    private static int number(InputStream in) throws IOException {   // a PPM header field (whitespace and # comments around it)
+    /** A PPM header field (whitespace and # comments around it). */
+    private static int number(InputStream in) throws IOException {
         int c = in.read();
         while (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '#') { if (c == '#') while (c != '\n' && c >= 0) c = in.read(); c = in.read(); }
         int v = 0; while (c >= '0' && c <= '9') { v = v * 10 + c - '0'; c = in.read(); }
@@ -59,7 +61,8 @@ final class Backdrop extends View {
     @Override protected void onDraw(Canvas c) {
         int w = getWidth(), h = getHeight();
         Bitmap b = frame;
-        if (b != null) {   // centre crop
+        // centre crop
+        if (b != null) {
             float k = Math.max((float) w / b.getWidth(), (float) h / b.getHeight());
             int sw = Math.round(w / k), sh = Math.round(h / k), sx = (b.getWidth() - sw) / 2, sy = (b.getHeight() - sh) / 2;
             Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);

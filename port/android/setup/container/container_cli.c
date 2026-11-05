@@ -335,12 +335,15 @@ static int cmd_check(int argc, char **argv) {
 
 typedef struct { uint64_t off; uint32_t n; } read_op;
 typedef struct {
-    const tokc_game *g;      /* NULL: plain pread on image_fd */
+    /* NULL: plain pread on image_fd */
+    const tokc_game *g;
     int image_fd;
     const read_op *ops; uint64_t nops;
-    uint64_t *ns;            /* per op */
+    /* per op */
+    uint64_t *ns;
     _Atomic uint64_t next, runs;
-    uint64_t stop_at;        /* sequential: end of the range */
+    /* sequential: end of the range */
+    uint64_t stop_at;
     uint32_t block;
     _Atomic uint64_t bytes;
     int failed;
@@ -436,7 +439,7 @@ static void ops_run(const rig *r, int use_reader, int threads, const read_op *op
 }
 
 /* Reads of one fixed size at random places, or with size 0 random files: whole up to 8 MB, 128 KB steps of a stream above.
-   TOTK_FS_TIMING in play logged a mean read of 82 KB, per-second means from 16 KB to 1 MB, and 128 KB reads of streams. */
+   The sizes follow TOTK_FS_TIMING in play: a mean read of 82 KB, per-second means from 16 KB to 1 MB, 128 KB reads of streams. */
 static read_op *make_ops(const tokc_game *g, const file_row *rows, uint64_t nrows, uint32_t size, uint64_t n, uint64_t seed, double *mean) {
     read_op *ops = malloc((size_t)n * sizeof *ops);
     uint64_t s = seed * 2 + 1, total = 0, image = tokc_romfs_size(g);

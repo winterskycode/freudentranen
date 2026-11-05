@@ -1,4 +1,3 @@
-// NVN 命令执行的 Vulkan 后端。沿用上游 C 接口名以复用记录层。
 // Vulkan NVN command executor. Retain upstream C interface names to reuse the recorder.
 #include "d2r/dm.h"
 #include "nvn_obj.h"
@@ -28,7 +27,7 @@ static dm_vk_driver vk_api;
 #include "totk_affinity.h"
 
 /* Live VkDeviceMemory objects, against the driver's maxMemoryAllocationCount (logged every 600 frames): images and
-   buffers each have their own allocation (review 2026-10-27 S3: the field sub-allocates; this shows how close we get) */
+   buffers each have their own allocation */
 static _Atomic int64_t vk_memory_objects;
 #ifdef vkAllocateMemory
 static VkResult vk_allocate_memory_counted(VkDevice d, const VkMemoryAllocateInfo *info, const VkAllocationCallbacks *a, VkDeviceMemory *m) {
@@ -49,17 +48,13 @@ typedef struct cached_buffer { vk_buffer buffer; struct cached_buffer *next; } c
 static cached_buffer *buffer_cache;
 static pthread_mutex_t buffer_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t buffer_cache_bytes, buffer_allocations, buffer_reuses, snapshot_bytes, active_buffer_bytes, buffer_activation;
-// 大缓冲（>8 MiB）单独记账：buffer_large_cache_bytes 是 buffer_cache_bytes 里属于大缓冲的部分（见 buffer_destroy）。
 // Large buffers (> 8 MiB) are accounted separately: buffer_large_cache_bytes is the part of buffer_cache_bytes held by large buffers (see buffer_destroy).
 #define DM_VK_SMALL_BUFFER_MAX (8ull << 20)
 #define DM_VK_LARGE_BUFFER_MAX (64ull << 20)
 #define DM_VK_LARGE_CACHE_BUDGET (128ull << 20)
 static uint64_t buffer_large_cache_bytes, buffer_large_allocations, buffer_large_allocated_bytes, buffer_large_reuses, buffer_large_freed;
-// 只读探针：新建一个缓冲（vkCreateBuffer + 分配显存 + 绑定 + 映射）累计花掉的墙钟与线程 CPU。
-// 用途是**先证实**"重场面下每帧上百次新建"到底吃掉多少帧时间，再决定怎么优化；只多取两次时钟，不改变行为。
-// Read-only probe: wall clock and thread CPU accumulated inside creating a buffer (vkCreateBuffer + allocate +
-// bind + map). Its purpose is to establish, before any optimisation, how much of a frame the hundred-plus
-// creations in a heavy scene actually cost. Two extra clock reads on that path; nothing else changes.
+// Read-only probe: wall clock and thread CPU accumulated inside creating a buffer (vkCreateBuffer + allocate + bind +
+// map), a hundred-plus times a frame in a heavy scene. Two extra clock reads on that path; nothing else changes.
 static uint64_t buffer_create_wall_ns, buffer_create_cpu_ns;
 typedef struct read_snapshot { uintptr_t address; uint64_t stamp, used; vk_buffer buffer; struct read_snapshot *next,*prev,*hash_next; } read_snapshot;
 static read_snapshot *read_snapshots,*read_snapshot_tail,*read_index[8192];
@@ -74,11 +69,12 @@ static void forward_reset(void);
 static uint64_t timestamp_delta(uint64_t begin,uint64_t end,unsigned bits);
 typedef struct image_entry image_entry;
 static void graphics_pass_end(void);
-static void pclear_flush_all(void);   /* nvn_vulkan_tex.inc: deferred clears */
-static int graphics_pass_open(void);   /* nvn_vulkan_pass.inc */
-static int pass_queries_on(void);static void samples_report(void);static void samples_reset(void);   /* nvn_vulkan_pass.inc */
-static void ucap_wait_current(void);   /* nvn_vulkan_binding_cache.inc: the submit capture's bytes are in */
-static int graphics_host_writes;   /* draws this batch wrote storage the host reads after the fence: barrier at the commit */
+static void pclear_flush_all(void);
+static int graphics_pass_open(void);
+static int pass_queries_on(void);static void samples_report(void);static void samples_reset(void);
+static void ucap_wait_current(void);
+/* draws this batch wrote storage the host reads after the fence: barrier at the commit */
+static int graphics_host_writes;
 static int graphics_image_is_attachment(const image_entry *image);
 static void graphics_cache_forget_image(image_entry *image);
 static void dependencies_prepare_range(uintptr_t address,uint64_t size);
@@ -86,7 +82,8 @@ static void dependencies_prepare_texture(const tex_t *texture);
 static void dependencies_prepare_copy_texture(const p_copy_b2t *copy);
 static void graphics_probe_draw(const p_draw *draw,const p_draw_idx *indexed);
 static void graphics_command_reset(void);
-static uint64_t chunk_epoch;   /* command buffers begun: chunk boundaries and batch starts (image_entry.touched_chunk, the upload census) */
+/* command buffers begun: chunk boundaries and batch starts (image_entry.touched_chunk, the upload census) */
+static uint64_t chunk_epoch;
 static void graphics_probe_dispatch(const p_dispatch *dispatch);
 static void graphics_probe_query_batch(uint64_t ticket,const uint64_t *counts,uint32_t count);
 static void graphics_probe_poll(void);
@@ -100,19 +97,27 @@ typedef struct post_op {
     int kind; volatile uint32_t *event; uint32_t mode, value;
     uint64_t order;int range_registered,counter_gpu_encoded,counter_timestamp_encoded;
     void *destination; uint64_t size; vk_buffer source, output;
-    uint8_t *seed;   /* TOTK: the CPU-known initial bytes of a shader-written buffer; only blocks that changed are published */
-    uint8_t site;    /* write-backs (kind 0): where it was made, for [vulkan-post0-sites] (POST0_SITE_*) */
-    uint64_t batch_serial;   /* the batch it belongs to (async_batch.serial) */
-    int census_piece; uint64_t census_frame;   /* census: the copied piece (ordinal in its submission) and the submission it was registered in */
-    uintptr_t pp_all_addr,pp_unknown_addr; uint64_t pp_all_size,pp_unknown_size;   /* its range in the pending page tables */
+    /* the CPU-known initial bytes of a shader-written buffer; only blocks that changed are published */
+    uint8_t *seed;
+    /* write-backs (kind 0): where it was made, for [vulkan-post0-sites] (POST0_SITE_*) */
+    uint8_t site;
+    uint64_t batch_serial;
+    /* census: the copied piece (ordinal in its submission) and the submission it was registered in */
+    int census_piece; uint64_t census_frame;
+    /* its range in the pending page tables */
+    uintptr_t pp_all_addr,pp_unknown_addr; uint64_t pp_all_size,pp_unknown_size;
     VkRenderPass pass; VkFramebuffer frame; VkPipeline pipeline;
     VkPipelineLayout pipeline_layout; VkDescriptorPool descriptors;
     VkImageView image_view;
     VkBufferView buffer_view;
-    struct image_writeback *writeback;   /* kind 6: a GPU-written image going back to guest memory (nvn_vulkan_tex.inc) */
+    /* kind 6: a GPU-written image going back to guest memory (nvn_vulkan_tex.inc) */
+    struct image_writeback *writeback;
     VkPipelineStageFlags gpu_stage;VkAccessFlags gpu_access,gpu_synchronized[32];
-    VkPipelineStageFlags read_stages,read_stages_draw;uint64_t read_draw;   /* GPU reads of this version since its last write: by earlier draws / by draw read_draw (ssbo_write_in_place) */
-    uint64_t inplace_pass,inplace_epoch;   /* the render pass (render_passes while it is open) of its latest in-place write by a draw (0: outside one), and the game barriers before it (ssbo_barrier_epoch) */
+    /* GPU reads of this version since its last write: by earlier draws / by draw read_draw (ssbo_write_in_place) */
+    VkPipelineStageFlags read_stages,read_stages_draw;uint64_t read_draw;
+    /* the render pass (render_passes while it is open) of its latest in-place write by a draw (0: outside one), and the
+           game barriers before it (ssbo_barrier_epoch) */
+    uint64_t inplace_pass,inplace_epoch;
     struct post_op *next,*copy_next;
 } post_op;
 static int counter_gpu_record(post_op *post);
@@ -123,7 +128,7 @@ static VkInstance instance;
 static VkPhysicalDevice physical;
 static VkDevice device;
 static VkQueue queue;
-static uint32_t queue_family;   /* the queue's family (LSFG records its own command buffers for it) */
+static uint32_t queue_family;
 static VkCommandPool commands;
 static VkCommandBuffer command;
 static VkFence gpu_fence;
@@ -132,32 +137,30 @@ static VkQueryPool draw_queries;
 static VkQueryPool batch_times;
 static uint32_t gpu_timestamp_bits;
 static double gpu_timestamp_period,gpu_total_ns,fence_wait_total_ns;
-// mtl_wait 的阻塞时长单独原子累计：调用方（游戏线程的 SyncWait）不能为了记一个读数去抢 queue_lock——翻译线程档下翻译线程整次提交都持着它。
 // mtl_wait's blocked time accumulates atomically on its own: a caller (the game thread's SyncWait) must not contend for queue_lock just to
 // record a reading, since in translation-thread mode the translation thread holds it for a whole submit.
 static _Atomic uint64_t fence_wait_unlocked_ns;
-// queue_lock 保护累计值；worker 发布与前台重叠，不是额外的帧耗时。
 // queue_lock protects totals; worker publication overlaps foreground work, not extra frame time.
 static uint64_t stability_ring_wait_ns,stability_worker_publish_ns;
 static uint32_t used_queries;
 static uint64_t query_counts[1024];
 static VkPhysicalDeviceMemoryProperties memory_properties;
 static VkPhysicalDeviceFeatures gpu_features;
-static void memprobe_run(void);   /* nvn_vulkan_memprobe.inc */
+static void memprobe_run(void);
 static void overlay_setup(uint32_t family);
-void overlay_forget_image(VkImage image);   /* overlay.cpp: a swapchain image goes away */
+void overlay_forget_image(VkImage image);
 /* VK_EXT_provoking_vertex: NVN (like GL) takes flat varyings from the last vertex (nvnCommandBufferSetProvokingVertexMode 0),
    Vulkan from the first; flat varyings follow the guest convention when the device has the extension */
 static int provoking_last;
 /* The device is made ready for LSFG (Vulkan 1.3, robustness2's nullDescriptor, synchronization2, ...) whenever the driver
    can: the in-game menu switches LSFG on and off live. TOTK_LSFG=0: not. */
 static int lsfg_device_wanted(void) { const char *l = getenv("TOTK_LSFG"); return !(l && !strcmp(l, "0")); }
-/* TOTK_FRAMEGEN=lsfg<rate>[x<multiplier>] (the menu's LSFG choices), or the older TOTK_LSFG=1 */
+/* TOTK_FRAMEGEN=lsfg<rate>[x<multiplier>] (the menu's LSFG choices), or TOTK_LSFG=1 */
 static int lsfg_requested(void) { const char *l = getenv("TOTK_LSFG"), *f = getenv("TOTK_FRAMEGEN"); return (l && atoi(l) > 0) || (f && !strncmp(f, "lsfg", 4)); }
 /* VK_EXT_extended_dynamic_state (+ _2): depth / stencil state, cull mode, front face (and depth-bias enable) are set per
    draw instead of baked into the pipeline. TOTK changes them per draw, so with them in the pipeline key every new
-   combination with the same shaders compiled a new pipeline (~3 a frame in the Room of Awakening, most hitches).
-   TOTK_VK_EDS=0: in the pipeline as before (also needed for the TOTK_VK_EXP depth/cull experiments). */
+   combination with the same shaders compiles a new pipeline (~3 a frame in the Room of Awakening, most hitches).
+   TOTK_VK_EDS=0 keeps them in the pipeline, which the TOTK_VK_EXP depth/cull experiments need. */
 static int ext_eds, ext_eds2, eds_on, eds2_on;
 static PFN_vkCmdSetDepthTestEnableEXT eds_depth_test; static PFN_vkCmdSetDepthWriteEnableEXT eds_depth_write;
 static PFN_vkCmdSetDepthCompareOpEXT eds_depth_compare; static PFN_vkCmdSetStencilTestEnableEXT eds_stencil_test;
@@ -180,23 +183,23 @@ static const char *exp_word(const char *list, const char *word, int number) {
 }
 /* An experiment word in TOTK_VK_EXP (read once per call site: the callers cache it). */
 static int exp_env(const char *word) { return exp_word(getenv("TOTK_VK_EXP"), word, 0) != NULL; }
-/* TOTK_VK_INPLACE=1 (experiment/buffers-in-place): uniform, storage, vertex and index buffers in the zero-copy pools are
-   bound in place, without the forward and pending-write lookups and without copies, and storage writes go into the
-   game's memory directly; the game's own synchronization (its barriers between passes, a barrier after each dispatch,
-   its fences) orders them, as on the console. The uniform blocks the game reuses before the GPU has read them
-   (TOTK_VK_INPLACE_KEEP=<hex address>,...: the uniform probe's list) keep the capture path. A measurement of what the
-   translation costs without the per-binding bookkeeping; the known holes are the early-reuse blocks not on the list
-   and GPU writes read through the paths that still snapshot (pools under 64 KiB). */
+/* TOTK_VK_INPLACE (on unless 0; 2 adds the capture check): uniform, storage, vertex and index buffers in the zero-copy
+   pools are bound in place, without the forward and pending-write lookups and without copies, and storage writes go
+   into the game's memory directly; the game's own synchronization (its barriers between passes, a barrier after each
+   dispatch, its fences) orders them, as on the console. The uniform blocks the game reuses before the GPU has read them
+   (TOTK_VK_INPLACE_KEEP=<hex address>,...: the uniform probe's list) keep the capture path. The known holes are the
+   early-reuse blocks not on the list and GPU writes read through the paths that still snapshot (pools under 64 KiB). */
 static int inplace_state = -1; static uint64_t inplace_keep[32]; static unsigned inplace_nkeep;
 /* Uniform blocks stay on the submit capture (TOTK_VK_INPLACE_UBO=1 binds them in place): the capture is right by construction
-   (the block as it was at the submit call, as the console's GPU read it), and it measured FASTER (still scene: translation
+   (the block as it was at the submit call, as the console's GPU read it), and it measures faster (still scene: translation
    42.3 M instructions a frame against 45.9 in place; the capture's descriptors repeat, in-place ones do not), while the
-   completion-time probe (TOTK_VK_INPLACE=2) found blocks the game rewrites before the GPU is done with them (256- and
-   672-byte per-object blocks, up to 13 a frame in bursts). Vertex, index and storage buffers were never captured: in place. */
+   completion-time probe (TOTK_VK_INPLACE=2) finds blocks the game rewrites before the GPU is done with them (256- and
+   672-byte per-object blocks, up to 13 a frame in bursts). Vertex, index and storage buffers have no capture: in place. */
 static int inplace_ubo_on = 0;
 static int inplace_init(void) {
-    const char *e = getenv("TOTK_VK_INPLACE"); inplace_state = e && atoi(e) == 2 ? 2 : !(e && atoi(e) == 0);   /* on this branch: on unless TOTK_VK_INPLACE=0; 2: with the capture check */
-    const char *k = getenv("TOTK_VK_INPLACE_KEEP"); if (!k) k = "3a4a76000,3a4a76400,3a876f000";   /* the uniform probe's early-reuse blocks (2026-10-30) */
+    const char *e = getenv("TOTK_VK_INPLACE"); inplace_state = e && atoi(e) == 2 ? 2 : !(e && atoi(e) == 0);
+    /* the default list: the uniform probe's early-reuse blocks */
+    const char *k = getenv("TOTK_VK_INPLACE_KEEP"); if (!k) k = "3a4a76000,3a4a76400,3a876f000";
     { const char *u = getenv("TOTK_VK_INPLACE_UBO"); inplace_ubo_on = u && atoi(u) > 0; }
     while (k && *k && inplace_nkeep < 32) { inplace_keep[inplace_nkeep++] = strtoull(k, (char **)&k, 16); if (*k == ',') k++; else break; }
     if (inplace_state) LOG("[vulkan-inplace] on: buffers bound in place from the zero-copy pools (%u blocks kept on the capture path)", inplace_nkeep);
@@ -206,54 +209,63 @@ static inline int inplace_on(void) { return inplace_state >= 0 ? inplace_state :
 static int inplace_kept(uintptr_t address) { for (unsigned i = 0; i < inplace_nkeep; i++) if ((address & ~0xfffull) == (inplace_keep[i] & ~0xfffull)) return 1; return 0; }
 static uint64_t inplace_ubo, inplace_ssbo, inplace_ssbo_w, inplace_vbuf, inplace_index, inplace_fallback;
 static void inplace_classify(uint64_t addr, uint64_t len);
-enum { IF_UBO_POOL, IF_UBO_DIRTY, IF_UBO_KEPT, IF_UBO_ALIGN, IF_SSBO_POOL, IF_SSBO_ALIGN, IF_VBUF_POOL, IF_INDEX_POOL, IF_INDEX_KIND, IF_COUNT_ }; static uint64_t inplace_why[IF_COUNT_];   /* why a binding fell back */
+enum { IF_UBO_POOL, IF_UBO_DIRTY, IF_UBO_KEPT, IF_UBO_ALIGN, IF_SSBO_POOL, IF_SSBO_ALIGN, IF_VBUF_POOL, IF_INDEX_POOL, IF_INDEX_KIND, IF_COUNT_ }; static uint64_t inplace_why[IF_COUNT_];
+/* inline uniform updates (OP_UPDATE_UB) a frame, and how many arrive while a pass is open */
 static uint64_t inplace_updates, inplace_updates_inpass;
-static int inplace_pass_writes; static uint64_t inplace_pass_barriers;   /* a draw of the open pass wrote storage in place: a full barrier when the pass ends (its readers come later, in place too) */   /* inline uniform updates (OP_UPDATE_UB) a frame, and how many arrive while a pass is open */
+/* a draw of the open pass wrote storage in place: a full barrier when the pass ends (its readers come later, in place too) */
+static int inplace_pass_writes; static uint64_t inplace_pass_barriers;
 static VkBuffer zc_buffer_at(uint64_t addr, uint64_t len, uint64_t *off);
 #include "nvn_vulkan_defer.inc"
-static int ext_memory_fd, ext_dma_buf;   /* VK_KHR_external_memory_fd / VK_EXT_external_memory_dma_buf listed (zero-copy guest memory) */
-static int ext_robustness2;            /* VK_EXT_robustness2 listed (LSFG frame generation needs its nullDescriptor) */
-static int ubo_robust_ok;              /* robustBufferAccess2 on: reads past a uniform descriptor's range return zeros (exact-range capture binds) */
+/* VK_KHR_external_memory_fd / VK_EXT_external_memory_dma_buf listed (zero-copy guest memory) */
+static int ext_memory_fd, ext_dma_buf;
+/* VK_EXT_robustness2 listed (LSFG frame generation needs its nullDescriptor) */
+static int ext_robustness2;
+/* robustBufferAccess2 on: reads past a uniform descriptor's range return zeros (exact-range capture binds) */
+static int ubo_robust_ok;
 /* VK_EXT_attachment_feedback_loop_layout enabled: a draw that samples its own colour target stays in the render pass,
    behind an in-pass barrier (nvn_vulkan_feedback.inc). */
 static int ext_fbloop, fbloop_ok;
 /* VK_EXT/ARM_rasterization_order_attachment_access, asked for by feedback-loop pipelines: overlapping fragments of one
    decal draw then read each other's target writes in order. The Switch gives TOTK that; without it the pebble decals
-   showed cache-line "ants" (Turnip on a7xx+ flushes per overlap only for this, not for feedback loops). Costs ~0.9 ms
-   GPU a frame at the door (the overlapping meshes' flushes), so it is off unless TOTK_VK_RORDER=1. */
+   show cache-line "ants" (Turnip on a7xx+ flushes per overlap only for this, not for feedback loops). Costs ~0.9 ms
+   GPU a frame (the overlapping meshes' flushes), so it is off unless TOTK_VK_RORDER=1. */
 static int ext_rorder, rorder_ok;
-static int ext_gpl, ext_pipeline_library, gpl_state;   /* VK_EXT_graphics_pipeline_library (nvn_vulkan_gpl.inc) */
-static int ext_descriptor_indexing;   /* VK_EXT_descriptor_indexing listed (TOTK_VK_BINDLESS) */
-static int bindless_on(void);static void bindless_create(void);   /* nvn_vulkan_bindless.inc */
-static int lsfg_device_ok;             /* the device was created with what LSFG needs (nvn_vulkan_lsfg.inc) */
-static int fsr_device_ok;              /* the device has what FSR frame interpolation's passes need (nvn_vulkan_fsrfg.inc) */
+static int ext_gpl, ext_pipeline_library, gpl_state;
+static int ext_descriptor_indexing;
+static int bindless_on(void);static void bindless_create(void);
+static int lsfg_device_ok;
+static int fsr_device_ok;
 static VkPhysicalDeviceLimits gpu_limits;
 static uint32_t gpu_subgroup_size;
-static int gpu_vs_subgroups;   /* ballot in vertex shaders (Turnip yes, Qualcomm's driver no): the translator keeps the game's vertex counter as written */
+/* ballot in vertex shaders (Turnip yes, Qualcomm's driver no): the translator keeps the game's vertex counter as written */
+static int gpu_vs_subgroups;
 static VkSurfaceKHR surface;
 static VkSwapchainKHR swapchain;
 static VkExtent2D screen_extent;
-static VkFormat screen_format;   /* the swapchain's (the overlay draws into it) */
+static VkFormat screen_format;
 /* Aspect-fit a sw x sh picture into dst, centred: out = {x, y, w, h} in dst pixels. */
 static void dm_android_present_fit(int sw, int sh, int dst_w, int dst_h, int out[4]) {
     double scale = (double)dst_w / sw; if (scale * sh > dst_h) scale = (double)dst_h / sh;
     int dw = sw * scale, dh = sh * scale;
     out[0] = (dst_w - dw) / 2; out[1] = (dst_h - dh) / 2; out[2] = dw; out[3] = dh;
 }
-static int screen_color_attachment;   /* the swapchain images can be rendered to (the overlay's render pass; Qualcomm's driver fails the frame otherwise) */
+/* the swapchain images can be rendered to (the overlay's render pass; Qualcomm's driver fails the frame otherwise) */
+static int screen_color_attachment;
 static VkImage *screen_images;
 static uint8_t *screen_initialized;
-static VkSemaphore screen_acquired, screen_rendered;   /* screen_acquired: the ring entry the present in progress acquires with */
+/* screen_acquired: the ring entry the present in progress acquires with */
+static VkSemaphore screen_acquired, screen_rendered;
 /* Acquire semaphores: a ring. A binary semaphore may be reused only once the submission that waited on it completed, so
-   with one semaphore every present first waited on the CPU for the previous present's blit. With frame generation two
-   to four presents follow each other within a frame, and the second's wait covered LSFG's GPU work as well: 5.9 ms a
-   frame on the translation thread (2026-11-01). Each ring entry remembers the ticket of the submission that consumed
-   it; by the time it comes round again that work is long done. */
+   with one semaphore every present would first wait on the CPU for the previous present's blit. With frame generation
+   two to four presents follow each other within a frame, and the second's wait would cover LSFG's GPU work as well (5.9 ms
+   a frame on the translation thread). Each ring entry remembers the ticket of the submission that consumed it; by the
+   time it comes round again that work is long done. */
 #define SCREEN_ACQUIRE_RING 8
 static VkSemaphore screen_acquire_ring[SCREEN_ACQUIRE_RING]; static uint64_t screen_acquire_ring_ticket[SCREEN_ACQUIRE_RING]; static unsigned screen_acquire_slot;
 static VkSemaphore *screen_present_wait;
 static uint64_t screen_acquire_ticket;
-static uint64_t present_block_ns;   /* the translation thread's time blocked in the presents since the last reading (lsfg_adaptive_count) */
+/* the translation thread's time blocked in the presents since the last reading (lsfg_adaptive_count) */
+static uint64_t present_block_ns;
 static int screen_submission;
 static uint32_t screen_count;
 /* TOTK_VK_PRESENT_MODE=fifo (default) | mailbox | immediate: a probe. The blit into a swapchain image waits for the
@@ -263,22 +275,12 @@ static VkPresentModeKHR screen_present_mode(void) {
     static int mode = -1; if (mode < 0) { const char *e = getenv("TOTK_VK_PRESENT_MODE"); mode = e && !strcmp(e, "mailbox") ? 1 : e && !strcmp(e, "immediate") ? 2 : 0; if (mode) LOG("[vulkan-wsi] present mode %s (TOTK_VK_PRESENT_MODE)", e); }
     return mode == 1 ? VK_PRESENT_MODE_MAILBOX_KHR : mode == 2 ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_FIFO_KHR;
 }
-// WSI 恢复的状态（见 mtl_present 前的说明）。所有改交换链的地方只有两类，二者互斥：
-// ① 游戏线程在出图里（gfx_enter 之内）——帧开头按 screen_dirty 重建、取图失败后重建、表面丢失时释放；
-// ② 回调线程在 dm_gfx_suspend(1) 之后（新窗口 attach / 窗口销毁 detach），那时游戏线程被挡在 NVN 入口外。
-// screen_lock 只用来把 ② 和后端初始化（游戏线程、还没进 gfx_enter）隔开：初始化建表面与交换链期间来的窗口回调要等它建完。
 // WSI recovery state (see the note before mtl_present). Only two kinds of code ever change the swapchain, and they
 // exclude each other: (1) the game thread inside a present (within gfx_enter) — rebuild at the top of a frame on
 // screen_dirty, rebuild after a failed acquire, release on surface loss; (2) a callback thread after
 // dm_gfx_suspend(1) (attach for a new window / detach when the window is destroyed), when the game thread is parked
 // outside NVN. screen_lock only separates (2) from backend initialisation (on the game thread, not inside
 // gfx_enter): a window callback that arrives while initialisation builds the surface and swapchain waits for it.
-// 本文件讲出图 / 帧开头重建 / 取图的说明里的「游戏线程」指出图线程：同步档是游戏线程，翻译线程档（TOTK_ASYNC_REPLAY=1）是翻译
-// 线程（mtl_present 在那里执行）；后端初始化在两档下都在游戏线程上（front_run 在进入游戏代码之前就 mtl_init；翻译线程是之后由
-// 游戏的 NVN 调用经 x_start 的 pthread_once 建立）。
-// ① 写的「gfx_enter 之内」与 mtl_screen_attach 说明里的「等在途那次退出」也是同步档的说法。翻译线程档下 ① 照样与 ② 互斥：
-// dm_gfx_suspend(1) 先挡住 gfx_enter 包住的提交 / 出图入队、等在途调用退出，再 x_drain() 等已入队的任务全部执行完（g_xq_done
-// 在任务执行完才前进）。挂起期间翻译线程仍可能执行 XJ_TEX_RELEASE / XJ_FRAME，它们不碰 WSI 状态。
 // "Game thread" in this file's notes on presenting / top-of-frame rebuilds / acquire means the presenting thread: the
 // game thread in sync mode, the translation thread in translation-thread mode (TOTK_ASYNC_REPLAY=1; mtl_present runs
 // there). Backend initialisation is on the game thread in both modes (front_run calls mtl_init before any game code
@@ -289,81 +291,74 @@ static VkPresentModeKHR screen_present_mode(void) {
 // until every queued job has run (g_xq_done advances only after a job finishes). The translation thread may still run
 // XJ_TEX_RELEASE / XJ_FRAME jobs while suspended; they do not touch WSI state.
 static pthread_mutex_t screen_lock = PTHREAD_MUTEX_INITIALIZER;
-static int screen_live;                                  // screen_lock：初始化已建完表面/交换链 | screen_lock: initialisation finished the surface/swapchain
-static _Atomic int screen_dirty;                         // 下一帧开头重建交换链（同一窗口改尺寸 / 过期 / 范围变化）| rebuild the swapchain at the top of the next frame
-// screen_dirty 的原因位（日志用）。| Reason bits of screen_dirty (for the log).
+// Under screen_lock: initialisation finished the surface/swapchain
+static int screen_live;
+// Rebuild the swapchain at the top of the next frame
+static _Atomic int screen_dirty;
+// Reason bits of screen_dirty (for the log).
 enum { SCREEN_DIRTY_RESIZED = 1, SCREEN_DIRTY_OUT_OF_DATE = 2, SCREEN_DIRTY_EXTENT = 4, SCREEN_DIRTY_RETRY = 8 };
-// 取图等待上限。正常 FIFO 取图最多等两拍（≈ 33 ms）；等满 1 秒说明窗口的缓冲队列没人消费（正在被拆、切后台途中），
-// 这一帧不出图、标记重建，而不是无限期卡在这里 —— 卡住会让窗口销毁回调里的「先请存盘」永远等不到游戏走拍。
 // Acquire wait limit. A normal FIFO acquire waits at most two vsyncs (≈ 33 ms); waiting a full second means nobody is
 // consuming the window's buffer queue (being torn down, on the way to the background), so this frame is not
 // presented and a rebuild is marked instead of blocking forever, which would starve the "ask for a save first" step of
 // the window-destroyed callback of game ticks.
 #define SCREEN_ACQUIRE_TIMEOUT_NS 1000000000ull
-static VkSurfaceTransformFlagBitsKHR screen_transform;   // 建链时选的 preTransform | preTransform chosen at creation
-static uint64_t screen_caps_checked;                     // 上次因 SUBOPTIMAL 查表面范围时的出图号 | present number of the last extent check after SUBOPTIMAL
-static uint64_t screen_lost_retry_ns;                    // 表面丢失后上次重试的时刻 | last retry after a surface loss
-static int screen_built_w, screen_built_h;               // 上次建链时窗口的原始尺寸（0 = 当时窗口给不出，用了 currentExtent）| raw window size at the last build (0 = the window gave none, currentExtent was used)
-// 退役清单：换下来的交换链与它的 present 等待信号量，等到有「呈现引擎已用完」的证据才销毁（见 screen_retire_collect）。
-// 同一表面上的证据取 Khronos swapchain_recreation 示例的做法：当前（最新）交换链上一张已经提交过出图（vkQueuePresentKHR）的图像被再次取到、
-// 且消费那次取图的 blit 提交已完成 ⇒ 它上一次出图已完成 ⇒ 排在它前面的、旧交换链的出图都已完成（依赖「出图按提交次序完成」，与示例相同）。
-// 不限定是「第一次出图的那张」（审查第 3 轮 Codex I1：取图次序由实作决定，指定的那张可能一直不回来）：交换链只有 count 张图，
-// 每次成功取图都会出图，所以至多 count+1 次成功取图里必有一张是第二次取到（鸽巢原理）——只要还在出图，证据就一定会到。
-// 清单永远不会「没有证据就销毁」：积压到 SCREEN_RETIRE_DEFER 项时，只是改尺寸的重建先暂缓（当前交换链照样能出图，
-// 合成器缩放到窗口），等证据回收后再建；还有当前交换链、又非建不可（过期）而清单已满 SCREEN_RETIRE_MAX 项时，改走表面丢失那条路
-// （screen_release，见那里的说明）。改动它的地方与改交换链的地方相同（游戏线程在出图里，或回调线程在 dm_gfx_suspend(1) 之后），
-// 所以不另加锁。
+static VkSurfaceTransformFlagBitsKHR screen_transform;
+// Present number of the last extent check after SUBOPTIMAL
+static uint64_t screen_caps_checked;
+static uint64_t screen_lost_retry_ns;
+// Raw window size at the last build (0 = the window gave none, currentExtent was used)
+static int screen_built_w, screen_built_h;
 // Retire list: swapchains taken out of service and their present-wait semaphores are destroyed only once there is
 // evidence that the presentation engine is done with them (see screen_retire_collect). On the same surface the
 // evidence follows the Khronos swapchain_recreation sample: an image of the current (newest) swapchain that has already
 // been presented is acquired again and the blit submission that consumed that acquire has completed => its previous
 // present has completed => the presents of older swapchains queued before it have completed too (relying, like the
-// sample, on presents completing in submission order). It is not limited to the image of the first present (review
-// round 3 Codex I1: the acquire order is up to the implementation, so one given image may never come back): a
-// swapchain has count images and every successful acquire is presented, so within count+1 successful acquires one
-// image is acquired for the second time (pigeonhole) - as long as frames are presented, the evidence arrives. The list never destroys anything without evidence: once SCREEN_RETIRE_DEFER
-// entries are pending, a rebuild that is only a size change waits (the current swapchain still presents and the
-// compositor scales it to the window) until the evidence has reclaimed the list; with a current swapchain, a rebuild
-// that cannot wait (out of date) and SCREEN_RETIRE_MAX entries pending goes through the surface-lost path instead (screen_release,
-// see the note there). It is changed only where the swapchain is changed (the game thread inside a present, or a
-// callback thread after dm_gfx_suspend(1)), so it needs no lock of its own.
+// sample, on presents completing in submission order). It is not limited to the image of the first present: the
+// acquire order is up to the implementation, so one given image may never come back, but a swapchain has count images
+// and every successful acquire is presented, so within count+1 successful acquires one image is acquired for the second
+// time (pigeonhole) - as long as frames are presented, the evidence arrives. The list never destroys anything without
+// evidence: once SCREEN_RETIRE_DEFER entries are pending, a rebuild that is only a size change waits (the current
+// swapchain still presents and the compositor scales it to the window) until the evidence has reclaimed the list; with
+// a current swapchain, a rebuild that cannot wait (out of date) and SCREEN_RETIRE_MAX entries pending goes through the
+// surface-lost path instead (screen_release, see the note there). It is changed only where the swapchain is changed
+// (the game thread inside a present, or a callback thread after dm_gfx_suspend(1)), so it needs no lock of its own.
 #define SCREEN_RETIRE_MAX 16
 #define SCREEN_RETIRE_DEFER 4
 typedef struct { VkSwapchainKHR handle; VkSemaphore *present_wait; uint32_t count; } screen_retired;
 static screen_retired screen_retire[SCREEN_RETIRE_MAX];
 static unsigned screen_retire_count;
-static uint32_t screen_retire_image = UINT32_MAX;        // 证据那张图的图像号（日志用）| image index of the evidence (for the log)
-static uint64_t screen_retire_ticket;                    // 再次取到一张已出过图的图像的那次 blit 的完成票号 | completion ticket of the blit that consumed the re-acquire of an already presented image
-static int screen_built_clamped;                         // 上次建链时窗口尺寸被表面能力的 min/max 夹过 | the window size was clamped into the surface min/max at the last build
-static uint64_t screen_clamp_checked;                    // 夹过时上次重读表面能力的出图号 | present number of the last capability re-read while clamped
-// WSI 结果计数（游戏线程独占写；日志读）。| WSI result counters (written by the game thread only; read by logging).
+// Image index of the evidence (for the log)
+static uint32_t screen_retire_image = UINT32_MAX;
+// Completion ticket of the blit that consumed the re-acquire of an already presented image
+static uint64_t screen_retire_ticket;
+// The window size was clamped into the surface min/max at the last build
+static int screen_built_clamped;
+// Present number of the last capability re-read while clamped
+static uint64_t screen_clamp_checked;
+// WSI result counters (written by the game thread only; read by logging).
 enum { WSI_OK, WSI_SUBOPTIMAL, WSI_OUT_OF_DATE, WSI_TIMEOUT, WSI_SURFACE_LOST, WSI_RESULTS };
 static uint64_t wsi_acquire[WSI_RESULTS], wsi_present[WSI_RESULTS], wsi_recreates, wsi_recreate_failures, wsi_surface_rebuilds, wsi_skipped;
 static uint64_t wsi_retired, wsi_retire_freed, wsi_retire_overflow, wsi_retire_deferred, wsi_same_size_skips;
-// 每帧（及重建判断、SUBOPTIMAL 检查）查窗口尺寸（ANativeWindow_getWidth/Height）的耗时：它们走 window->query，可能进 producer
-// （API 29–30 是对 SurfaceFlinger 的 binder 调用），所以量出来、随 600 帧那行打印，不假设它是零成本。建链时那一次不计入。
-// | Cost of the window size queries per frame (and in the rebuild decision and the SUBOPTIMAL check)
+// Cost of the window size queries per frame (and in the rebuild decision and the SUBOPTIMAL check)
 // (ANativeWindow_getWidth/Height): they go through window->query and may reach the producer (a binder call to
 // SurfaceFlinger on API 29-30), so it is measured and printed with the 600-frame line instead of assumed free. The one
 // query while building a swapchain is not counted.
 static uint64_t wsi_wq_ns_sum, wsi_wq_ns_max, wsi_wq_n;
-// 最近一次出图的目标矩形（交换链像素坐标）与交换链尺寸：触摸换算用同一个矩形，不自己再猜 16:9。
-// The destination rectangle of the latest present (swapchain pixels) and the swapchain size: touch mapping uses the
-// same rectangle instead of guessing 16:9 on its own.
 #ifdef __ANDROID__
-static struct ANativeWindow *screen_window;              // 当前表面所属的窗口，后端自己持一个引用（screen_bind_window）| the window the current surface belongs to; the backend holds its own reference (screen_bind_window)
-// 换绑窗口：先取新窗口的引用再放旧的。后端自己持引用，表面丢失后在同一窗口上重试时指针一定还有效。
-// Rebind the window: take the new window's reference before dropping the old one. The backend holds its own
-// reference, so the pointer is still valid when retrying on the same window after a surface loss.
+// The window the current surface belongs to; the backend holds its own reference (screen_bind_window)
+static struct ANativeWindow *screen_window;
 #include "nvn_vulkan_pacing.inc"
 static void screen_request_rate(struct ANativeWindow *window) {
     /* SurfaceFlinger's content detection otherwise matches the panel to our ~60 posts per second (60 Hz), which in turn caps
        us at 60 through vsync. TOTK_DISPLAY_HZ: the rate we ask for (default 120; 0 leaves it to the system). */
     if (window) { const char *e = getenv("TOTK_DISPLAY_HZ"); float hz = e ? (float)atof(e) : 120.0f;
-        static int (*set_rate)(ANativeWindow *, float, int8_t);   /* libnativewindow, API 30 */
+        /* libnativewindow, API 30 */
+        static int (*set_rate)(ANativeWindow *, float, int8_t);
         if (!set_rate) { void *lib = dlopen("libnativewindow.so", RTLD_NOW); set_rate = lib ? (int (*)(ANativeWindow *, float, int8_t))dlsym(lib, "ANativeWindow_setFrameRate") : NULL; }
         if (hz > 0 && set_rate) { int r = set_rate(window, hz, ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT); LOG("[vulkan-wsi] requested %.0f Hz from the display (result %d)", hz, r); } }
 }
+// Rebind the window: take the new window's reference before dropping the old one. The backend holds its own
+// reference, so the pointer is still valid when retrying on the same window after a surface loss.
 static void screen_bind_window(struct ANativeWindow *window) {
     if (window) ANativeWindow_acquire(window);
     if (screen_window) ANativeWindow_release(screen_window);
@@ -377,11 +372,12 @@ static pthread_mutex_t pools_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t completion_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t completion_condition = PTHREAD_COND_INITIALIZER;
 static pool_range *pools;
-/* TOTK has many memory pools and mtl_addr runs several times per draw: a linear walk of the pool list was the biggest
-   single cost of the translation thread (~15%). A sorted array of the pools (rebuilt when one is added or removed) is
-   searched by start address instead. */
+/* TOTK has many memory pools and mtl_addr runs several times per draw, so a linear walk of the pool list would be the
+   biggest single cost of the translation thread (~15%). A sorted array of the pools (rebuilt when one is added or
+   removed) is searched by start address instead. */
 static pool_range **pool_sorted; static size_t pool_sorted_n, pool_sorted_cap;
-static _Atomic uint64_t pool_gen;   /* advances with every rebuild (under pools_lock): mtl_addr's memo is valid while it does not */
+/* advances with every rebuild (under pools_lock): mtl_addr's memo is valid while it does not */
+static _Atomic uint64_t pool_gen;
 static int pool_cmp(const void *x, const void *y) { uintptr_t a = (uintptr_t)(*(pool_range *const *)x)->base, b = (uintptr_t)(*(pool_range *const *)y)->base; return a < b ? -1 : a > b; }
 static void pool_sorted_rebuild_locked(void) {
     size_t n = 0; for (pool_range *p = pools; p; p = p->next) n++;
@@ -402,7 +398,8 @@ static post_op *const *forward_scope_marker;
 static _Atomic uint64_t submitted, completed, pool_adds;
 static uint64_t copy_bytes,forward_copy_bytes;
 static uint64_t samples_passed, presents;
-static uint64_t game_sync_epoch;   /* the game's synchronization points so far (its barriers and its submissions): nvn_vulkan_tex.inc's TOTK_VK_SYNCCHECK */
+/* the game's synchronization points so far (its barriers and its submissions): nvn_vulkan_tex.inc's TOTK_VK_SYNCCHECK */
+static uint64_t game_sync_epoch;
 /* TOTK_VK_STATELEAK census state (see stateleak_draw below the replay) */
 enum { RM_RT = 1u << 0, RM_PROGRAM = 1u << 1, RM_BLEND = 1u << 2, RM_COLOR = 1u << 3, RM_MASK = 1u << 4, RM_MS = 1u << 5, RM_POLY = 1u << 6, RM_DEPTH = 1u << 7,
        RM_VIEWPORT = 1u << 8, RM_SCISSOR = 1u << 9, RM_DEPTHRANGE = 1u << 10, RM_TEXPOOL = 1u << 11, RM_SAMPPOOL = 1u << 12, RM_BLENDCOLOR = 1u << 13,
@@ -412,9 +409,13 @@ static rec_masks rec_mask;
 static int stateleak_state = -1;
 static inline int stateleak_on(void) { if (stateleak_state < 0) { const char *e = getenv("TOTK_VK_STATELEAK"); stateleak_state = e && atoi(e) > 0; } return stateleak_state; }
 static struct { uint64_t draws, leaking, called, called_leaking, recordings, cat[RM_COUNT_], ubo, ssbo, tex, vattr, vstream, vbuf; int piece_depth; uint64_t main_ops[OP_COUNT_], main_draws, piece_draws;
-    int piece; uint64_t pdraws[32], pleak[32], pcount[32];   /* per piece ordinal in the frame: draws, draws inheriting a binding slot (not pools / multisample) */
-    uint64_t submission, fwd_same, fwd_cross, fwd_older, img_same, img_cross, img_older;   /* dependencies: forwards and image reads whose writer is in the same piece, another piece of the same submission, or an older submission */
-    uint64_t detail_until; } sl;   /* detail: for the frames after each summary, log every inherited slot (which, bound to what) and the root's own ops */
+    /* per piece ordinal in the frame: draws, draws inheriting a binding slot (not pools / multisample) */
+    int piece; uint64_t pdraws[32], pleak[32], pcount[32];
+    /* dependencies: forwards and image reads whose writer is in the same piece, another piece of the same submission, or
+           an older submission */
+    uint64_t submission, fwd_same, fwd_cross, fwd_older, img_same, img_cross, img_older;
+    /* detail: for the frames after each summary, log every inherited slot (which, bound to what) and the root's own ops */
+    uint64_t detail_until; } sl;
 #define SL_DETAIL() (stateleak_state > 0 && presents < sl.detail_until)
 static int recording;
 typedef struct nvn_state {
@@ -426,7 +427,7 @@ typedef struct nvn_state {
     p_scissor scissor; p_viewports viewports; p_depth_range depth_range;
     VkStencilOpState stencil_faces[2]; p_poly_offset polygon_offset; p_blend_color blend_color;
     const dpool_t *texture_pool, *sampler_pool; int64_t copy_stride;
-    int depth_clamp, render_disabled, raster_discard, render_cond_off;   /* TOTK render state (OP_DEPTH_CLAMP / OP_RENDER_ENABLE / OP_RASTER_DISCARD) */
+    int depth_clamp, render_disabled, raster_discard, render_cond_off;
 } nvn_state;
 static nvn_state state;
 /* The pure state ops: the packet's data moved into a tracked state, nothing else. The replay applies them to `state`
@@ -483,7 +484,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_message(VkDebugUtilsMessageSeveri
 #include "nvn_vulkan_cpu_phases.inc"
 
 #ifdef __ANDROID__
-// 仅初始化失败时释放尚未提交的上下文，再完整退回系统loader；活资源不切换驱动。
 // Release an unsubmitted context only on initialization failure, then fully fall back; never switch a live driver.
 static int initialize_driver_fallback(const char *reason) {
     if(!vk_api.using_custom)return 0;
@@ -495,14 +495,6 @@ static int initialize_driver_fallback(const char *reason) {
 }
 #endif
 
-// 交换链与配套信号量/图像的建立。单独成函数，好让"从后台回来"能用新的 ANativeWindow 重建它：
-// 安卓在 Activity 停止时必然销毁窗口，而窗口贴图只在启动时建一次（dm_uiscreen.c），所以重返前台必须重建。
-// 调用方必须独占交换链：要么是游戏线程在出图里（gfx_enter 之内），要么图形已挂起（dm_gfx_suspend(1)），要么是初始化。
-// 建好的东西放进 out，由调用方 screen_install_chain 装上（旧的交换链由调用方退役，见 screen_retire_chain）。
-// old 非空时以 oldSwapchain 串接：规范规定只要调用了 vkCreateSwapchainKHR，old 就此退役（不论建成与否），*old_consumed 置 1，
-// 调用方必须把它放进退役清单、不能再用它出图；在调用 vkCreateSwapchainKHR 之前就返回的失败（表面范围读不到、窗口 0 尺寸）不动 old。
-// 返回 VK_SUCCESS；可恢复的失败（表面丢失、窗口被占用、过期、窗口尺寸为 0）原样返回，新的什么都不留下，由调用方稍后重试；
-// 其余失败照旧 die（失败即停，不猜）。
 // Swapchain plus its semaphores and images, as its own function so returning from the background can rebuild it
 // from a new ANativeWindow: Android always destroys the window when the activity stops, and the window texture is
 // created only once at startup (dm_uiscreen.c). The caller must own the swapchain exclusively: either the game thread
@@ -513,7 +505,7 @@ static int initialize_driver_fallback(const char *reason) {
 // the retire list and never present to it again; a failure returned before vkCreateSwapchainKHR is called (surface
 // capabilities unavailable, zero-sized window) leaves old alone. Returns VK_SUCCESS; a recoverable failure (surface
 // lost, window in use, out of date, zero-sized window) is returned as is with nothing new left behind, for the caller
-// to retry later; any other failure still dies (fail closed, no guessing).
+// to retry later; any other failure dies (fail closed, no guessing).
 typedef struct { VkSwapchainKHR handle; VkExtent2D extent; uint32_t count; VkImage *images; uint8_t *initialized; VkSemaphore *present_wait; VkSurfaceTransformFlagBitsKHR transform; int window_w, window_h, clamped; } screen_chain;
 static int wsi_recoverable(VkResult r) {
     return r == VK_ERROR_SURFACE_LOST_KHR || r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_ERROR_NATIVE_WINDOW_IN_USE_KHR;
@@ -530,14 +522,11 @@ static VkResult screen_build_chain(struct ANativeWindow *window, VkSwapchainKHR 
     if (listed != VK_SUCCESS || !nf) { free(formats); if (wsi_recoverable(listed)) return listed; die("Vulkan surface formats failed: %d count=%u", listed, nf); }
     VkSurfaceFormatKHR format = formats[0]; for (unsigned i = 0; i < nf; ++i) if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM || formats[i].format == VK_FORMAT_B8G8R8A8_UNORM) { format = formats[i]; break; } free(formats);
     screen_format = format.format;
-    // 尺寸以窗口此刻的尺寸为准，窗口给不出（0 / 出错）才用表面的 currentExtent，再夹进 min/max（规范只要求 imageExtent 落在
-    // min..max 内；安卓按窗口缩放缓冲）。实测（第 1 轮 f01 日志）：onNativeWindowResized 回调里窗口已报新尺寸，currentExtent
-    // 却还要 3–9 帧才跟上，按它建链等于同尺寸白建一次、再拉伸几帧旧尺寸。
     // The size follows the window at this moment; only when the window cannot give one (0 / error) does the surface's
     // currentExtent apply, then it is clamped into min/max (the spec only requires imageExtent within min..max; Android
-    // scales the buffer to the window). Measured (round 1 f01 log): inside onNativeWindowResized the window already reports
-    // the new size while currentExtent lags 3-9 frames, so building from it rebuilt the same size for nothing and then
-    // stretched the old size for a few frames.
+    // scales the buffer to the window). Inside onNativeWindowResized the window already reports the new size while
+// currentExtent lags 3-9 frames, so building from it would rebuild the same size for nothing and then stretch the old
+// size for a few frames.
     VkExtent2D extent = cap.currentExtent; int window_w = 0, window_h = 0;
 #ifdef __ANDROID__
     if (window) { window_w = ANativeWindow_getWidth(window); window_h = ANativeWindow_getHeight(window); }
@@ -546,40 +535,36 @@ static VkResult screen_build_chain(struct ANativeWindow *window, VkSwapchainKHR 
     (void)window;
 #endif
     if (extent.width == UINT32_MAX) die("Vulkan surface reports no current extent and no window size");
-    // 窗口在过渡中报 0 尺寸：现在建不了，交给调用方稍后再试。| A window reporting zero size mid-transition cannot be used now; the caller retries later.
+    // A window reporting zero size mid-transition cannot be used yet; the caller retries later.
     if (!extent.width || !extent.height) return VK_ERROR_OUT_OF_DATE_KHR;
     if (extent.width < cap.minImageExtent.width) extent.width = cap.minImageExtent.width;
     if (extent.height < cap.minImageExtent.height) extent.height = cap.minImageExtent.height;
     if (cap.maxImageExtent.width && extent.width > cap.maxImageExtent.width) extent.width = cap.maxImageExtent.width;
     if (cap.maxImageExtent.height && extent.height > cap.maxImageExtent.height) extent.height = cap.maxImageExtent.height;
     /* One image more than the minimum (4 on the Odin: 5). With frame generation the pictures of a frame are presented in
-       a burst; more images do not help (6, 7, 8 and 11 tried with LSFG x2 and x4, 2026-11-01): the compositor paces the
-       burst in vkQueuePresentKHR either way, ~4 ms a picture, while the game is at its cap and the translation thread
-       has nothing else to do. */
+       a burst; more images do not help (measured with 6, 7, 8 and 11 on LSFG x2 and x4): the compositor paces the burst
+       in vkQueuePresentKHR either way, ~4 ms a picture, while the game is at its cap and the translation thread has
+       nothing else to do. */
     uint32_t images = cap.minImageCount + 1; if (cap.maxImageCount && images > cap.maxImageCount) images = cap.maxImageCount;
     LOG("[vulkan-swapchain] images: %u requested (minimum %u, maximum %u)", images, cap.minImageCount, cap.maxImageCount);
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; if (!(cap.supportedCompositeAlpha & alpha)) alpha = cap.supportedCompositeAlpha & -cap.supportedCompositeAlpha;
-    // 最终 blit 输出是窗口坐标下的正向图像，没有预旋转；由合成器处理屏幕方向（预旋转属 M3b）。
-    // 因此安卓在 currentTransform 是 90/270 时出图会一直报 SUBOPTIMAL：那不是要重建的信号（见 screen_note_suboptimal）。
-    // The final blit produces an upright window-space image, not a pre-rotated image; let the compositor handle display
-    // orientation (pre-rotation belongs to M3b). Android therefore keeps reporting SUBOPTIMAL while currentTransform is
-    // 90/270: that is not a reason to rebuild (see screen_note_suboptimal).
+    // The final blit produces an upright window-space image, not a pre-rotated image; the compositor handles display
+    // orientation. Android therefore keeps reporting SUBOPTIMAL while currentTransform is 90/270: that is not a reason
+    // to rebuild (see screen_note_suboptimal).
     VkSurfaceTransformFlagBitsKHR transform = (cap.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : cap.currentTransform;
     LOG("[vulkan-surface-transform] supported=%#x current=%#x selected=%#x extent=%ux%u (window %dx%d, currentExtent %ux%u) upright_blit=1 old_swapchain=%d",cap.supportedTransforms,cap.currentTransform,transform,extent.width,extent.height,window_w,window_h,cap.currentExtent.width,cap.currentExtent.height,old != VK_NULL_HANDLE);
     VkSwapchainCreateInfoKHR ci = {.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = surface, .minImageCount = images, .imageFormat = format.format, .imageColorSpace = format.colorSpace, .imageExtent = extent, .imageArrayLayers = 1, .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | (cap.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT), .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = transform, .compositeAlpha = alpha, .presentMode = screen_present_mode(), .clipped = VK_TRUE, .oldSwapchain = old};
-    if (old_consumed) *old_consumed = old != VK_NULL_HANDLE;   // 从这一刻起 old 已退役 | old is retired from this call on
+    // old is retired from this call on
+    if (old_consumed) *old_consumed = old != VK_NULL_HANDLE;
     VkSwapchainKHR created = VK_NULL_HANDLE; VkResult made = vkCreateSwapchainKHR(device, &ci, NULL, &created);
     if (made != VK_SUCCESS) { if (wsi_recoverable(made)) return made; die("Vulkan vkCreateSwapchainKHR failed: %d", made); }
     screen_color_attachment = (ci.imageUsage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0;
     uint32_t count = 0; VK_CHECK(vkGetSwapchainImagesKHR(device, created, &count, NULL)); LOG("[vulkan-swapchain] images: %u obtained", count);
     VkImage *list = calloc(count ? count : 1, sizeof *list); uint8_t *initialized = calloc(count ? count : 1, 1); if (!list || !initialized) die("Vulkan swapchain image allocation");
     VK_CHECK(vkGetSwapchainImagesKHR(device, created, &count, list));
-    // present 消费完成由同一 image 的再次 acquire/wait 保证，不能用提交 fence 推断。
     // Reacquiring/waiting on the same image proves its present wait consumed; a submission fence does not.
     VkSemaphore *present_wait=calloc(count ? count : 1,sizeof *present_wait);if(!present_wait)die("Vulkan present semaphore allocation");
     VkSemaphoreCreateInfo sem = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    // 取图信号量不属于哪条交换链：建一次、之后一直用。帧开头已等过上一次消费它的 blit（mtl_present），取图失败又不发信号，
-    // 所以每次拆建交换链时它都没有待发或待等的信号，不必跟着重建。
     // The acquire semaphores belong to no swapchain: created once and kept. Each present first waits for the blit that
     // last consumed its ring entry (present_one) and a failed acquire signals nothing, so whenever a swapchain is torn
     // down or rebuilt none has a pending signal or wait and none need be recreated.
@@ -591,7 +576,6 @@ static VkResult screen_build_chain(struct ANativeWindow *window, VkSwapchainKHR 
     LOG("[vulkan] Android game surface %ux%u images=%u", extent.width, extent.height, count);
     return VK_SUCCESS;
 }
-// 装上新建好的交换链；它的退役证据从头记（证据图像号、再次取到一张已提交过出图的图像的票号；见 screen_retire 的说明）。
 // Install a freshly built swapchain; its retirement evidence starts afresh (evidence image, re-acquire ticket; see screen_retire).
 static void screen_install_chain(const screen_chain *c) {
     swapchain = c->handle; screen_extent = c->extent; screen_count = c->count; screen_images = c->images; screen_initialized = c->initialized;
@@ -600,7 +584,6 @@ static void screen_install_chain(const screen_chain *c) {
     screen_built_clamped = c->clamped; screen_clamp_checked = 0;
     screen_retire_image = UINT32_MAX; screen_retire_ticket = 0;
 }
-// 把当前交换链从全局状态里取下（不销毁）：图像表留在返回值里，句柄与信号量由调用方退役或销毁。
 // Take the current swapchain off the global state (nothing destroyed): the image table stays in the returned value;
 // the caller retires or destroys the handle and the semaphores.
 static screen_chain screen_take_chain(void) {
@@ -610,8 +593,6 @@ static screen_chain screen_take_chain(void) {
     return c;
 }
 
-// 让队列空闲：拆交换链前把在途提交（含引用交换链图像的 blit）全部做完。注意它只覆盖带 fence 的提交，不覆盖呈现引擎对
-// vkQueuePresentKHR 等待信号量的使用（规范；Khronos swapchain_semaphore_reuse），所以同一表面上的重建不靠它，靠退役清单。
 // Idle the queue: finish every in-flight submission (including the blit that references a swapchain image) before
 // tearing the swapchain down. It covers only fenced submissions, not the presentation engine's use of the semaphores
 // vkQueuePresentKHR waits on (the spec; Khronos swapchain_semaphore_reuse), so a rebuild on the same surface does not
@@ -621,7 +602,8 @@ static void screen_queue_idle(void) {
     pthread_mutex_lock(&queue_lock); VK_CHECK(vkQueueWaitIdle(queue)); pthread_mutex_unlock(&queue_lock);
 }
 static void screen_retired_destroy(screen_retired *r) {
-    if (r->handle) {   /* the overlay's views of its images go first: a later swapchain's image may get the same handle */
+    /* the overlay's views of its images go first: a later swapchain's image may get the same handle */
+    if (r->handle) {
         VkImage images[16]; uint32_t n = 16;
         if (vkGetSwapchainImagesKHR(device, r->handle, &n, images) >= 0) for (uint32_t i = 0; i < n; i++) overlay_forget_image(images[i]);
         vkDestroySwapchainKHR(device, r->handle, NULL);
@@ -629,14 +611,10 @@ static void screen_retired_destroy(screen_retired *r) {
     for (uint32_t i = 0; i < r->count; i++) if (r->present_wait && r->present_wait[i]) vkDestroySemaphore(device, r->present_wait[i], NULL);
     free(r->present_wait); *r = (screen_retired){0};
 }
-// 退役：句柄与 present 等待信号量进清单；图像表现在就放（图像归交换链所有）。清单不会满着进来：screen_recreate 在清单已有
-// SCREEN_RETIRE_MAX 项时不再串接新交换链（改走表面丢失），所以这里满了就是程序错误，直接停（失败即停，审查第 2 轮 Codex C1：
-// 不再有「没有证据就销毁最老一项」的退路）。
-// Retire: the handle and the present-wait semaphores go on the list; the image table is freed now (the images belong
+// Retire: the handle and the present-wait semaphores go on the list; the image table is freed here (the images belong
 // to the swapchain). The list is never full on entry: screen_recreate stops chaining new swapchains once
 // SCREEN_RETIRE_MAX entries are pending (it takes the surface-lost path instead), so a full list here is a program
-// error and stops the run (fail closed; review round 2 Codex C1: there is no "destroy the oldest without evidence"
-// fallback any more).
+// error and stops the run (fail closed: nothing is ever destroyed without evidence).
 static void screen_retire_chain(screen_chain *c) {
     free(c->images); free(c->initialized); c->images = NULL; c->initialized = NULL;
     if (!c->handle && !c->present_wait) return;
@@ -644,7 +622,6 @@ static void screen_retire_chain(screen_chain *c) {
     screen_retire[screen_retire_count++] = (screen_retired){c->handle, c->present_wait, c->count}; wsi_retired++;
     c->handle = VK_NULL_HANDLE; c->present_wait = NULL; c->count = 0;
 }
-// 帧开头、游戏线程：当前交换链的退役证据到了（见 screen_retire 的说明）就销毁清单里的全部旧交换链与信号量。
 // Top of a frame, game thread: once the current swapchain's retirement evidence has arrived (see the note on
 // screen_retire), destroy every old swapchain and semaphore on the list.
 static void screen_retire_collect(void) {
@@ -656,18 +633,6 @@ static void screen_retire_collect(void) {
         LOG("[vulkan-wsi] retired %u entries (%u swapchains, %u present semaphores) after image %u of the current swapchain was re-acquired and its blit completed (ticket %llu)", screen_retire_count, chains, semaphores, screen_retire_image, (unsigned long long)screen_retire_ticket);
     screen_retire_count = 0; screen_retire_ticket = 0;
 }
-// 表面要随窗口拆掉（窗口销毁 detach / 表面丢失 / 换新窗口 attach / 退役清单满了还非建不可）：vkDestroySurfaceKHR 之前它的所有
-// 交换链都必须先销毁（VUID-vkDestroySurfaceKHR-surface-01266），而这块表面上不会再有新交换链出图，拿不到上面那种证据。
-// 这里的证据是安卓平台本身（本文件只编进安卓）：
-//  - 安卓的 VK_KHR_swapchain 由平台 loader 实现（frameworks/native/vulkan/libvulkan/swapchain.cpp），vkQueuePresentKHR 在调用里
-//    通过驱动的 vkQueueSignalReleaseImageANDROID 消费 present 等待信号量（loader 注释："QueueSignalReleaseImageANDROID consumes
-//    the wait semaphores"）；Mesa（Turnip）的通用实现把它做成同一队列上的一次提交（commit "vulkan/android: improve
-//    vkQueueSignalReleaseImageANDROID"）。所以 vkQueueWaitIdle 返回时，这些信号量等待已经执行完。
-//  - 交换链图像是 gralloc 缓冲，由 BufferQueue / 合成器各自持引用；vkDestroySwapchainKHR 只把还在应用手里的缓冲 cancel 回去。
-//  - VK_EXT_swapchain_maintenance1 的 present fence 在安卓上就是同一个 release fence 的临时导入（同一个 swapchain.cpp），
-//    给不出比队列空闲更多的证据；而且对已退役交换链的 present，loader 根本不导入这个 fence（自己 sync_wait 后回 OUT_OF_DATE），
-//    等它会卡死。所以不启用（只在初始化时记录是否列出）。
-// 因此：队列空闲之后，销毁这块表面的全部交换链句柄与它们的 present 信号量（当前的与清单里的），清空清单，最后销毁表面。
 // The surface goes away with its window (window destroyed: detach / surface lost / new window: attach / the retire list
 // is full and a rebuild cannot wait): every swapchain of it must be destroyed before vkDestroySurfaceKHR
 // (VUID-vkDestroySurfaceKHR-surface-01266), and no newer swapchain will present on this surface, so the evidence above
@@ -703,23 +668,20 @@ static void screen_release(void) {
 #else
 #define SCREEN_WINDOW NULL
 #endif
-// 前端：刚回前台 / 刚重建表面，头几秒慢帧不算 GPU 吃紧（hle_oe.c）。GPU 夹具不链宿主，允许缺失。
 // Front end: just back / surface just rebuilt; slow frames in the next seconds are not GPU pressure (hle_oe.c). The
 // GPU fixtures do not link the host, so it may be absent.
 __attribute__((weak)) void dm_3d_scale_resumed(void);
-static uint64_t screen_retry_ns;   // 上次重建失败的时刻：失败后的重试至多 4 次 / 秒，不在每帧上空等队列 | last failed rebuild: retries at most 4 per second, never idling the queue every frame
-static uint64_t screen_rebuilt_ns; // 上次重建成功的时刻：驱动一直报过期时，相邻两次重建至少隔 250 ms | last successful rebuild: with a driver that keeps reporting out of date, rebuilds stay at least 250 ms apart
+// Last failed rebuild: retries at most 4 per second, never idling the queue every frame
+static uint64_t screen_retry_ns;
+// Last successful rebuild: with a driver that keeps reporting out of date, rebuilds stay at least 250 ms apart
+static uint64_t screen_rebuilt_ns;
 static void screen_surface_lost(const char *where);
-// 窗口此刻的原始尺寸（ANativeWindow_getWidth/Height，走 window->query，可能进 producer；耗时计入 wsi_wq_*）。给不出返回 0。
-// 与上次建链时记下的原始窗口尺寸比（screen_built_w/h），不与夹过 min/max 的交换链尺寸比：夹值用的是上次建链时的表面能力，
-// 窗口超出旧上限时（安卓 loader 的上限 = max(4096, 当时的 currentExtent)）用夹过的值比较会永远「相同」而不再重建（审查第 2 轮
-// Opus M3）；比原始尺寸则重建一次、建链时重读表面能力。
 // The window's raw size at this moment (ANativeWindow_getWidth/Height go through window->query and may reach the
 // producer; the time is counted in wsi_wq_*). Returns 0 when the window cannot give one. It is compared with the raw
 // window size recorded at the last build (screen_built_w/h), not with the clamped swapchain size: the clamp uses the
 // surface capabilities of the last build, and once the window outgrows that old maximum (the Android loader reports
-// max(4096, the currentExtent of that moment)) a clamped comparison would always look "equal" and never rebuild
-// (review round 2 Opus M3); comparing raw sizes rebuilds once and re-reads the capabilities while building.
+// max(4096, the currentExtent of that moment)) a clamped comparison would always look "equal" and never rebuild;
+// comparing raw sizes rebuilds once and re-reads the capabilities while building.
 static int screen_window_size(int *w, int *h) {
 #ifdef __ANDROID__
     if (!screen_window) return 0;
@@ -731,17 +693,14 @@ static int screen_window_size(int *w, int *h) {
     (void)w; (void)h; return 0;
 #endif
 }
-// 窗口原始尺寸与上次建链时不同（或上次建链时窗口给不出尺寸）。| The raw window size differs from the last build (or the window gave none then).
+// The raw window size differs from the last build (or the window gave none then).
 static int screen_window_changed(int *known, int *w, int *h) {
     *known = screen_window_size(w, h);
     return *known && (*w != screen_built_w || *h != screen_built_h);
 }
-// 上次建链时窗口尺寸被表面能力夹过（审查第 3 轮 Codex I2）：原始尺寸没变也不等于已经收敛——能力可能之后才跟上。重读表面能力，
-// 按同一规则夹出来的尺寸已不等于交换链 → 1（该重建）。读不到能力（表面丢失等）→ 0，交给别的路径处理。
-// The window size was clamped by the surface capabilities at the last build (review round 3 Codex I2): an unchanged raw
-// size does not mean the extent has converged, the capabilities may catch up later. Re-read them; if the same rule now
-// gives an extent different from the swapchain -> 1 (rebuild). Capabilities unavailable (surface lost etc.) -> 0, other
-// paths handle that.
+// The window size was clamped by the surface capabilities at the last build: an unchanged raw size does not mean the
+// extent has converged, the capabilities may catch up later. Re-read them; if the same rule then gives an extent
+// different from the swapchain -> 1 (rebuild). Capabilities unavailable (surface lost etc.) -> 0, other paths handle that.
 static int screen_clamp_moved(int w, int h) {
     if (!screen_built_clamped || !surface || w <= 0 || h <= 0) return 0;
     VkSurfaceCapabilitiesKHR cap; if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, surface, &cap) != VK_SUCCESS) return 0;
@@ -752,12 +711,6 @@ static int screen_clamp_moved(int w, int h) {
     if (cap.maxImageExtent.height && e.height > cap.maxImageExtent.height) e.height = cap.maxImageExtent.height;
     return e.width != screen_extent.width || e.height != screen_extent.height;
 }
-// 在当前表面上重建交换链（同一窗口改了尺寸 / 过期 / 范围变化 / 上次没建成）。调用方独占交换链（同 screen_build_chain），
-// 且手里没有已取到的图像。旧交换链以 oldSwapchain 串接后进退役清单，不在这里销毁、也不再等队列空闲：
-// 引用交换链图像的只有出图的 blit，帧开头已等它完成（mtl_present）；呈现引擎对旧图像与信号量的使用由退役证据保证。
-// dirty 是触发这次重建的原因位。窗口尺寸与交换链相同、又不是过期 / 失败重试 → 不重建（回前台时系统常连发同尺寸的改尺寸回调；
-// Opus 第 1 轮 M2）。真的换了尺寸不受 250 ms 成功重建限速（只防驱动一直报过期）；被限速推迟时原因位原样留着（Opus 第 1 轮 M1）。
-// 成功返回 1；表面丢失转 screen_surface_lost；其余可恢复的失败留 screen_dirty 稍后重试。
 // Rebuild the swapchain on the current surface (same window resized / out of date / extent changed / the last
 // attempt failed). The caller owns the swapchain exclusively (as for screen_build_chain) and holds no acquired image.
 // The old swapchain is chained through oldSwapchain and goes on the retire list; it is neither destroyed here nor is
@@ -765,10 +718,10 @@ static int screen_clamp_moved(int w, int h) {
 // has already waited for (mtl_present), and the presentation engine's use of the old images and semaphores is covered
 // by the retirement evidence. dirty holds the reason bits. A window the same size as the swapchain, when the reason is
 // neither out of date nor a retry after a failure, is not rebuilt (on return to the foreground the system often sends
-// same-size resize callbacks; Opus round 1 M2). A real size change is exempt from the 250 ms success-rebuild throttle
-// (which only guards against a driver that keeps reporting out of date); when a throttle defers the rebuild the reason
-// bits are kept as they are (Opus round 1 M1). Returns 1 on success; a lost surface goes to screen_surface_lost; any
-// other recoverable failure leaves screen_dirty set for a later retry.
+// same-size resize callbacks). A real size change is exempt from the 250 ms success-rebuild throttle (which only guards
+// against a driver that keeps reporting out of date); when a throttle defers the rebuild the reason bits are kept as they
+// are. Returns 1 on success; a lost surface goes to screen_surface_lost; any other recoverable failure leaves
+// screen_dirty set for a later retry.
 static int screen_recreate(const char *why, int dirty) {
     if (!surface || !device) return 0;
     uint64_t start = dm_android_clock_ns(CLOCK_MONOTONIC);
@@ -778,18 +731,13 @@ static int screen_recreate(const char *why, int dirty) {
         if (++wsi_same_size_skips <= 8 || !(wsi_same_size_skips % 64)) LOG("[vulkan-wsi] rebuild skipped reason=%s: window %dx%d is the size the swapchain was built for (skip #%llu)", why, ww, wh, (unsigned long long)wsi_same_size_skips);
         return 0;
     }
-    // 退役清单积压（审查第 2 轮 Codex C1 / Opus M1）：当前交换链还能出图、这次又不是过期，就先不建——保留原因位，下一帧再看；
-    // 当前链照常出图（合成器缩放到窗口），它的退役证据至多 count+1 次成功取图内就到、清单清空后再建。还有当前链、又是过期（非建不可）
-    // 而清单已满：不再串接（那会让清单超过上限），改走表面丢失：screen_release 按平台证据释放这块表面的全部交换链，下一帧在同一窗口上重建。
-    // 没有当前链时不串接任何旧链（oldSwapchain = NULL），不会往清单里加东西，直接重建。
-    // Retire list backlog (review round 2 Codex C1 / Opus M1): while the current swapchain can still present and the
-    // reason is not out of date, do not build yet: keep the reason bits and look again next frame; the current chain
-    // keeps presenting (the compositor scales it to the window), its retirement evidence arrives within count+1
-    // successful acquires and the rebuild happens once the list is reclaimed. With a current swapchain, out of date
-    // (cannot wait) and a full list: do not chain (that would overrun the list) but take the surface-lost path:
-    // screen_release frees every swapchain of this surface on the platform evidence and the next frame rebuilds on the
-    // same window. Without a current swapchain nothing is chained (oldSwapchain = NULL), nothing joins the list, and the
-    // rebuild goes ahead.
+    // Retire list backlog: while the current swapchain can still present and the reason is not out of date, do not build
+    // yet: keep the reason bits and look again next frame; the current chain keeps presenting (the compositor scales it
+    // to the window), its retirement evidence arrives within count+1 successful acquires and the rebuild happens once the
+    // list is reclaimed. With a current swapchain, out of date (cannot wait) and a full list: do not chain (that would
+    // overrun the list) but take the surface-lost path: screen_release frees every swapchain of this surface on the
+    // platform evidence and the next frame rebuilds on the same window. Without a current swapchain nothing is chained
+    // (oldSwapchain = NULL), nothing joins the list, and the rebuild goes ahead.
     if (swapchain && screen_retire_count >= SCREEN_RETIRE_DEFER && !(dirty & SCREEN_DIRTY_OUT_OF_DATE)) {
         if (++wsi_retire_deferred <= 8 || !(wsi_retire_deferred % 64)) LOG("[vulkan-wsi] rebuild deferred reason=%s: %u retired swapchains still wait for evidence, presenting to the current %ux%u swapchain meanwhile (deferral #%llu)", why, screen_retire_count, screen_extent.width, screen_extent.height, (unsigned long long)wsi_retire_deferred);
         atomic_fetch_or(&screen_dirty, dirty ? dirty : SCREEN_DIRTY_EXTENT); return 0;
@@ -799,14 +747,13 @@ static int screen_recreate(const char *why, int dirty) {
         LOG("[vulkan-wsi] 【红】retire list full (%u entries) and the rebuild cannot wait (reason=%s, overflow #%llu): releasing the surface instead of chaining", screen_retire_count, why, (unsigned long long)wsi_retire_overflow);
         screen_surface_lost("retire list full"); return 0;
     }
-    // 失败后的重试至多 4 次 / 秒；驱动一直报过期时相邻两次成功重建也至少隔 250 ms，真的换了尺寸（change）不受后一条限制。
     // Retries after a failure at most 4 per second; with a driver that keeps reporting out of date, two successful
     // rebuilds also stay 250 ms apart, which a real size change (change) is exempt from.
     if ((screen_retry_ns && start - screen_retry_ns < 250000000ull) || (!change && screen_rebuilt_ns && start - screen_rebuilt_ns < 250000000ull)) { if (dirty) atomic_fetch_or(&screen_dirty, dirty); return 0; }
     VkExtent2D before = screen_extent;
     screen_chain fresh; int consumed = 0;
     VkResult result = screen_build_chain(SCREEN_WINDOW, swapchain, &consumed, &fresh);
-    // 传进去的旧交换链按规范已经退役（建成与否都一样）：进退役清单，不能再出图。| The old swapchain passed in is retired by the spec (success or not): onto the retire list, never presented again.
+    // The old swapchain passed in is retired by the spec (success or not): onto the retire list, never presented again.
     if (consumed) { screen_chain old = screen_take_chain(); screen_retire_chain(&old); }
     uint64_t took = dm_android_clock_ns(CLOCK_MONOTONIC) - start;
     if (result == VK_SUCCESS) {
@@ -824,7 +771,6 @@ static int screen_recreate(const char *why, int dirty) {
             consumed ? "retired" : "kept", swapchain ? "still presenting to the old swapchain" : "no presenting until it succeeds");
     return 0;
 }
-// 表面丢失（窗口被系统放弃）：交换链与表面一并释放，停止出图；之后要么前端给新窗口（attach），要么从同一窗口重建（screen_surface_retry）。
 // Surface lost (the window was abandoned by the system): release the swapchain and the surface together and stop
 // presenting; afterwards either the front end hands over a new window (attach) or it is rebuilt from the same window
 // (screen_surface_retry).
@@ -834,7 +780,6 @@ static void screen_surface_lost(const char *where) {
     screen_lost_retry_ns = 0;
 }
 #ifdef __ANDROID__
-// 游戏线程、帧开头、没有表面但前端还给着窗口：至多每秒试一次在同一窗口上重建表面与交换链。新窗口的那条路是 attach。
 // Game thread, top of a frame, no surface while the front end still holds a window: at most once a second try to
 // rebuild the surface and swapchain on that same window. A new window goes through attach.
 static void screen_surface_retry(void) {
@@ -842,7 +787,6 @@ static void screen_surface_retry(void) {
     uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
     if (screen_lost_retry_ns && now - screen_lost_retry_ns < 1000000000ull) return;
     screen_lost_retry_ns = now;
-    // 新表面与交换链按此刻的窗口尺寸建：丢失前后攒下的重建标记与节流作废（之后再来的改尺寸照样会重新标记），免得刚建好又拆一次或被推迟。
     // The new surface and swapchain are built at the window size of this moment: marks and throttles gathered before /
     // during the loss are void (a resize arriving after this marks again), so the fresh swapchain is neither torn down
     // right away nor deferred.
@@ -858,8 +802,6 @@ static void screen_surface_retry(void) {
     if (dm_3d_scale_resumed) dm_3d_scale_resumed();
 }
 #endif
-// SUBOPTIMAL：图像照常出（取到的图像必须提交并出图），再看表面范围是不是变了。安卓在 currentTransform 是 90/270 而交换链用
-// IDENTITY 时每帧都报 SUBOPTIMAL（我们故意不预旋转），所以「范围没变」就照旧出图、不重建；查范围至多每 60 帧一次。
 // SUBOPTIMAL: the image is presented as usual (an acquired image must be submitted and presented), then check whether
 // the surface extent changed. Android reports SUBOPTIMAL on every frame while currentTransform is 90/270 and the
 // swapchain uses IDENTITY (we deliberately do not pre-rotate), so an unchanged extent keeps presenting without a
@@ -869,7 +811,7 @@ static void screen_note_suboptimal(const char *where) {
     screen_caps_checked = presents;
     VkSurfaceCapabilitiesKHR cap; VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, surface, &cap);
     if (result != VK_SUCCESS) { if (!wsi_recoverable(result)) die("Vulkan surface capabilities after SUBOPTIMAL: %d", result); atomic_fetch_or(&screen_dirty, SCREEN_DIRTY_RETRY); return; }
-    // 与建链同一规则：先看窗口原始尺寸（与上次建链时比），窗口给不出才看 currentExtent。| The build rule: the raw window size first (against the last build), currentExtent only when the window cannot give one.
+    // The build rule: the raw window size first (against the last build), currentExtent only when the window cannot give one.
     VkExtent2D extent = cap.currentExtent; int known = 0, ww = 0, wh = 0, moved = screen_window_changed(&known, &ww, &wh);
     if (known) extent = (VkExtent2D){(uint32_t)ww, (uint32_t)wh};
     else if (extent.width == UINT32_MAX) return;
@@ -887,8 +829,6 @@ static void wsi_count(uint64_t *counts, VkResult result) {
 }
 
 #ifdef __ANDROID__
-// 单独构建的 GPU 夹具（build_gpu_fixtures.py）只链到本文件，不含宿主图形层，所以这里允许 dm_gfx_suspend 缺失：
-// 没有它就不挂起 —— 夹具里也没有并发出图，不存在要防的竞争。
 // The standalone GPU fixtures (build_gpu_fixtures.py) link only this file and not the host graphics layer, so
 // dm_gfx_suspend is allowed to be absent: without it we simply do not suspend, and the fixtures have no concurrent
 // presenting to race against anyway.
@@ -896,26 +836,20 @@ __attribute__((weak)) void dm_gfx_suspend(int on);
 /* Presents come from the translation thread, and from the overlay thread while the game is paused under the menu. The
    overlay thread is outside dm_gfx_suspend's gate, so the window callbacks also take this lock to change the swapchain. */
 static pthread_mutex_t present_serial = PTHREAD_MUTEX_INITIALIZER;
-// 后端是不是已经建好表面与交换链（初始化完成）。初始化进行中调用会等它做完（screen_lock）。
 // Whether the backend has finished building its surface and swapchain (initialisation done). A call during
 // initialisation waits for it to finish (screen_lock).
 static int screen_backend_live(void) {
     pthread_mutex_lock(&screen_lock); int live = screen_live && instance && device; pthread_mutex_unlock(&screen_lock);
     return live;
 }
-// 窗口销毁 / 新建时由前端调用。窗口销毁不再等于退出进程：安卓在 Activity 停止时必然销毁窗口，
-// 保留进程才能在回到前台时接着玩；真正的退出走 destroyed() 那条路。
-// Called by the front end when the window goes away or appears. A destroyed window no longer means the process
-// ends: Android always destroys it when the activity stops, and keeping the process is what lets play resume on
-// return. A real exit goes through the destroyed() path.
+// Called by the front end when the window goes away or appears. A destroyed window does not end the process: Android
+// always destroys it when the activity stops, and keeping the process is what lets play resume on return. A real exit
+// goes through the destroyed() path.
 void mtl_screen_detach(void) {
-    // 这里**不**调 mtl_init：那会在回调线程（UI 线程）上把整个 Vulkan 后端初始化起来。
-    // 后端只由游戏线程初始化；还没初始化就直接返回 —— 初始化会自己等窗口（dm_android_window_wait）。初始化进行中则等它建完再拆。
     // mtl_init is deliberately not called here: it would initialise the whole Vulkan backend on the callback
     // thread (the UI thread). Only the game thread initialises the backend; when it has not started, return — it
     // waits for a window itself (dm_android_window_wait). When it is in progress, wait for it to finish, then tear down.
     if (!screen_backend_live()) return;
-    // 自己再挂起一次：window_destroyed 与 paused 的先后顺序不保证，挂起是幂等的，先挂起来才不会与出图线程抢。
     // Suspend here as well: the order of window_destroyed and paused is not guaranteed, suspending is idempotent,
     // and doing it first is what keeps this from racing the presenting thread.
     if (dm_gfx_suspend) dm_gfx_suspend(1);
@@ -925,24 +859,20 @@ void mtl_screen_detach(void) {
     LOG("[android] 窗口销毁：表面与交换链已释放，进程保留");
 }
 void mtl_screen_attach(struct ANativeWindow *window) {
-    // 同上：不在回调线程上初始化后端；后端还没活时，初始化会用前端此刻的窗口自己建表面与交换链。
     // Same as above: never initialise the backend on the callback thread; when it is not live yet, initialisation
     // builds the surface and swapchain itself from the front end's current window.
     if (!window || !screen_backend_live()) return;
-    // 先挂起再动交换链，与 detach 同理：安卓给窗口的时机在 onResume **之后**（真机日志实测的顺序是
-    // 图形恢复 → 窗口重建），也就是轮到重建时游戏线程已经放开了，正可能在某次出图里读 screen_images /
-    // swapchain。挂起会把新进入的出图挡住、并等在途那次退出（gfx_enter/gfx_leave），这里才是唯一安全的点。
-    // 后面由前端按"当前是否在前台"决定何时放开 —— 只能由它决定，因为这个回调可能早于或晚于 onResume。
     // Suspend before touching the swapchain, for the same reason as in detach: Android hands the window over
-    // *after* onResume (measured on device: 图形恢复 then 窗口重建), so by the time this runs the game thread is
-    // already free and may be inside a present reading screen_images / swapchain. Suspending blocks new entries
+    // *after* onResume (measured on device: the graphics resume, then the window rebuild), so by the time this runs the
+    // game thread is already free and may be inside a present reading screen_images / swapchain. Suspending blocks new entries
     // and waits out the one in flight (gfx_enter/gfx_leave), which is what makes this point safe. Releasing it is
     // left to the front end, which alone knows whether the app is in the foreground: this callback can arrive
     // either side of onResume.
     if (dm_gfx_suspend) dm_gfx_suspend(1);
     pthread_mutex_lock(&present_serial); pthread_mutex_lock(&screen_lock);
     screen_release();
-    screen_bind_window(window); atomic_store(&screen_dirty, 0); screen_retry_ns = 0; screen_rebuilt_ns = 0; screen_caps_checked = 0;   // 新窗口：节流与范围检查从头算 | new window: throttles and the extent check start afresh
+    // New window: throttles and the extent check start afresh
+    screen_bind_window(window); atomic_store(&screen_dirty, 0); screen_retry_ns = 0; screen_rebuilt_ns = 0; screen_caps_checked = 0;
     VkAndroidSurfaceCreateInfoKHR si = {.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .window = window};
     VkResult result = vkCreateAndroidSurfaceKHR(instance, &si, NULL, &surface);
     if (result != VK_SUCCESS) {
@@ -953,24 +883,24 @@ void mtl_screen_attach(struct ANativeWindow *window) {
         screen_chain fresh;
         if ((result = screen_build_chain(window, VK_NULL_HANDLE, NULL, &fresh)) == VK_SUCCESS) screen_install_chain(&fresh);
         else {
-            // 表面在，交换链暂时建不了（窗口 0 尺寸等）：留给游戏线程在帧开头重试。| Surface present, swapchain not yet buildable (zero-sized window etc.): the game thread retries at the top of a frame.
+            // Surface present, swapchain not yet buildable (zero-sized window etc.): the game thread retries at the top of
+            // a frame.
             atomic_fetch_or(&screen_dirty, SCREEN_DIRTY_RETRY);
             LOG("[vulkan-wsi] 【红】new window: swapchain creation deferred result=%d; the game thread retries", result);
         }
     }
     int ready = surface && swapchain;
     pthread_mutex_unlock(&screen_lock); pthread_mutex_unlock(&present_serial);
-    // 只在表面与交换链都建好时才说「已就绪」；否则如实记「待重试」，真正恢复以之后成功出图为准（Codex 第 1 轮 M2）。
     // Say "ready" only when both the surface and the swapchain exist; otherwise log "pending" as it is, real recovery is
-    // proven by a later successful present (Codex round 1 M2).
+    // proven by a later successful present.
     if (ready) LOG("[android] 窗口重建：新的表面与交换链已就绪");
     else LOG("[android] 窗口重建：新窗口已绑定，表面 %s、交换链 %s，由游戏线程在帧开头重试", surface ? "已建" : "未建", swapchain ? "已建" : "未建");
 }
 #endif
 
 static void initialize(void) {
-    bindless_on();   /* TOTK_VK_BINDLESS: its shader cache, before anything reads DM_VK_SHADERS */
-    // 与原 NVN 后端使用相同默认状态；显式指令随后覆盖，不能改写合法深度范围。
+    /* TOTK_VK_BINDLESS: its shader cache, before anything reads DM_VK_SHADERS */
+    bindless_on();
     // Match the original NVN defaults; explicit commands override them without rewriting legal depth ranges.
     state.mask.mask=UINT32_MAX;state.depth_range=(p_depth_range){0,1};
     state.color=(color_st){0,NVN_LOGIC_OP_COPY,NVN_ALPHA_FUNC_ALWAYS};
@@ -979,15 +909,12 @@ static void initialize(void) {
     for(unsigned i=0;i<8;i++)state.blend[i]=(blend_st){i,NVN_BLEND_FUNC_ONE,NVN_BLEND_FUNC_ZERO,NVN_BLEND_FUNC_ONE,NVN_BLEND_FUNC_ZERO,NVN_BLEND_EQUATION_ADD,NVN_BLEND_EQUATION_ADD};
     for(unsigned i=0;i<2;i++)state.stencil_faces[i].compareMask=state.stencil_faces[i].writeMask=255;
     LOG("[vulkan-cpu-phases] record_phases=%s (DM_VK_CPU_PHASES=1 / cpu_phases=1 turns per-draw phase timing on; present-path phases are always timed)",dm_cpu_record_phases_enabled()?"on":"off");
-    // 表面 / 交换链的建立与窗口回调互斥（screen_lock，见其说明）：初始化期间到来的 attach / detach 等这里建完。
-    // 窗口在初始化前就没了（启动途中切后台）：先不拿锁等前端给新窗口，免得建出一个没有交换链扩展的无窗口设备，回来时无法出图。
     // Building the surface / swapchain excludes the window callbacks (screen_lock, see its note): an attach / detach
     // arriving during initialisation waits until this is done. When the window is already gone before initialisation
     // (backgrounded during start-up), wait without the lock for the front end's next window; otherwise a windowless
     // device without the swapchain extension would be created and nothing could be presented on return.
     pthread_mutex_lock(&screen_lock);
 #ifdef __ANDROID__
-    // 窗口连同一个引用一起取（dm_android_window_acquire）；初始化完交给 screen_window（不再另取引用），失败退回系统驱动时沿用同一块。
     // The window is taken together with a reference (dm_android_window_acquire); after initialisation it is handed to
     // screen_window (no second reference), and a fallback to the system driver reuses the same window.
     ANativeWindow *window = NULL;
@@ -995,7 +922,7 @@ static void initialize(void) {
         void *front_metal_layer(void);
         for (;;) {
             if (dm_android_window_acquire) window = dm_android_window_acquire();
-            else if ((window = front_metal_layer())) ANativeWindow_acquire(window);   // 别的前端（无窗口时为 NULL）| other front ends (NULL without a window)
+            else if ((window = front_metal_layer())) ANativeWindow_acquire(window);
             if (window || !dm_android_window_wait) break;
             pthread_mutex_unlock(&screen_lock); LOG("[vulkan-wsi] no window at backend initialisation: waiting for the front end's next window");
             void *ready = dm_android_window_wait(); pthread_mutex_lock(&screen_lock); if (!ready) break; }
@@ -1004,7 +931,8 @@ static void initialize(void) {
 driver_retry:;
 #endif
     VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "D2R NVN Vulkan", .apiVersion = VK_API_VERSION_1_1};
-    if (lsfg_device_wanted()) app.apiVersion = VK_API_VERSION_1_3;   /* LSFG frame generation: synchronization2, SPIR-V 1.6 */
+    /* LSFG frame generation: synchronization2, SPIR-V 1.6 */
+    if (lsfg_device_wanted()) app.apiVersion = VK_API_VERSION_1_3;
     VkInstanceCreateInfo info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app};
 #ifdef __ANDROID__
     const char *extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_ANDROID_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
@@ -1099,7 +1027,6 @@ driver_retry:;
     vkGetPhysicalDeviceProperties2(physical,&properties2);properties=properties2.properties;gpu_limits=properties.limits;gpu_subgroup_size=subgroup.subgroupSize;
     gpu_vs_subgroups=(subgroup.supportedStages&VK_SHADER_STAGE_VERTEX_BIT)&&(subgroup.supportedOperations&VK_SUBGROUP_FEATURE_BALLOT_BIT);
 #ifdef __ANDROID__
-    // 缓存按明确选择并已验证支持的shader大小检查；真实物理缺省仍单独记录。
     // Check caches against the explicitly selected and supported shader size; preserve actual physical defaults separately.
     gpu_subgroup_size=vk_api.effective_shader_subgroup_size;
 #endif
@@ -1108,8 +1035,6 @@ driver_retry:;
     for(uint32_t i=0;i<memory_properties.memoryTypeCount;i++)LOG("[vulkan] memory type %u flags=%#x heap=%u",i,memory_properties.memoryTypes[i].propertyFlags,memory_properties.memoryTypes[i].heapIndex);
     LOG("Android NVN Vulkan: %s API %u.%u BC=%u ASTC=%u", properties.deviceName, VK_VERSION_MAJOR(properties.apiVersion), VK_VERSION_MINOR(properties.apiVersion), features.textureCompressionBC, features.textureCompressionASTC_LDR);
     LOG("[vulkan] subgroup size=%u stages=%#x operations=%#x quad_all=%u",subgroup.subgroupSize,subgroup.supportedStages,subgroup.supportedOperations,subgroup.quadOperationsInAllStages);
-    // 只记录、不启用 VK_EXT_swapchain_maintenance1：安卓 loader 的 present fence 就是同一个 release fence 的临时导入，对已退役交换链的
-    // present 还不导入（见 screen_release 的平台证据），给不出比队列空闲更多的证据。
     // VK_EXT_swapchain_maintenance1 is logged only, not enabled: the Android loader's present fence is a temporary import
     // of the same release fence and is not imported at all for a present to a retired swapchain (see the platform
     // evidence at screen_release), so it gives no more evidence than the queue idle.
@@ -1126,15 +1051,17 @@ driver_retry:;
         LOG("[vulkan-wsi] device extensions=%u VK_EXT_swapchain_maintenance1=%s (not enabled; same-surface rebuilds retire on re-acquire evidence, surface teardown on queue idle)", ne, maintenance1 ? "listed" : "absent"); }
     float priority = 1;
     VkDeviceQueueCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = family, .queueCount = 1, .pQueuePriorities = &priority};
-    VkPhysicalDeviceFeatures enable = {.textureCompressionBC = features.textureCompressionBC, .textureCompressionASTC_LDR = features.textureCompressionASTC_LDR, .independentBlend = features.independentBlend, .shaderImageGatherExtended = features.shaderImageGatherExtended, .fragmentStoresAndAtomics = features.fragmentStoresAndAtomics, .vertexPipelineStoresAndAtomics = features.vertexPipelineStoresAndAtomics, .shaderStorageImageReadWithoutFormat = features.shaderStorageImageReadWithoutFormat, .shaderStorageImageWriteWithoutFormat = features.shaderStorageImageWriteWithoutFormat, .occlusionQueryPrecise = features.occlusionQueryPrecise, .largePoints = features.largePoints,   /* point sizes above 1 (the grass-removal stamps) */
-        /* TOTK: Ryujinx-translated shaders and NVN state use these where the device has them */
+    /* largePoints: point sizes above 1 (the grass-removal stamps) */
+    VkPhysicalDeviceFeatures enable = {.textureCompressionBC = features.textureCompressionBC, .textureCompressionASTC_LDR = features.textureCompressionASTC_LDR, .independentBlend = features.independentBlend, .shaderImageGatherExtended = features.shaderImageGatherExtended, .fragmentStoresAndAtomics = features.fragmentStoresAndAtomics, .vertexPipelineStoresAndAtomics = features.vertexPipelineStoresAndAtomics, .shaderStorageImageReadWithoutFormat = features.shaderStorageImageReadWithoutFormat, .shaderStorageImageWriteWithoutFormat = features.shaderStorageImageWriteWithoutFormat, .occlusionQueryPrecise = features.occlusionQueryPrecise, .largePoints = features.largePoints,
+        /* Ryujinx-translated shaders and NVN state use these where the device has them */
         .depthClamp = features.depthClamp, .depthBiasClamp = features.depthBiasClamp, .samplerAnisotropy = features.samplerAnisotropy,
         .shaderClipDistance = features.shaderClipDistance, .shaderCullDistance = features.shaderCullDistance, .imageCubeArray = features.imageCubeArray,
         .shaderInt16 = features.shaderInt16, .shaderInt64 = features.shaderInt64, .sampleRateShading = features.sampleRateShading,
         .fillModeNonSolid = features.fillModeNonSolid, .multiViewport = features.multiViewport, .drawIndirectFirstInstance = features.drawIndirectFirstInstance,
         .dualSrcBlend = features.dualSrcBlend, .logicOp = features.logicOp, .depthBounds = features.depthBounds,
         .shaderStorageImageExtendedFormats = features.shaderStorageImageExtendedFormats, .geometryShader = features.geometryShader};
-    {   /* FSR frame interpolation: formatless and extended storage images, and subgroup arithmetic and quads in compute */
+    /* FSR frame interpolation: formatless and extended storage images, and subgroup arithmetic and quads in compute */
+    {
         const VkSubgroupFeatureFlags need = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT;
         fsr_device_ok = features.shaderStorageImageExtendedFormats && features.shaderStorageImageReadWithoutFormat && features.shaderStorageImageWriteWithoutFormat &&
             (subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) && (subgroup.supportedOperations & need) == need && subgroup.subgroupSize >= 32;
@@ -1145,15 +1072,17 @@ driver_retry:;
             if ((fp.optimalTilingFeatures & formats[i].need) != formats[i].need) fsr_device_ok = 0; }
         if (getenv("TOTK_FSRFG_NONE")) fsr_device_ok = 0;
         LOG("[fsrfg] %s on this device (subgroup size %u)", fsr_device_ok ? "available" : "not available", subgroup.subgroupSize); }
-    if (getenv("TOTK_VK_DRAWSTATS")) enable.pipelineStatisticsQuery = features.pipelineStatisticsQuery;   /* nvn_vulkan_drawstats.inc */
+    if (getenv("TOTK_VK_DRAWSTATS")) enable.pipelineStatisticsQuery = features.pipelineStatisticsQuery;
     VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qi, .pEnabledFeatures = &enable};
-    /* TOTK: Ryujinx's SPIR-V declares DrawParameters (base vertex / instance) */
+    /* Ryujinx's SPIR-V declares DrawParameters (base vertex / instance) */
     VkPhysicalDeviceShaderDrawParametersFeatures draw_parameters = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES, .shaderDrawParameters = VK_TRUE};
     di.pNext = &draw_parameters;
-    const char *device_extensions[20]; unsigned nde = 0;   /* swapchain, display timing, provoking vertex, external memory / dma-buf, robustness2 (LSFG) */
+    const char *device_extensions[20]; unsigned nde = 0;
     if (surface) device_extensions[nde++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    if (surface && pace_ext) device_extensions[nde++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;   /* frame-generation pacing (nvn_vulkan_pacing.inc) */
-    if (exp_env("firstvertex")) provoking_last = 0;   /* experiment: Vulkan's default */
+    /* frame-generation pacing (nvn_vulkan_pacing.inc) */
+    if (surface && pace_ext) device_extensions[nde++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
+    /* experiment: Vulkan's default */
+    if (exp_env("firstvertex")) provoking_last = 0;
     VkPhysicalDeviceProvokingVertexFeaturesEXT provoking = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT, .provokingVertexLast = VK_TRUE};
     if (provoking_last) { device_extensions[nde++] = VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME; provoking.pNext = (void *)di.pNext; di.pNext = &provoking; }
     LOG("[vulkan] provoking vertex: %s", provoking_last ? "last (VK_EXT_provoking_vertex)" : "first (extension absent: flat varyings may come from the wrong vertex)");
@@ -1166,7 +1095,8 @@ driver_retry:;
         eds2.extendedDynamicState2LogicOp = eds2.extendedDynamicState2PatchControlPoints = VK_FALSE;
         if (ext_eds) { device_extensions[nde++] = VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME; eds.pNext = (void *)di.pNext; di.pNext = &eds; }
         if (ext_eds2) { device_extensions[nde++] = VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME; eds2.pNext = (void *)di.pNext; di.pNext = &eds2; } }
-    {   const char *e = getenv("TOTK_VK_MEMPROBE"), *z = getenv("TOTK_VK_ZEROCOPY");   /* dma-buf export: zero-copy pools and their probe */
+    /* dma-buf export: zero-copy pools and their probe */
+    {   const char *e = getenv("TOTK_VK_MEMPROBE"), *z = getenv("TOTK_VK_ZEROCOPY");
         if (!((e && atoi(e)) || (z && atoi(z))) || !ext_memory_fd || !ext_dma_buf) ext_memory_fd = ext_dma_buf = 0;
         else { device_extensions[nde++] = VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME; device_extensions[nde++] = VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME; } }
     /* LSFG frame generation runs on this device (nvn_vulkan_lsfg.inc) and needs these (individual structs: the subgroup
@@ -1195,7 +1125,8 @@ driver_retry:;
         if (ext_robustness2 && !(e && !atoi(e))) {
             VkPhysicalDeviceFeatures2 query = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &ubo_robust}; vkGetPhysicalDeviceFeatures2(physical, &query);
             if (ubo_robust.robustBufferAccess2) {
-                if (lsfg_device_ok) lsfg_robustness2.robustBufferAccess2 = VK_TRUE;   /* the robustness2 struct is already in the chain */
+                /* the robustness2 struct is already in the chain */
+                if (lsfg_device_ok) lsfg_robustness2.robustBufferAccess2 = VK_TRUE;
                 else { ubo_robust = (VkPhysicalDeviceRobustness2FeaturesEXT){.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT, .pNext = (void *)di.pNext, .robustBufferAccess2 = VK_TRUE};
                        di.pNext = &ubo_robust; device_extensions[nde++] = VK_EXT_ROBUSTNESS_2_EXTENSION_NAME; }
                 ubo_robust_ok = 1; } }
@@ -1248,13 +1179,12 @@ driver_retry:;
     VK_CHECK(create_result);
 #ifdef __ANDROID__
     if(!dm_vk_driver_load_device(&vk_api,device)){if(initialize_driver_fallback(dm_vk_driver_error(&vk_api)))goto driver_retry;die("Vulkan device dispatch: %s",dm_vk_driver_error(&vk_api));}
-    // 这里之后不再有 driver_retry：驱动身份已确认且是最终的。按实际 driverID 选择离线驱动变体
-    // （nvn_vulkan_shader_variant.inc），必须在管线缓存初始化（身份含变体）与任何着色器加载之前。
     // No driver_retry after this point: the driver identity is verified and final. Select the offline driver variant
     // by the actual driverID (nvn_vulkan_shader_variant.inc), before the pipeline cache (whose identity includes the
     // variant) and before any shader is loaded.
     shader_variant_init(vk_api.actual_driver_id);
-    bindless_create();   /* TOTK_VK_BINDLESS: the global texture arrays, before any pipeline layout */
+    /* TOTK_VK_BINDLESS: the global texture arrays, before any pipeline layout */
+    bindless_create();
 #endif
     vkGetDeviceQueue(device,family,0,&queue);queue_family=family;
     if (ext_eds) {
@@ -1291,36 +1221,36 @@ driver_retry:;
         VkResult made = screen_build_chain(NULL, VK_NULL_HANDLE, NULL, &fresh);
 #endif
         if (made == VK_SUCCESS) screen_install_chain(&fresh);
-        // 可恢复的失败（窗口 0 尺寸等）：交给游戏线程在第一次出图的帧开头重试；其余失败 screen_build_chain 已 die。
         // A recoverable failure (zero-sized window etc.) is retried by the game thread at the top of its first present;
-        // any other failure already died inside screen_build_chain.
+        // any other failure dies inside screen_build_chain.
         else { atomic_fetch_or(&screen_dirty, SCREEN_DIRTY_RETRY); LOG("[vulkan-wsi] 【红】initial swapchain deferred result=%d; retried at the first present", made); }
     }
 #ifdef __ANDROID__
-    // 初始化取的那个引用转给 screen_window（有窗口时）。没有表面（无窗口的夹具）就放掉。
     // The reference taken at initialisation is handed to screen_window (when there is a window); without a surface
     // (windowless fixtures) it is dropped.
     if (window) { if (surface) { screen_window = window; screen_request_rate(window); } else ANativeWindow_release(window); }
 #endif
     screen_live = 1;
     pthread_mutex_unlock(&screen_lock);
-    // 最后启动后台管线预热：读本机积累与随包种子清单，把首次驱动编译从游戏内挪到启动/读取画面（nvn_vulkan_warm.inc）。
-    // Start background pipeline warm-up last: read the local accumulation and the shipped seed manifest, moving first driver compilations from gameplay to start-up / the loading screen (nvn_vulkan_warm.inc).
+    // Start background pipeline warm-up last: read the local accumulation and the shipped seed manifest, moving first
+    // driver compilations from gameplay to start-up / the loading screen (nvn_vulkan_warm.inc).
     pso_warm_start();
 }
 void mtl_init(void) { pthread_once(&once, initialize); }
 
 /* Small buffers (up to BUFFER_SLAB_MAX) live in shared slabs: one VkDeviceMemory of BUFFER_SLAB_BYTES, mapped once, cut
    into blocks of one size class, each block bound to its own VkBuffer. A memory object per buffer, each with its own
-   mapping, reached Android's limit of 65530 mappings per process in the open world (34,000 GPU mappings of ~19 KB after a
-   minute; vkMapMemory then failed). Blocks go back to their class's free list when the buffer is destroyed; slabs stay. */
+   mapping, reaches Android's limit of 65530 mappings per process in the open world (34,000 GPU mappings of ~19 KB after a
+   minute), and vkMapMemory then fails. Blocks go back to their class's free list when the buffer is destroyed; slabs stay. */
 #define BUFFER_SLAB_MAX (256u << 10)
 #define BUFFER_SLAB_BYTES (8u << 20)
 typedef struct buffer_slab_block { VkDeviceMemory memory; uint8_t *mapped; uint64_t offset; struct buffer_slab_block *next; } buffer_slab_block;
-static buffer_slab_block *buffer_slab_free[7];   /* per class: 4 KiB << i, i = 0..6 */
+/* per class: 4 KiB << i, i = 0..6 */
+static buffer_slab_block *buffer_slab_free[7];
 static uint64_t buffer_slabs, buffer_slab_bytes;
 static int buffer_slab_class(uint64_t capacity) { int i = 0; while ((4096ull << i) < capacity) i++; return i; }
-static int buffer_slab_take(uint64_t capacity, uint32_t type, VkDeviceMemory *memory, void **mapped, uint64_t *offset) {   /* holding buffer_cache_lock */
+/* holding buffer_cache_lock */
+static int buffer_slab_take(uint64_t capacity, uint32_t type, VkDeviceMemory *memory, void **mapped, uint64_t *offset) {
     /* the free lists do not record the memory type: slabs serve the first type asked for (every buffer_create buffer has
        the same usage); a buffer needing another gets its own memory */
     static uint32_t slab_type = UINT32_MAX; if (slab_type == UINT32_MAX) slab_type = type; else if (type != slab_type) return 0;
@@ -1341,7 +1271,8 @@ static int buffer_slab_take(uint64_t capacity, uint32_t type, VkDeviceMemory *me
     buffer_slab_block *k = buffer_slab_free[c]; buffer_slab_free[c] = k->next;
     *memory = k->memory; *mapped = k->mapped + k->offset; *offset = k->offset; free(k); return 1;
 }
-static void buffer_slab_give(const vk_buffer *b) {   /* holding buffer_cache_lock */
+/* holding buffer_cache_lock */
+static void buffer_slab_give(const vk_buffer *b) {
     buffer_slab_block *k = malloc(sizeof *k); if (!k) die("Vulkan buffer slab allocation");
     int c = buffer_slab_class(b->capacity); *k = (buffer_slab_block){b->memory, (uint8_t *)b->mapped - b->slab_offset, b->slab_offset, buffer_slab_free[c]}; buffer_slab_free[c] = k;
 }
@@ -1349,7 +1280,6 @@ static vk_buffer buffer_create(uint64_t size) {
     if (!size || size > (1ull << 32)) die("Invalid Vulkan buffer size %llu", (unsigned long long)size);
     uint64_t capacity = 4096; while (capacity < size) capacity *= 2;
     pthread_mutex_lock(&buffer_cache_lock); cached_buffer **link = &buffer_cache;
-    // 每次新建或缓存复用都有唯一版本，句柄/owner 地址重用不会命中旧数据的派生缓存。
     // Give each allocation or cache reuse a unique activation so reused handles/owners cannot match stale derived data.
     uint64_t activation=++buffer_activation;if(!activation)die("Vulkan buffer activation overflow");
     while (*link && (*link)->buffer.capacity != capacity) link = &(*link)->next;
@@ -1380,7 +1310,6 @@ static vk_buffer buffer_create(uint64_t size) {
     buffer_create_cpu_ns += dm_android_clock_ns(CLOCK_THREAD_CPUTIME_ID) - probe_cpu;
     return b;
 }
-// 跨批消费者持有同一 backing 的引用，到最后一个真正完成的使用者才允许缓存复用。
 // Cross-batch consumers retain the same backing until the last genuinely completed user permits cache reuse.
 static vk_buffer buffer_borrow(vk_buffer buffer) {
     if(!buffer.buffer||!buffer.owner)die("Vulkan buffer borrow without backing");
@@ -1390,15 +1319,13 @@ static void buffer_destroy(vk_buffer *b) {
     if (!b->buffer) return;
     if(!b->owner)die("Vulkan buffer missing ownership");unsigned references=atomic_fetch_sub(&b->owner->references,1);if(!references)die("Vulkan buffer ownership underflow");
     if(references>1){memset(b,0,sizeof *b);return;}
-    // GPU 完成后才归还快照；不复用仍在执行的缓冲。≤8 MiB 的小缓冲共用 64 MiB；8–64 MiB 的大缓冲另有 128 MiB 预算：
-    // 营地/野外每帧都会因 dirty 重拍约 19.5 MB 的只读 SSBO（容量 32 MiB），原先大缓冲一律释放、下次重新 vkAllocateMemory，
-    // S24U 实测 Turnip kgsl_bo_init 的 ioctl（内核分配并清零页）每帧 0.9–5 ms，翻译线程档占翻译线程 15% 样本。
-    // Return snapshots only after GPU completion; never reuse in-flight buffers. Small buffers (<= 8 MiB) share 64 MiB; large ones
-    // (8-64 MiB) get their own 128 MiB budget: camp/field re-snapshot a ~19.5 MB read-only SSBO (32 MiB capacity) every frame it is dirty,
-    // and large buffers used to be freed and re-created with vkAllocateMemory each time -- measured on the S24U, Turnip's kgsl_bo_init
-    // ioctl (kernel page allocation + zeroing) cost 0.9-5 ms per frame, 15% of the translation thread's samples in thread mode.
+    // Return snapshots only after GPU completion; never reuse in-flight buffers. Small buffers (<= 8 MiB) share 384 MiB: in
+    // game TOTK frees ~200 a frame, which overflows 64 MiB. Large ones (8-64 MiB) get their own 128 MiB budget: camp/field
+    // re-snapshot a ~19.5 MB read-only SSBO (32 MiB capacity) every frame it is dirty, and freeing it to re-create it with
+    // vkAllocateMemory each time costs 0.9-5 ms per frame on the S24U in Turnip's kgsl_bo_init ioctl (kernel page
+    // allocation + zeroing), 15% of the translation thread's samples in thread mode.
     pthread_mutex_lock(&buffer_cache_lock); active_buffer_bytes -= b->capacity;
-    int small = b->capacity <= DM_VK_SMALL_BUFFER_MAX && buffer_cache_bytes - buffer_large_cache_bytes + b->capacity <= (384u << 20);   /* TOTK in game: ~200 small buffers per frame overflowed 64 MiB */
+    int small = b->capacity <= DM_VK_SMALL_BUFFER_MAX && buffer_cache_bytes - buffer_large_cache_bytes + b->capacity <= (384u << 20);
     int large = !small && b->capacity > DM_VK_SMALL_BUFFER_MAX && b->capacity <= DM_VK_LARGE_BUFFER_MAX && buffer_large_cache_bytes + b->capacity <= DM_VK_LARGE_CACHE_BUDGET;
     if (small || large) {
         cached_buffer *entry = malloc(sizeof *entry); if (!entry) die("Vulkan buffer cache allocation");
@@ -1431,7 +1358,6 @@ static void pool_stats_log(void) {
     LOG("[poolstats] sizes <64K %llu (%.1f MiB), <1M %llu (%.1f MiB), <4M %llu (%.1f MiB), <16M %llu (%.1f MiB), <64M %llu (%.1f MiB), >=64M %llu (%.1f MiB)",
         (unsigned long long)hist[0], histb[0] / 1048576.0, (unsigned long long)hist[1], histb[1] / 1048576.0, (unsigned long long)hist[2], histb[2] / 1048576.0,
         (unsigned long long)hist[3], histb[3] / 1048576.0, (unsigned long long)hist[4], histb[4] / 1048576.0, (unsigned long long)hist[5], histb[5] / 1048576.0);
-    /* which mappings hold the pools */
     FILE *f = fopen("/proc/self/maps", "r"); char line[512]; size_t i = 0;
     while (f && fgets(line, sizeof line, f) && i < n) { unsigned long lo, hi; if (sscanf(line, "%lx-%lx", &lo, &hi) != 2) continue;
         size_t c = 0; uint64_t bytes = 0; while (i < n && (uintptr_t)pool_sorted[i]->base < hi) { if ((uintptr_t)pool_sorted[i]->base >= lo) { c++; bytes += pool_sorted[i]->size; } i++; }
@@ -1439,21 +1365,21 @@ static void pool_stats_log(void) {
     if (f) fclose(f);
     pthread_mutex_unlock(&pools_lock);
 }
-int compat_guest_overlay(void *address, size_t size, int dmabuf);   /* compat/src/mach_compat.c */
+int compat_guest_overlay(void *address, size_t size, int dmabuf);
 int compat_guest_unoverlay(void *address, size_t size);
 unsigned compat_overlay_count(void);
-void nvn_dirty_stats(uint64_t *faults, uint64_t *preps) __attribute__((weak)); void nvn_dirty_mp_stats(uint64_t *calls, uint64_t *pages, uint64_t *ns) __attribute__((weak));   /* nvn_dirty.c */
+void nvn_dirty_stats(uint64_t *faults, uint64_t *preps) __attribute__((weak)); void nvn_dirty_mp_stats(uint64_t *calls, uint64_t *pages, uint64_t *ns) __attribute__((weak));
 static uint64_t zc_pools, zc_bytes, zc_failures;
-static uint64_t zc_pool_hist[5], zc_pool_hist_bytes[5];   /* pools added by size: <4 KiB, <16 KiB, <64 KiB, <1 MiB, larger */
+static uint64_t zc_pool_hist[5], zc_pool_hist_bytes[5];
 static uint32_t zc_memory_type = UINT32_MAX;
 static PFN_vkGetMemoryFdKHR zc_get_fd;
 /* Back a pool with exported cached Vulkan memory; 0 when not enabled / not possible (the pool stays memfd memory). */
 static int zc_pool_back(pool_range *p) {
     static int on = -1; if (on < 0) { const char *z = getenv("TOTK_VK_ZEROCOPY"); on = z && atoi(z) && ext_dma_buf; if (z && atoi(z) && !ext_dma_buf) LOG("[zerocopy] off: the driver has no dma-buf export"); }
-    /* pools under the floor stay guest memory (default 64 KiB: the dirty tracker's block for dma-buf pools, and each export
-       is a dma-buf fd and a mapping of its own); TOTK_VK_ZEROCOPY_MIN=<bytes> lowers it (experiment/buffers-in-place: the
-       game's uniform rings and small vertex pools are 4-64 KiB pools) */
-    static uint64_t floor_bytes; if (!floor_bytes) { const char *m = getenv("TOTK_VK_ZEROCOPY_MIN"); floor_bytes = m && atoll(m) >= 4096 ? (uint64_t)atoll(m) : 4096; }   /* this branch: 4 KiB (the game's small pools: ~1,600 of 2,048 are under 64 KiB) */
+    /* Pools under the floor stay guest memory. It is 4 KiB by default: the game's uniform rings and small vertex pools are
+       4-64 KiB pools (~1,600 of 2,048 pools are under 64 KiB). Each export is a dma-buf fd and a mapping of its own, and
+       dma-buf pools have 64 KiB dirty-tracker blocks. TOTK_VK_ZEROCOPY_MIN=<bytes> sets it. */
+    static uint64_t floor_bytes; if (!floor_bytes) { const char *m = getenv("TOTK_VK_ZEROCOPY_MIN"); floor_bytes = m && atoll(m) >= 4096 ? (uint64_t)atoll(m) : 4096; }
     { unsigned c = p->size < 4096 ? 0 : p->size < 16384 ? 1 : p->size < 65536 ? 2 : p->size < (1u << 20) ? 3 : 4; zc_pool_hist[c]++; zc_pool_hist_bytes[c] += p->size; }
     if (!on || p->size < floor_bytes || ((uintptr_t)p->base | p->size) & 4095) return 0;
     VkExternalMemoryBufferCreateInfo xb = {.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO, .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT};
@@ -1513,10 +1439,11 @@ void mtl_pool_del(const void *mem) {
 /* The zero-copy buffer behind [addr, addr+len) (VK_NULL_HANDLE when the range is not in a zero-copy pool). Pools are only
    removed after mtl_finish under queue_lock, so the handle stays valid for the recording that asked. */
 typedef struct { uint64_t base, size; VkBuffer buffer; } zc_entry;
-static _Thread_local struct { zc_entry *e; size_t n, cap; uint64_t gen; } zc_local;   /* this thread's copy of the sorted pool table (pool_adds is its generation) */
+/* this thread's copy of the sorted pool table (pool_adds is its generation) */
+static _Thread_local struct { zc_entry *e; size_t n, cap; uint64_t gen; } zc_local;
 static VkBuffer zc_buffer_at(uint64_t addr, uint64_t len, uint64_t *off) {
     uint64_t gen = atomic_load(&pool_adds);
-    if (zc_local.gen != gen || !zc_local.e) {   /* pools changed (rare in play): copy the table under the lock once */
+    if (zc_local.gen != gen || !zc_local.e) {
         pthread_mutex_lock(&pools_lock);
         if (zc_local.cap < pool_sorted_n) { zc_local.cap = pool_sorted_n + 256; zc_local.e = realloc(zc_local.e, zc_local.cap * sizeof *zc_local.e); if (!zc_local.e) die("zero-copy pool table"); }
         for (size_t i = 0; i < pool_sorted_n; i++) zc_local.e[i] = (zc_entry){(uintptr_t)pool_sorted[i]->base, pool_sorted[i]->size, pool_sorted[i]->zc_buffer};
@@ -1539,10 +1466,10 @@ static void inplace_classify(uint64_t addr, uint64_t len) {
         if (addr >= base && addr - base < p->size) c = p->zc_buffer ? IP_ZC_RANGE : p->size < 4096 ? IP_POOL_4K : p->size < 16384 ? IP_POOL_16K : p->size < 65536 ? IP_POOL_64K : IP_POOL_BIG_NOZC; }
     pthread_mutex_unlock(&pools_lock); inplace_class[c]++; inplace_class_bytes[c] += len;
 }
+static pthread_t async_recording_thread;
 /* The translation thread's last pool per 64 KiB block, valid while pool_gen is unchanged: mtl_addr runs several times per
-   draw and its lock + search was ~19% of snapshot_buffer. Only a pool that no later pool overlaps is kept, so the memo
-   gives the same pool as the search below for every address inside it. */
-static pthread_t async_recording_thread;   /* nvn_vulkan_async.inc: the thread recording the current batch */
+   draw and its lock + search is ~19% of snapshot_buffer without this. Only a pool that no later pool overlaps is kept, so
+   the memo gives the same pool as the search below for every address inside it. */
 static struct { uint64_t gen; uintptr_t base; uint64_t size; } mtl_addr_memo[64];
 /* The bytes from addr to the end of its pool, 0 outside the pools. */
 static uint64_t mtl_room(uint64_t addr) {
@@ -1558,11 +1485,13 @@ int mtl_addr(uint64_t addr, uint64_t len, void **buf, uint64_t *off) {
             if (buf) *buf = (void *)m->base; if (off) *off = addr - m->base; return 1; }
     }
     int found = 0; pthread_mutex_lock(&pools_lock);
-    size_t lo = 0, hi = pool_sorted_n;   /* last pool starting at or below addr */
+    /* last pool starting at or below addr */
+    size_t lo = 0, hi = pool_sorted_n;
     while (lo < hi) { size_t m = (lo + hi) / 2; if ((uintptr_t)pool_sorted[m]->base <= addr) lo = m + 1; else hi = m; }
     #define POOL_HIT(p) ({ uint64_t base_ = (uintptr_t)(p)->base; addr >= base_ && addr - base_ <= (p)->size && len <= (p)->size - (addr - base_); })
     const pool_range *hit = lo && POOL_HIT(pool_sorted[lo - 1]) ? pool_sorted[lo - 1] : NULL;
-    if (!hit) for (size_t i = lo; i-- > 0;) if (POOL_HIT(pool_sorted[i])) { hit = pool_sorted[i]; break; }   /* overlapping pools (rare) */
+    /* overlapping pools (rare) */
+    if (!hit) for (size_t i = lo; i-- > 0;) if (POOL_HIT(pool_sorted[i])) { hit = pool_sorted[i]; break; }
     #undef POOL_HIT
     if (hit) { if (buf) *buf = (void *)hit->base; if (off) *off = addr - (uintptr_t)hit->base; found = 1;
         if (mine && hit == pool_sorted[lo - 1] && (lo == pool_sorted_n || (uintptr_t)pool_sorted[lo]->base >= (uintptr_t)hit->base + hit->size)) {
@@ -1570,7 +1499,7 @@ int mtl_addr(uint64_t addr, uint64_t len, void **buf, uint64_t *off) {
             m->gen = atomic_load_explicit(&pool_gen, memory_order_relaxed); m->base = (uintptr_t)hit->base; m->size = hit->size; } }
     pthread_mutex_unlock(&pools_lock); return found;
 }
-static uint64_t post_batch_serial;   /* the recording batch's serial (mtl_sub_begin) */
+static uint64_t post_batch_serial;
 static post_op *post_new(int kind) {
     if (!recording) die("NVN operation outside a submission");
     if(post_order==DM_PENDING_ORDER_ALL-1)die("Vulkan post order overflow");
@@ -1584,8 +1513,9 @@ static post_op *post_new(int kind) {
 static void cond_pending_done(uint64_t addr);
 static void image_writeback_check(post_op *p);static void image_writeback_publish(post_op *p);static void image_writeback_sweep(void);
 #include "nvn_vulkan_memprobe.inc"
-static int frz_noting; static void frz_note(uintptr_t address, uint64_t size);   /* freeze-frame: GPU write-backs of the recorded frame (nvn_vulkan_freeze.inc) */
-static uintptr_t gpu_watch_address(void); static int gpu_watch_hit(uintptr_t a, uint64_t size);   /* TOTK_VK_WATCH_MEM (nvn_vulkan_tex.inc) */
+/* freeze-frame: GPU write-backs of the recorded frame (nvn_vulkan_freeze.inc) */
+static int frz_noting; static void frz_note(uintptr_t address, uint64_t size);
+static uintptr_t gpu_watch_address(void); static int gpu_watch_hit(uintptr_t a, uint64_t size);
 /* TOTK_VK_WATCH_MEM: the first host step that changed the 0x200 bytes from the watched address rounded down to 0x100
    ("post" kind | site << 8 after a batch publication, "image-writeback", "frame" once a frame for any other writer) */
 static void gpu_watch_changed(const char *who,uint64_t info) {
@@ -1607,25 +1537,26 @@ void mtl_sub_begin(void) {
     unsigned slot=async_begin_locked();post_batch_serial=async_current->serial;batch_resources_select(slot);forward_reset();forward_scope_marker=NULL;pending_index_report();
     VK_CHECK(vkResetCommandBuffer(command, 0));
     VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
-    VK_CHECK(vkBeginCommandBuffer(command, &bi)); recording = 1;async_recording_thread=pthread_self();async_recording_owned=1;graphics_command_reset(); post_first = NULL; post_tail = &post_first;post_copy_first=NULL;post_copy_tail=&post_copy_first;pending_host_sync=0;post_order=0; batch_draws = 0;used_queries=0;{uint32_t n=async_current->queries_reset_once?async_current->queries_to_reset:1024;async_current->queries_reset_once=1;if(n)vkCmdResetQueryPool(command,draw_queries,0,n);}   /* only those used last time (1024 each batch was 3% of the replay) */
+    /* only the queries used last time: all 1024 each batch costs 3% of the replay */
+    VK_CHECK(vkBeginCommandBuffer(command, &bi)); recording = 1;async_recording_thread=pthread_self();async_recording_owned=1;graphics_command_reset(); post_first = NULL; post_tail = &post_first;post_copy_first=NULL;post_copy_tail=&post_copy_first;pending_host_sync=0;post_order=0; batch_draws = 0;used_queries=0;{uint32_t n=async_current->queries_reset_once?async_current->queries_to_reset:1024;async_current->queries_reset_once=1;if(n)vkCmdResetQueryPool(command,draw_queries,0,n);}
     drawstat_batch_begin((unsigned)(async_current-async_batches),command);
     passtime_batch_begin((unsigned)(async_current-async_batches),command);
     counter_gpu_batch_begin(async_current);
     if(batch_times){vkCmdResetQueryPool(command,batch_times,0,2);vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,batch_times,0);}
     async_current->chunk_started=dm_android_clock_ns(CLOCK_MONOTONIC);
-    { static uint64_t swept=UINT64_MAX;if(presents!=swept){swept=presents;gpu_watch_changed("frame",presents);image_writeback_sweep();} }   /* the frame's first batch */
+    /* the frame's first batch */
+    { static uint64_t swept=UINT64_MAX;if(presents!=swept){swept=presents;gpu_watch_changed("frame",presents);image_writeback_sweep();} }
 }
-// 按队列公布的有效位处理计数器回绕；不用 CPU 时钟冒充 GPU 测量。
 // Handle counter wrap using the queue's advertised bits; never substitute a CPU clock for GPU measurements.
 static uint64_t timestamp_delta(uint64_t begin,uint64_t end,unsigned bits) {
     return (end-begin)&(bits>=64?UINT64_MAX:bits?((1ull<<bits)-1):0);
 }
 static void snapshot_prepare(void) {
-    // 普通复制有已知 CPU 输入，可转发；着色器写回与事件/计数器须先真正完成。
     // Ordinary copies have known CPU inputs and can be forwarded; shader writebacks and events/counters must complete first.
     /* 256 draws a batch: 128 and the mid-pass chunk split (async_chunk_due) gain the same ~0.4 ms and do not add up;
-       512 and 1024 starve the GPU (chunks were cut only between passes) and 64 costs more than it gains (2026-10-23). */
-    static unsigned cap; if (!cap) { const char *e = getenv("TOTK_VK_BATCH_DRAWS"); cap = e && atoi(e) > 0 ? (unsigned)atoi(e) : 256; }   /* TOTK_VK_BATCH_DRAWS: for an A/B */
+       512 and 1024 starve the GPU (chunks cut only between passes) and 64 costs more than it gains.
+       TOTK_VK_BATCH_DRAWS sets it for an A/B. */
+    static unsigned cap; if (!cap) { const char *e = getenv("TOTK_VK_BATCH_DRAWS"); cap = e && atoi(e) > 0 ? (unsigned)atoi(e) : 256; }
     int flush = batch_draws >= cap || async_batch_temporary_bytes() >= (32u << 20);
     if (flush) { mtl_sub_commit(); mtl_sub_begin(); }
 }
@@ -1633,11 +1564,9 @@ typedef struct owned_snapshot_counters {
     uint64_t calls,large_calls,large_bytes,known_calls,known_bytes,safe_calls,safe_requested_bytes,safe_errors;
 } owned_snapshot_counters;
 static owned_snapshot_counters owned_snapshot_stats;
-// snapshot_read（非 owned 目的的通用快照读）走 heap 租约 / 安全读取 / known-copy 的次数与字节（见 snapshot_read）。
 // How snapshot_read (the generic snapshot read into non-owned destinations) was served: heap lease / safe reader / known copy (see snapshot_read).
 typedef struct plain_snapshot_counters { uint64_t safe_calls,safe_bytes,safe_errors,known_calls; } plain_snapshot_counters;
 static plain_snapshot_counters plain_snapshot_stats;
-// 队列锁下每 300 帧采一整帧，最多 12 帧；固定表与退役环不分配内存、不读取 guest 内容。
 // Sample one whole frame every 300 frames under the queue lock, at most 12 frames; fixed tables/ring never allocate or read guest contents.
 enum { SNAP_DIAG_HIT,SNAP_DIAG_NO_ENTRY,SNAP_DIAG_DIRTY,SNAP_DIAG_LIMIT,SNAP_DIAG_POOL,SNAP_DIAG_UNTRACKED,SNAP_DIAG_PENDING,SNAP_DIAG_LRU,SNAP_DIAG_REASONS };
 typedef struct snapshot_source {
@@ -1686,12 +1615,10 @@ static snapshot_diag_row *snapshot_diag_source(const snapshot_source *source,uin
 static snapshot_diag_row *snapshot_diag_miss_row(uintptr_t address,uint64_t size) {
     if(snapshot_diag_current||!snapshot_diag_source_current||!snapshot_diag_frame||size<=65536)return snapshot_diag_current;
     int saved_errno=errno;
-    // 表满时实际 miss 可取代纯命中行；被替换的观测同样计入 overflow，不隐藏容量限制。
     // An actual miss may replace a hit-only row when full; replaced observations count as overflow so limits remain visible.
     for(unsigned i=0;i<snapshot_diag_count;i++){snapshot_diag_row *r=&snapshot_diag_rows[i];uint64_t misses=0;for(unsigned j=1;j<SNAP_DIAG_REASONS;j++)misses+=r->reasons[j];
         if(!misses){snapshot_diag_overflow_calls+=r->calls;snapshot_diag_overflow_bytes+=r->calls*r->size;memset(r,0,sizeof *r);r->source=*snapshot_diag_source_current;memcpy(r->key,r->source.key,17);r->source.key=r->key;r->address=address;r->size=size;r->calls=1;r->forward[snapshot_diag_forward]++;snapshot_diag_current=r;
-            // 此调用先前因满表计入过 overflow；现在已获得真实来源行。
-            // This call previously overflowed the full table; it now has an actual source row.
+            // This call was counted as overflow of the full table before it got this source row.
             snapshot_diag_overflow_calls--;snapshot_diag_overflow_bytes-=size;errno=saved_errno;return r;}}
     errno=saved_errno;return NULL;
 }
@@ -1701,19 +1628,18 @@ static void snapshot_diag_retired(const read_snapshot *entry,unsigned reason) {
 }
 static void snapshot_diag_absent(snapshot_diag_row *row) {
     if(!row)return;
-    // 仅报告环中真实执行过的最近退役；没有记录意味着历史未知，不能冒称首次创建。
     // Report only the latest retirement actually recorded in the ring; no record means unknown history, not proven first creation.
     unsigned count=snapshot_diag_retire_cursor<64?snapshot_diag_retire_cursor:64;
     for(unsigned i=0;i<count;i++){const snapshot_diag_retirement *r=&snapshot_diag_retirements[(snapshot_diag_retire_cursor-1-i)%64];if(r->address==row->address&&r->size==row->size){row->history[r->reason]++;break;}}
 }
 static void snapshot_read_account_at(uint64_t size, const void *caller);
-static struct { const void *caller; uint64_t bytes, calls; } snap_callers[32];   /* TOTK_VK_FRAMEPROF: snapshot bytes per call site this frame */
+/* TOTK_VK_FRAMEPROF: snapshot bytes per call site this frame */
+static struct { const void *caller; uint64_t bytes, calls; } snap_callers[32];
 #define snapshot_read_account(size) snapshot_read_account_at((size), __builtin_return_address(0))
 static void snapshot_read_account_at(uint64_t size, const void *caller) {
     { static int on = -1; if (on < 0) { const char *e = getenv("TOTK_VK_FRAMEPROF"); on = e && atoi(e); }
       if (on) { unsigned i = 0; while (i < 32 && snap_callers[i].caller && snap_callers[i].caller != caller) i++;
           if (i < 32) { snap_callers[i].caller = caller; snap_callers[i].bytes += size; snap_callers[i].calls++; } } }
-    // 原快照计数仍是最终数据量；分别报告省掉的客体读取与重复覆盖，不能冒充 GPU 上传归零。
     // Keep logical snapshot byte accounting; report avoided guest reads/redundant overlays separately, never as eliminated GPU uploads.
     static uint64_t metric_frame,metric_hits,metric_reads,metric_overlays,metric_final;
     if(presents&&presents%60==0&&presents!=metric_frame){uint64_t frames=presents-metric_frame;
@@ -1746,7 +1672,6 @@ static void snapshot_read_account_at(uint64_t size, const void *caller) {
 }
 static int snapshot_read(uintptr_t address, void *destination, uint64_t size) {
     if (size > UINTPTR_MAX - address) return -1;
-    // 按命令顺序覆盖尚未发布的复制结果；客体内存仍到提交完成时才改变。
     // Overlay pending copy results in command order; guest memory still changes only when submission completes.
     if(!async_read_known_full_copy(address,destination,size)){
         plain_snapshot_stats.safe_calls++;plain_snapshot_stats.safe_bytes+=size;
@@ -1756,7 +1681,6 @@ static int snapshot_read(uintptr_t address, void *destination, uint64_t size) {
     snapshot_read_account(size);return 0;
 }
 static int snapshot_read_owned(uintptr_t address,const vk_buffer *destination,uint64_t size) {
-    // 只接 buffer_create 刚生成的完整 CPU 目标：零偏移、独占 owner，不能写缓存借用或栈 / shadow。
     // Accept only a complete fresh CPU target from buffer_create: zero offset and exclusive owner, never a cache borrow or stack/shadow.
     if(!destination||!destination->buffer||!destination->memory||!destination->mapped||!destination->owner||
        !destination->owner->activation||atomic_load(&destination->owner->references)!=1||!size||destination->size!=size||
@@ -1775,7 +1699,6 @@ static int snapshot_read_owned(uintptr_t address,const vk_buffer *destination,ui
 static int snapshot_pending(uintptr_t address, uint64_t size) {
     return async_copy_pending(address,size);
 }
-// 哈希索引加双向 LRU：命中/退役不扫描整个缓存，销池仍按真实地址区间失效。
 // Hash indexing plus a doubly linked LRU: hits/retirement avoid full-cache scans; pool removal still invalidates actual address ranges.
 static unsigned read_bucket(uintptr_t address,uint64_t size) {
     uint64_t key=(address>>4)^(size*0x9e3779b97f4a7c15ull);key^=key>>33;key*=0xff51afd7ed558ccdull;key^=key>>33;return key&8191;
@@ -1798,13 +1721,12 @@ static void read_cache_retire(read_snapshot *entry) {
 static void read_cache_remove(uintptr_t address,uint64_t size) {
     for(read_snapshot *entry=read_snapshots,*next;entry;entry=next){next=entry->next;if(address<entry->address+entry->buffer.size&&entry->address<address+size){snapshot_diag_retired(entry,SNAP_DIAG_POOL);read_cache_retire(entry);}}
 }
-static int snapshot_last_cached;   /* the last snapshot_buffer answer is a read-cache entry (it outlives the current batch) */
+/* the last snapshot_buffer answer is a read-cache entry (it outlives the current batch) */
+static int snapshot_last_cached;
 static vk_buffer snapshot_buffer(uintptr_t address,uint64_t size) {
     snapshot_last_cached=0;
-    // 只缓存登记池中的只读快照；脏页、复制覆盖和销池均使其失效。
     // Cache only read-only snapshots in registered pools; dirty pages, pending copies and pool destruction invalidate them.
-    // 保留原短路次序与每项查询次数；未执行的后续 gate 不能被诊断当作拒绝原因。
-    // Preserve original short-circuit order and query counts; diagnostics never infer rejection from unexecuted later gates.
+    // Keep this short-circuit order and these query counts; diagnostics never infer rejection from unexecuted later gates.
     int limit_ok,pool_ok=-1,tracked_ok=-1,pending=-1;
     int cache=(limit_ok=size<=(64u<<20))&&(pool_ok=mtl_addr(address,size,NULL,NULL))&&(tracked_ok=nvn_dirty_tracked((void*)address,size))&&!(pending=snapshot_pending(address,size));
     unsigned reason=!limit_ok?SNAP_DIAG_LIMIT:!pool_ok?SNAP_DIAG_POOL:!tracked_ok?SNAP_DIAG_UNTRACKED:pending>0?SNAP_DIAG_PENDING:SNAP_DIAG_NO_ENTRY;
@@ -1817,7 +1739,6 @@ static vk_buffer snapshot_buffer(uintptr_t address,uint64_t size) {
         if(row){row->old_entries++;row->old_stamp=entry->stamp;}
         snapshot_diag_retired(entry,reason);read_cache_retire(entry);break;
     }
-    // 先保护再取代数/读取，避免读取后到保护前的客体写入漏记。
     // Protect before taking the generation/reading, avoiding untracked guest writes between a read and protection.
     row=snapshot_diag_miss_row(address,size);if(row){row->reasons[reason]++;if(!old_entry)snapshot_diag_absent(row);}
     read_cache_misses++;if(cache)nvn_dirty_protect((void*)address,size);uint64_t stamp=nvn_dirty_now();vk_buffer buffer=buffer_create(size);
@@ -1837,7 +1758,6 @@ void mtl_sub_copy(uint64_t src, uint64_t dst, uint64_t n) {
     snapshot_prepare();
     forward_slice slice;
     if (!(n&3) && forward_find(src,n,4,NULL,&slice)==FORWARD_FULL && !slice.host_written) {
-        // 复制 GPU 结果的独立版本；客体写回仍在真实完成后发布，旧消费者保留旧 backing。
         // Copy an independent GPU-result version; guest writeback still follows real completion and earlier consumers retain their old backing.
         graphics_pass_end();forward_read_barrier(&slice,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_READ_BIT);forward_hold(&slice);
         post_op *p=post_new(0);p->site=POST0_SITE_COPY_GPU;p->destination=(void*)(uintptr_t)dst;p->size=n;p->output=buffer_create(n);post_register_range(p);
@@ -1852,7 +1772,6 @@ void mtl_sub_copy(uint64_t src, uint64_t dst, uint64_t n) {
     if (snapshot_read(src, p->source.mapped, n)) die("NVN copy source unreadable: %#llx", (unsigned long long)src);
     p->destination = (void *)(uintptr_t)dst;
     post_register_range(p);
-    // 已知 CPU 输入保留快照并到 GPU 完成后发布；不做临时缓冲之间的冗余复制。
     // Retain known CPU input until GPU completion publishes it; avoid redundant temporary-buffer copies.
     copy_bytes += n;
 }
@@ -1860,7 +1779,7 @@ void mtl_sub_event(volatile uint32_t *val, uint32_t mode, uint32_t value) { post
 /* TOTK conditional rendering (SetRenderEnableConditional): rendering is enabled when the NVNcounterData.counter values at
    addr and addr+16 are equal (mode 0) or differ (mode 1). TOTK gates most of its colour clears with it: the CPU writes
    counter 1 to request a clear and the timestamp report right after the clear writes 0, so each requested clear runs
-   once. Treated as always enabled, every gated clear ran every frame and erased G-buffer and lighting inputs. The
+   once. Treated as always enabled, every gated clear would run every frame and erase G-buffer and lighting inputs. The
    condition is evaluated at replay, in GPU order: counter reports recorded but not yet written are tracked here
    (a timestamp report will write 0; a sample count is unknown, and an unknown value renders, as the Metal backend). */
 typedef struct { uint64_t addr, value; unsigned pending; int known; } cond_pending;
@@ -1880,7 +1799,8 @@ static void cond_pending_add(uint64_t addr, int known, uint64_t value) {
 static void cond_pending_done(uint64_t addr) {
     pthread_mutex_lock(&cond_lock); cond_pending *c = cond_slot_locked(addr, 0); if (c && c->pending) c->pending--; pthread_mutex_unlock(&cond_lock);
 }
-static int cond_counter(uint64_t addr, uint64_t *value) {   /* 1 known, 0 unknown */
+/* 1 known, 0 unknown */
+static int cond_counter(uint64_t addr, uint64_t *value) {
     pthread_mutex_lock(&cond_lock); cond_pending *c = cond_slot_locked(addr, 0); int r = -1;
     if (c && c->pending) { r = c->known; *value = c->value; } pthread_mutex_unlock(&cond_lock);
     if (r >= 0) return r;
@@ -1903,14 +1823,15 @@ static int cond_enabled(const p_render_cond *c) {
 /* A timestamp report's counter word (0) is written at replay, in command order: written at GPU completion it could land
    after the game's next clear request (counter 1 at the same address) and erase it, losing that clear (flicker). The
    timestamp word is still published at completion. */
-/* TOTK: reports no longer end the render pass (~48 pass breaks a frame in the cave): a samples report splits the occlusion
-   query in place, a timestamp is written in the pass and converted at the next pass end (counter_gpu_record). */
+/* Reports do not end the render pass (that would be ~48 pass breaks a frame in the cave): a samples report splits the
+   occlusion query in place, a timestamp is written in the pass and converted at the next pass end (counter_gpu_record). */
 void mtl_sub_counter(uint64_t addr, uint32_t type) {
     if (type == NVN_COUNTER_TYPE_SAMPLES_PASSED) samples_report();
     if (type != NVN_COUNTER_TYPE_SAMPLES_PASSED && !(addr & 7) && mtl_addr(addr, 8, NULL, NULL)) { dm_guest_write_prepare((void *)(uintptr_t)addr, 8); *(volatile uint64_t *)(uintptr_t)addr = 0; }
     else cond_pending_add(addr, 0, 0);post_op *p = post_new(2); p->destination = (void *)(uintptr_t)addr; p->value = type;p->size=16;post_register_range(p);counter_gpu_record(p); }
 uint64_t mtl_sub_commit(void) {
-    pclear_flush_all();   /* deferred clears never cross a batch (fences and write-backs are published per batch) */
+    /* deferred clears never cross a batch (fences and write-backs are published per batch) */
+    pclear_flush_all();
     if (!recording) die("NVN commit without begin");
     graphics_pass_end();
     if(graphics_host_writes){VkMemoryBarrier writes={.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT};
@@ -1962,20 +1883,23 @@ static void ov_apply(const char *key, const char *value) {
     if (!strcmp(key, "TOTK_UNCAPPED_HZ")) fg_cap_set(atoi(value));
     else if (!strcmp(key, "TOTK_UPSCALER")) { upscale_ready(); int fsr = strcmp(value, "bilinear") != 0; if (!fsr || upscale.easu) upscale.mode = fsr; }
     else if (!strcmp(key, "TOTK_FSR_SHARPNESS")) { upscale_ready(); upscale.sharpness = (float)atof(value); }
-    else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }   /* the canvas is learned within a frame or two */
+    else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }
     else if (!strcmp(key, "TOTK_SMAA_ULTRA")) smaa_ultra_on = atoi(value) > 0;
-    else if (!strcmp(key, "TOTK_FRAMEGEN")) {   /* 0, <rate> (built-in) or lsfg<rate>x<multiplier>: the game's rendered rate (fg_parse) */
+    /* 0, <rate> (built-in) or lsfg<rate>x<multiplier>: the game's rendered rate (fg_parse) */
+    else if (!strcmp(key, "TOTK_FRAMEGEN")) {
         int use_lsfg, hz, mult; fg_parse(value, &use_lsfg, &hz, &mult);
         fg_enabled(); fg.on = !use_lsfg && hz > 0; fg.prev_ok = fg.last_ok = 0;
         lsfg_enabled(); lsfg.on = use_lsfg && hz > 0; fg_track(); fg.lsfg = lsfg.on;
         if (lsfg.on) { lsfg_configure(fg_adaptive ? LSFG_MAX_OUT + 1 : mult, -1, -1); lsfg.adaptive = fg_adaptive; }
-        int lsfg_off = lsfg.on && (!lsfg_device_ok || lsfg.failed);   /* chosen but cannot run: the game renders every frame shown */
+        /* chosen but cannot run: the game renders every frame shown */
+        int lsfg_off = lsfg.on && (!lsfg_device_ok || lsfg.failed);
         if (lsfg_off) LOG("[lsfg] not available on this device / driver (see [lsfg] at start)");
         fg_shown = hz > 0 ? hz * (use_lsfg ? mult : 2) : 0;
         if (hz > 0) fg_cap_set(lsfg_off ? fg_shown : hz);
     }
     else if (!strcmp(key, "TOTK_RECORD")) recorder_set(!strcmp(value, "on"));
-    else if (!strcmp(key, "TOTK_FG_HUD")) { fg.hud_generated = !strcmp(value, "generated"); fg.scene_valid[0] = fg.scene_valid[1] = 0; }   /* LSFG skips the frame where its inputs switch (lsfg.last_scene) */
+    /* LSFG skips the frame where its inputs switch (lsfg.last_scene) */
+    else if (!strcmp(key, "TOTK_FG_HUD")) { fg.hud_generated = !strcmp(value, "generated"); fg.scene_valid[0] = fg.scene_valid[1] = 0; }
     else if (!strcmp(key, "TOTK_LSFG_FLOW")) lsfg_configure(0, -1, (float)atof(value));
     else if (!strcmp(key, "TOTK_LSFG_PERF")) lsfg_configure(0, atoi(value), -1);
     else if (!strcmp(key, "TOTK_DISPLAY_HZ")) { setenv("TOTK_DISPLAY_HZ", value, 1); if (screen_window) screen_request_rate(screen_window); }
@@ -2031,8 +1955,8 @@ static void barstat_note(int bits, int in_pass) {
 #define BARSTAT_FOLLOW(field) do { if (barstat.pending) { barstat.pending = 0; barstat.field++; } } while (0)
 /* TOTK_VK_STATELEAK=1: state a draw depends on that was not set within the recording (command buffer) it is in, i.e.
    inherited from an earlier recording or from the caller of a CALL. A layer that translates each recording as it is
-   made (the plan's step 5) knows only what the recording itself set; this counts what it would miss. Reset at the start
-   of every recording executed (top level and called), restored to the caller's at its end. */
+   made knows only what the recording itself set; this counts what it would miss. Reset at the start of every recording
+   executed (top level and called), restored to the caller's at its end. */
 static void stateleak_draw(unsigned depth) {
     if (!stateleak_on()) return;
     sl.draws++; if (depth) sl.called++;
@@ -2080,11 +2004,13 @@ static void execute(const uint8_t *p, unsigned depth) {
         if (h.size < 8 || (h.size & 7) || h.op >= OP_COUNT_) die("Malformed NVN packet op=%u size=%u", h.op, h.size);
         uint64_t v[3] = {0}; size_t payload = h.size - 8; memcpy(v, a, payload < sizeof v ? payload : sizeof v);
         if (stateleak_state > 0 && !sl.piece_depth && h.op < OP_COUNT_) { sl.main_ops[h.op]++; if (h.op == OP_DRAW || h.op == OP_DRAW_IDX) sl.main_draws++; } else if (stateleak_state > 0 && (h.op == OP_DRAW || h.op == OP_DRAW_IDX)) sl.piece_draws++;
-        if (SL_DETAIL() && sl.piece_depth && (h.op == OP_BIND_SSBO || h.op == OP_BIND_TEX)) {   /* who binds the slots the world piece inherits (vertex SSBO 3, vertex texture 8) */
+        /* who binds the slots the world piece inherits (vertex SSBO 3, vertex texture 8) */
+        if (SL_DETAIL() && sl.piece_depth && (h.op == OP_BIND_SSBO || h.op == OP_BIND_TEX)) {
             if (h.op == OP_BIND_SSBO) { const p_bind_buf *b = (const void *)a; if (b->stage == 0 && b->index == 3) LOG("[stateleak-detail] f%llu piece #%d draw %llu bind-ssbo stage 0 slot 3 @%#llx+%llu", (unsigned long long)presents, sl.piece, (unsigned long long)(sl.piece < 32 ? sl.pdraws[sl.piece] : 0), (unsigned long long)b->addr, (unsigned long long)b->size); }
             else { const p_bind_handles *b = (const void *)a; if (b->stage == 0 && b->first <= 8 && b->first + b->n > 8) LOG("[stateleak-detail] f%llu piece #%d draw %llu bind-tex stage 0 slot 8 (first %d n %d)", (unsigned long long)presents, sl.piece, (unsigned long long)(sl.piece < 32 ? sl.pdraws[sl.piece] : 0), b->first, b->n); }
         }
-        if (SL_DETAIL() && (!sl.piece_depth || h.op == OP_UPDATE_UB || h.op == OP_BEGIN)) {   /* the root's own ops in order, piece markers, and every uniform update */
+        /* the root's own ops in order, piece markers, and every uniform update */
+        if (SL_DETAIL() && (!sl.piece_depth || h.op == OP_UPDATE_UB || h.op == OP_BEGIN)) {
             if (h.op == OP_BIND_UBO || h.op == OP_BIND_SSBO) { const p_bind_buf *b = (const void *)a; LOG("[stateleak-detail] f%llu depth %d piece #%d op%u %s stage %d slot %d @%#llx+%llu", (unsigned long long)presents, sl.piece_depth, sl.piece, h.op, h.op == OP_BIND_UBO ? "bind-ubo" : "bind-ssbo", b->stage, b->index, (unsigned long long)b->addr, (unsigned long long)b->size); }
             else if (h.op == OP_UPDATE_UB) LOG("[stateleak-detail] f%llu depth %d piece #%d op%u update-ub dst %#llx+%llu", (unsigned long long)presents, sl.piece_depth, sl.piece, h.op, (unsigned long long)v[0], (unsigned long long)v[1]);
             else if (h.op == OP_BEGIN && h.size >= 16) { if (!sl.piece_depth || v[0] == 2) LOG("[stateleak-detail] f%llu piece #%d %s (draws so far %llu)", (unsigned long long)presents, sl.piece + (v[0] == 1 && !sl.piece_depth), v[0] == 1 ? "begins" : "ends", (unsigned long long)(sl.piece < 32 ? sl.pdraws[sl.piece] : 0)); }
@@ -2092,7 +2018,8 @@ static void execute(const uint8_t *p, unsigned depth) {
         }
         switch (h.op) {
             case OP_END: BARSTAT_FOLLOW(end); rec_mask = rec_saved; return;
-            case OP_BEGIN:   /* a piece marker (inline_recording): a copied recording begins (1: with its copy and serial) / ends (2) */
+            /* a piece marker (inline_recording): a copied recording begins (1: with its copy and serial) / ends (2) */
+            case OP_BEGIN:
                 if (h.size >= 32 && v[0] == 1) plan_piece_enter(v[1], v[2]); else if (h.size >= 16 && v[0] == 2) plan_piece_leave();
                 if (stateleak_on() && h.size >= 16) { if (v[0] == 1) { rec_mask = (rec_masks){0}; sl.recordings++; sl.piece_depth++; if (sl.piece_depth == 1) sl.piece++; } else if (v[0] == 2 && sl.piece_depth) sl.piece_depth--; } break;
             case OP_JUMP: p = (const uint8_t *)(uintptr_t)v[0]; continue;
@@ -2102,8 +2029,8 @@ static void execute(const uint8_t *p, unsigned depth) {
             case OP_COPY_B2B: mtl_sub_copy(v[0], v[1], v[2]); break;
             case OP_UPDATE_UB: if (v[1] > payload - 16) die("Short NVN uniform packet"); inplace_updates++; if (graphics_active_frame) inplace_updates_inpass++; mtl_sub_copy((uintptr_t)(a + 16), v[0], v[1]); break;
             /* TOTK issues ~40 nvnCommandBufferBarrier calls per frame, mostly inside render passes. Ending the pass for each
-               stored and reloaded every attachment (the G-buffer's five full-screen targets dozens of times a frame). Inside
-               a pass they are not needed: image hazards (sampling a target, feedback reads) end the pass through
+               would store and reload every attachment (the G-buffer's five full-screen targets dozens of times a frame).
+               Inside a pass they are not needed: image hazards (sampling a target, feedback reads) end the pass through
                image_access, buffer hazards are ordered by the forwarding barriers. Between passes the barrier stays. */
             case OP_BARRIER: { static uint64_t kept, skipped; game_sync_epoch++; sc.barriers++; barstat_note((int)v[0], graphics_active_frame != NULL); if (graphics_active_frame && !live_range("inpassbarrier", draw_count - live_frame_base)) { skipped++; ssbo_barrier_epoch++; if (!((kept + skipped) % 20000)) LOG("[vulkan] barriers: %llu inside passes (skipped), %llu between passes", (unsigned long long)skipped, (unsigned long long)kept); break; } kept++;
                 graphics_pass_end();VkMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT, .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT}; vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &b, 0, NULL, 0, NULL); break; }
@@ -2115,12 +2042,9 @@ static void execute(const uint8_t *p, unsigned depth) {
                 nvn_state_apply(&state, h.op, a); break; }
             case OP_CLEAR_COLOR: if (!state.render_disabled) clear_color((const p_clear_color *)a); break;
             case OP_CLEAR_DS: if (!state.render_disabled) clear_depth((const p_clear_ds *)a); break;
-            /* TOTK: SetDepthClampEnable, SetRenderEnable (draws and clears skipped while off), SetRasterizerDiscard */
             case OP_DEPTH_CLAMP: rec_mask.set |= RM_DEPTHCLAMP; nvn_state_apply(&state, h.op, a); break;
             case OP_RENDER_ENABLE: rec_mask.set |= RM_RENDERENABLE; nvn_state_apply(&state, h.op, a); break;
             case OP_RASTER_DISCARD: rec_mask.set |= RM_RASTERDISCARD; nvn_state_apply(&state, h.op, a); break;
-            /* SetRenderEnableConditional: rendered unconditionally for now (correct, can draw occluded objects); the GPU
-               condition (VK_EXT_conditional_rendering on the two counters) comes later */
             case OP_RENDER_COND: rec_mask.set |= RM_RENDERCOND; state.render_disabled = state.render_cond_off = !cond_enabled((const p_render_cond *)a);
                 { static uint64_t said; if (!(said++ % 600)) LOG("[vulkan-totk] conditional rendering: %llu evaluations, %llu skipped, %llu unknown (rendered)", (unsigned long long)said, (unsigned long long)cond_skipped, (unsigned long long)cond_unknown); } break;
             case OP_COPY_B2T: copy_buffer_texture((const p_copy_b2t *)a); break;
@@ -2135,12 +2059,10 @@ static void execute(const uint8_t *p, unsigned depth) {
                 nvn_state_apply(&state, h.op, a); break; }
             case OP_BIND_UBO: case OP_BIND_SSBO: { const p_bind_buf *b = (const void *)a; if (b->stage < 0 || b->stage >= 6 || b->index < 0 || b->index >= 16) die("NVN buffer binding bounds"); if (h.op == OP_BIND_UBO) rec_mask.ubo[b->stage] |= (uint16_t)(1u << b->index); else rec_mask.ssbo[b->stage] |= (uint16_t)(1u << b->index);
                 p_bind_buf *dst=h.op==OP_BIND_UBO?&state.ubo[b->stage][b->index]:&state.ssbo[b->stage][b->index];
-                // c0 只依赖绑定的地址/大小；compute 还包含 UBO 地址表。
                 // c0 depends only on bound addresses/sizes; compute also includes the UBO table.
                 if((h.op==OP_BIND_SSBO||b->stage==5)&&(dst->addr!=b->addr||dst->size!=b->size))uniform_drivers[b->stage][0].state_valid=0;
                 nvn_state_apply(&state, h.op, a); break; }
             case OP_BIND_TEX: case OP_BIND_SAMP: case OP_BIND_IMG: { const p_bind_handles *b = (const void *)a; int max = h.op == OP_BIND_IMG ? 32 : 128; if (b->stage < 0 || b->stage >= 6 || b->first < 0 || b->n < 0 || b->first + b->n > max) die("NVN handle binding bounds"); if (h.op == OP_BIND_TEX) for (int i = b->first; i < b->first + b->n; i++) rec_mask.tex[b->stage][i >> 6] |= 1ull << (i & 63); uint64_t *dst = h.op == OP_BIND_IMG ? state.images[b->stage] : h.op == OP_BIND_TEX ? state.textures[b->stage] : state.samplers[b->stage];
-                // driver 表仅编码低32位，image 表只编码前8项；实际资源绑定仍使用完整 state。
                 // Driver tables encode low 32 bits and only eight image slots; resource binding still uses full state.
                 int limit=h.op==OP_BIND_IMG?8:128;
                 if(uniform_drivers[b->stage][1].state_valid)for(int i=0;i<b->n&&b->first+i<limit;i++)if((uint32_t)dst[b->first+i]!=(uint32_t)b->h[i]){uniform_drivers[b->stage][1].state_valid=0;break;}
@@ -2149,11 +2071,8 @@ static void execute(const uint8_t *p, unsigned depth) {
             case OP_BIND_VSTREAM: { const p_bind_vstream *b = (const void *)a; if (b->first < 0 || b->n < 0 || b->first + b->n > 16) die("NVN vertex stream bounds"); for (int i = b->first; i < b->first + b->n; i++) rec_mask.vstream |= (uint16_t)(1u << i); nvn_state_apply(&state, h.op, a); break; }
             case OP_BIND_VBUF: { const p_bind_vbuf *b = (const void *)a; if (b->first < 0 || b->n < 0 || b->first + b->n > 16) die("NVN vertex buffer bounds"); for (int i = b->first; i < b->first + b->n; i++) rec_mask.vbuf |= (uint16_t)(1u << i); nvn_state_apply(&state, h.op, a); break; }
             case OP_COPY_STRIDE: nvn_state_apply(&state, h.op, a); break;
-            // 上游 86b1315 新录的「图像间距」（nvnCommandBufferSetCopyImageStride）：合并前这个入口没实现、游戏的调用被忽略；
-            // Vulkan 侧的缓冲↔贴图复制暂按原样（不读它），照搬 nvn_copy_pitch.h 的语义待真机验证后再接。
-            // Upstream 86b1315 now records the image stride (nvnCommandBufferSetCopyImageStride); before the merge the entry was
-            // unimplemented and the game's call was ignored. The Vulkan buffer<->texture copies keep their previous behaviour (stride not
-            // read) until nvn_copy_pitch.h's semantics are ported and verified on a device.
+            // The Vulkan buffer<->texture copies do not read the image stride (nvnCommandBufferSetCopyImageStride):
+            // nvn_copy_pitch.h's semantics are not ported.
             case OP_BLEND_COLOR: rec_mask.set |= RM_BLENDCOLOR; nvn_state_apply(&state, h.op, a); break;
             case OP_POLY_OFFSET: rec_mask.set |= RM_POLYOFFSET; nvn_state_apply(&state, h.op, a); break;
             case OP_STENCIL: rec_mask.set |= RM_STENCIL; nvn_state_apply(&state, h.op, a); break;
@@ -2179,7 +2098,6 @@ static int stability_compare(const void *a,const void *b) {
     uint64_t x=*(const uint64_t*)a,y=*(const uint64_t*)b;return (x>y)-(x<y);
 }
 static void frame_stability_record(uint64_t frame,uint64_t prev_acquire,uint64_t acquire,uint64_t present,uint64_t present_lock) {
-    // 只在出图边界取时钟；固定120帧窗口保留最慢帧关联，不改变等待或逐draw计时。
     // Sample only present boundaries; fixed 120-frame windows retain worst-frame attribution without changing waits or timing draws.
     static frame_stability_sample samples[120];static unsigned count;
     static uint64_t last_wall,last_cpu,last_ring,last_worker;static pthread_t thread;
@@ -2207,10 +2125,8 @@ static void frame_stability_record(uint64_t frame,uint64_t prev_acquire,uint64_t
 /* RenderDoc frame capture (APK built with TOTK_RENDERDOC=1, layer enabled with tools/gpu_debug.sh renderdoc): when
    <files>/rdc.trigger appears (its content: number of frames, default 1) the next frames are captured to <files>/rdc/. */
 #include "renderdoc_app.h"
-/* TOTK_VK_FRAMEPROF=1: one line per presented frame: translation-thread CPU, draws, submits, dependency waits (calls / ms),
-   snapshot MB, pipeline / image creations, texture uploads (find periodic slow frames) */
 /* the game's submit calls as the translation thread takes them: the gap between calls (the game's own pace) and the
-   wait in the queue (ours); nvn_vulkan.c's frame profile prints both */
+   wait in the queue (ours); the frame profile prints both */
 static uint64_t job_ns, job_ns_prev, job_taken_ns;
 void mtl_sub_job_time(uint64_t ns) { job_ns_prev = job_ns; job_ns = ns; job_taken_ns = dm_android_clock_ns(CLOCK_MONOTONIC); }
 /* The hitch log, always on: a frame much longer than its neighbours (over twice the running usual, and over 20 ms)
@@ -2221,9 +2137,8 @@ void mtl_sub_job_time(uint64_t ns) { job_ns_prev = job_ns; job_ns = ns; job_take
    waits, the frame's GPU time, the game's own gap between submits, the queue wait, snapshot MB. */
 static void hitch_log(double interval_ms, uint64_t pipes, uint64_t sync_count, double sync_ms, uint64_t skipped, uint64_t translated, uint64_t images, uint64_t uploads, double upload_mb, double upload_ms, uint64_t depc, double dep_ms, double gpu_ms, double gap_ms, double qwait_ms, double snap_mb) {
     static double usual; static FILE *f; static int opened; static uint64_t hitches;
-    /* usual = the median of the last 64 frames, every frame counted: an average that skipped hitches stuck at the faster
-       rate when the game slowed down for good (a 120 fps stretch, then 40 fps with frame generation: every frame logged,
-       31,000 lines in one session, 2026-11-02) */
+    /* usual = the median of the last 64 frames, every frame counted: an average that skips hitches sticks at the faster
+       rate when the game slows down for good (a 120 fps stretch, then 40 fps with frame generation, logs every frame) */
     enum { RECENT = 64 }; static double recent[RECENT]; static unsigned nrecent, next;
     if (interval_ms <= 0) return;
     int hitch = nrecent >= 16 && interval_ms > 2.0 * usual && interval_ms > 20.0;
@@ -2245,9 +2160,10 @@ static void hitch_log(double interval_ms, uint64_t pipes, uint64_t sync_count, d
 /* TOTK_LOAD_CAP=<hz> (default 0 = off): a loading screen -- 20 frames in a row with fewer than 50 draws -- runs at this
    frame cap; the cap in force comes back with the first frame that draws again. Loading is bound by the three virtual
    cores (threads.c): every frame the loading screen renders takes core time from the loaders (cold starts of the bench
-   save, 2026-11-01: loading screen 10.3 s at the default cap, 12.5 s uncapped). */
+   save: loading screen 10.3 s at the default cap, 12.5 s uncapped). */
 static void idle_keepers(int on);
-void runtime_sync_spin_boost(int on) __attribute__((weak));   /* threads.c: one more spinning waiter while loading */
+/* threads.c: one more spinning waiter while loading */
+void runtime_sync_spin_boost(int on) __attribute__((weak));
 static void load_cap(uint64_t draws) {
     static int cap = -1, low = 0, applied = 0, saved = 0, loading = 0;
     if (cap < 0) { const char *e = getenv("TOTK_LOAD_CAP"); cap = e ? atoi(e) : 0; }
@@ -2257,7 +2173,7 @@ static void load_cap(uint64_t draws) {
 /* TOTK_IDLE_KEEPERS=<n> (default 0 = off): while a loading screen shows (the load_cap detector), n threads at SCHED_IDLE,
    one per host core from cpu 0, spin so the cores never enter their deep idle state (cpuidle exit latency on the Odin:
    222 us on cores 0-5, 302 us on the prime cores). Loading hands virtual cores between the game's threads thousands of
-   times a second (core-table 2026-11-01: 6,000-11,000 waits a thread a second, ~150 us each, with 1-1.7 of the 3 cores
+   times a second (6,000-11,000 waits a thread a second, ~150 us each, with 1-1.7 of the 3 cores
    idle on average): a thread woken onto a sleeping core pays that exit latency every time. A SCHED_IDLE spinner is
    preempted by any normal thread at once and only uses time nobody else wants; it also keeps the clocks up. */
 #include <sched.h>
@@ -2279,6 +2195,8 @@ static void idle_keepers(int on) {
     pthread_mutex_lock(&idle_keepers_mu); atomic_store(&idle_keepers_active, on); pthread_cond_broadcast(&idle_keepers_cv); pthread_mutex_unlock(&idle_keepers_mu);
     LOG("[load] idle keepers %s (%d cores)", on ? "on" : "off", n);
 }
+/* TOTK_VK_FRAMEPROF=1: one line per presented frame: translation-thread CPU, draws, submits, dependency waits (calls / ms),
+   snapshot MB, pipeline / image creations, texture uploads (find periodic slow frames) */
 static void frame_profile(void) {
     static int on = -1; if (on < 0) { const char *e = getenv("TOTK_VK_FRAMEPROF"); on = e && atoi(e); }
     static uint64_t cpu0, draws0, sub0, depc0, depw0, snap0, pipe0, img0, up0, wall0, sync0, syncn0, skip0, xl0;
@@ -2292,11 +2210,13 @@ static void frame_profile(void) {
         job_ns_prev ? (job_ns - job_ns_prev) / 1e6 : 0.0, job_ns ? (job_taken_ns - job_ns) / 1e6 : 0.0, (snapshot_bytes - snap0) / 1048576.0);
     sync0 = pipeline_sync_ns; syncn0 = pipeline_sync_count; skip0 = atomic_load(&async_pso_skipped); xl0 = totk_translated;
     load_cap(draw_count - draws0);
+    /* gap: between the game's submit calls; qwait: the call's wait for this thread; gpu: batch GPU time completed since the
+           last line; upload: texture bytes copied in and the thread's time doing it */
     if (on && wall0) LOG("[frameprof] frame=%llu wall=%.2f cpu=%.2f ms draws=%llu submits=%llu dep=%llu/%.2f ms snap=%.2f MB pipelines=%llu images=%llu uploads=%llu gap=%.2f qwait=%.2f gpu=%.2f upload_mb=%.2f upload_ms=%.2f",
         (unsigned long long)presents, (wall - wall0) / 1e6, (cpu - cpu0) / 1e6, (unsigned long long)(draw_count - draws0), (unsigned long long)(sub - sub0),
         (unsigned long long)(depc - depc0), (depw - depw0) / 1e6, (snapshot_bytes - snap0) / 1048576.0, (unsigned long long)(pipeline_creations - pipe0),
         (unsigned long long)(image_creations - img0), (unsigned long long)(texture_uploads - up0),
-        job_ns_prev ? (job_ns - job_ns_prev) / 1e6 : 0.0, job_ns ? (job_taken_ns - job_ns) / 1e6 : 0.0, (gpu_total_ns - gpu0) / 1e6, (texture_upload_bytes - upb0) / 1048576.0, (texture_upload_ns - upns0) / 1e6);   /* gap: between the game's submit calls; qwait: the call's wait for this thread; gpu: batch GPU time completed since the last line; upload: texture bytes copied in and the thread's time doing it */
+        job_ns_prev ? (job_ns - job_ns_prev) / 1e6 : 0.0, job_ns ? (job_taken_ns - job_ns) / 1e6 : 0.0, (gpu_total_ns - gpu0) / 1e6, (texture_upload_bytes - upb0) / 1048576.0, (texture_upload_ns - upns0) / 1e6);
     gpu0 = gpu_total_ns; upb0 = texture_upload_bytes; upns0 = texture_upload_ns;
     if (on) {
     if (snapshot_bytes - snap0 > (12u << 20)) for (int i = 0; i < 32 && snap_callers[i].caller; i++) if (snap_callers[i].bytes >= (256u << 10)) {
@@ -2318,7 +2238,8 @@ static void frame_profile(void) {
     cpu0 = cpu; draws0 = draw_count; sub0 = sub; depc0 = depc; depw0 = depw; snap0 = snapshot_bytes; pipe0 = pipeline_creations; img0 = image_creations; up0 = texture_uploads; wall0 = wall;
 }
 static void renderdoc_poll(void) {
-    static RENDERDOC_API_1_6_0 *api; static int state;   /* 0 unknown, 1 available, -1 absent */
+    /* 0 unknown, 1 available, -1 absent */
+    static RENDERDOC_API_1_6_0 *api; static int state;
     if (state < 0) return;
     if (!state) {
         void *layer = dlopen("libVkLayer_GLES_RenderDoc.so", RTLD_NOW | RTLD_NOLOAD);
@@ -2335,22 +2256,22 @@ static void renderdoc_poll(void) {
     unsigned n = 1; if (fscanf(f, "%u", &n) != 1 || !n || n > 16) n = 1; fclose(f); unlink(path);
     api->TriggerMultiFrameCapture(n); LOG("[renderdoc] capturing %u frames from frame %llu", n, (unsigned long long)presents);
 }
+/* the game's frame rate */
+static float present_fps, present_ms;
+/* pictures shown per game frame (generated ones too), smoothed: the HUD counts them all */
+static float present_shown = 1;
 /* source: present this image (the whole of it) instead of t's picture, without counting a game frame (frame generation) */
-static float present_fps, present_ms;   /* the game's frame rate */
-static float present_shown = 1;         /* pictures shown per game frame (generated ones too), smoothed: the HUD counts them all */
 static uint64_t present_one(const tex_t *t, double period, const int crop[4], image_entry *source, int repeat) {
-    int inner = source || repeat;   /* not a game frame: no counters, hooks or statistics */
+    /* not a game frame: no counters, hooks or statistics */
+    int inner = source || repeat;
     uint64_t acquire_ns=0,present_ns=0,present_lock_ns=0;
     uint64_t present_total=dm_cpu_phase_begin_always();
-    // Present 排队显示；CPU 可见完成仍由真实 sync/finish 和 texture 重用等待保证。
     // Present queues display work; real sync/finish and texture-reuse waits retain CPU-visible completion.
-    // 只提交本线程自己开着的录制：别的线程（例如另一条游戏线程的 ReadTexels）录制时它持 queue_lock，下面的 mtl_sub_begin /
-    // queue_lock 会排在它后面；不能替它 commit（那会在没持锁的情况下结束、提交别人的命令缓冲再解别人的锁）。
     // Commit only a recording this thread itself has open: while another thread (e.g. another game thread's ReadTexels) records it holds
     // queue_lock, and the mtl_sub_begin / queue_lock below queue behind it; never commit it on its behalf (that would end and submit someone
     // else's command buffer and unlock their mutex without holding it).
     if(async_recording_owned){if(!recording)die("Vulkan present: owned recording flag without recording");uint64_t phase=dm_cpu_phase_begin_always();mtl_sub_commit();dm_cpu_phase_end(DM_CPU_PHASE_SUBMIT,phase);}
-    unsigned acquire_slot=screen_acquire_slot;screen_acquire_slot=(acquire_slot+1)%SCREEN_ACQUIRE_RING;screen_acquired=screen_acquire_ring[acquire_slot];   /* this present's acquire semaphore (the ring above) */
+    unsigned acquire_slot=screen_acquire_slot;screen_acquire_slot=(acquire_slot+1)%SCREEN_ACQUIRE_RING;screen_acquired=screen_acquire_ring[acquire_slot];
     uint64_t completion_ticket=mtl_last_fence(),previous_acquire=screen_acquire_ring_ticket[acquire_slot];
     uint64_t previous_start=dm_cpu_phase_begin_always();
     if(previous_acquire&&!mtl_wait(previous_acquire,UINT64_MAX))die("Vulkan prior acquire consumer wait failed");
@@ -2360,13 +2281,10 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     if (!inner) { renderdoc_poll(); frame_profile(); pool_stats_log(); }
     uint64_t ticket=inner?presents:++presents;if(!inner){graphics_probe_capture(ticket);graphics_probe_poll();}
     if(!(ticket%60))LOG("[vulkan-prior-acquire] frame=%llu queued=%llu prior_consumer=%llu wait=%.3f ms scope=prior_binary_acquire_consumer current_guest_publication=async",(unsigned long long)ticket,(unsigned long long)completion_ticket,(unsigned long long)previous_acquire,previous_acquire_ns/1e6);
-    // 帧开头、手里没有已取到的图像：这是游戏线程唯一可以拆建交换链的地方（另一处是取图失败之后，那时也没有图像在手）。
-    // 表面丢失后至多每秒试着在同一窗口上重建；同一窗口改尺寸 / 过期 / 范围变了 / 上次没建成 → 在当前表面上重建交换链。
     // Top of the frame, holding no acquired image: the only place the game thread may tear down and rebuild the
     // swapchain (the other is right after a failed acquire, when no image is held either). After a surface loss, try at
     // most once a second to rebuild on the same window; same window resized / out of date / extent changed / last
     // attempt failed -> rebuild the swapchain on the current surface.
-    // 上一帧的 blit 已完成（上面那次等待）：当前交换链的退役证据若已到，先回收旧交换链与信号量，再看要不要重建。
     // The previous frame's blit has completed (the wait above): if the current swapchain's retirement evidence has
     // arrived, reclaim the old swapchains and semaphores first, then decide whether to rebuild.
     screen_retire_collect();
@@ -2374,15 +2292,12 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     if (!surface) screen_surface_retry();
 #endif
     if (surface) {
-        // 每帧比对窗口原始尺寸与上次建链时的（不靠 SUBOPTIMAL：present 回 VK_SUCCESS 的设备——变换为 IDENTITY 的横向原生平板、
-        // 桌面窗口——永远等不到它；Opus 第 1 轮 I1）。ANativeWindow_getWidth/Height 走 window->query，可能进 producer（API 31 起是
-        // 进程内带锁的查询，API 29–30 是对 SurfaceFlinger 的 binder 调用）；耗时量出来随 600 帧那行打印（审查第 2 轮 Codex M3 / Opus M2）。
         // Compare the raw window size with the one of the last build every frame (not relying on SUBOPTIMAL: devices whose
         // present returns VK_SUCCESS — natural-landscape tablets with an IDENTITY transform, desktop windowing — never get
-        // it; Opus round 1 I1). ANativeWindow_getWidth/Height go through window->query and may reach the producer (an
-        // in-process locked query from API 31, a binder call to SurfaceFlinger on API 29-30); the time is measured and
-        // printed with the 600-frame line (review round 2 Codex M3 / Opus M2).
-        // 上次建链被夹过时，另外至多每 60 帧重读一次表面能力（screen_clamp_moved）。| While the last build was clamped, the capabilities are also re-read at most every 60 frames (screen_clamp_moved).
+        // it). ANativeWindow_getWidth/Height go through window->query and may reach the producer (an in-process locked query
+        // from API 31, a binder call to SurfaceFlinger on API 29-30); the time is measured and printed with the 600-frame
+        // line. While the last build was clamped, the capabilities are also re-read at most every 60 frames
+        // (screen_clamp_moved).
         int known = 0, ww = 0, wh = 0;
         if (swapchain) {
             int moved = screen_window_changed(&known, &ww, &wh);
@@ -2398,7 +2313,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     }
     if (!swapchain) wsi_skipped++;
     if (swapchain) {
-        // 前次 blit 已消费 acquire token；当前帧通过独立返回的真实票号追踪完成。
         // The prior blit consumed the acquire token; a separate returned GPU ticket tracks this frame's completion.
         if(screen_acquire_ring_ticket[acquire_slot]&&!mtl_wait(screen_acquire_ring_ticket[acquire_slot],0))die("Vulkan acquire token reused before its consumer completed");
         uint32_t index = 0; VkResult result = VK_ERROR_OUT_OF_DATE_KHR;
@@ -2408,7 +2322,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
             acquire_ns+=dm_android_clock_ns(CLOCK_MONOTONIC)-acquire_start;
             dm_cpu_phase_end(DM_CPU_PHASE_ACQUIRE,acquire_start);
             wsi_count(wsi_acquire, result);
-            // 过期：取图失败不发信号、手里没有图像，当场在同一表面上重建并再取一次（只重试一次）。
             // Out of date: a failed acquire signals nothing and holds no image, so rebuild on the same surface right here
             // and acquire once more (a single retry).
             if (result != VK_ERROR_OUT_OF_DATE_KHR || attempt || !screen_recreate("acquire_out_of_date", SCREEN_DIRTY_OUT_OF_DATE)) break;
@@ -2416,9 +2329,8 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (result == VK_SUBOPTIMAL_KHR) screen_note_suboptimal("acquire");
         else if (result == VK_ERROR_OUT_OF_DATE_KHR) atomic_fetch_or(&screen_dirty, SCREEN_DIRTY_OUT_OF_DATE);
         else if (result == VK_TIMEOUT || result == VK_NOT_READY) {
-            // 超时不代表交换链坏了（多半是缓冲队列暂时没人消费）：只跳过这一帧，不重建（Opus 审查 MINOR：每帧重建会空等队列）。
             // A timeout does not mean the swapchain is broken (most likely nobody is consuming the buffer queue for the
-            // moment): skip this frame only, no rebuild (Opus review MINOR: rebuilding every frame would idle the queue).
+            // moment): skip this frame only, no rebuild (rebuilding every frame would idle the queue).
             if (wsi_acquire[WSI_TIMEOUT] <= 8 || !(wsi_acquire[WSI_TIMEOUT] % 64)) LOG("[vulkan-wsi] 【红】acquire returned %d after %.0f ms (frame %llu, #%llu): frame not presented", result, acquire_ns / 1e6, (unsigned long long)ticket, (unsigned long long)wsi_acquire[WSI_TIMEOUT]);
         }
         else if (result == VK_ERROR_SURFACE_LOST_KHR) { if (swapchain) screen_surface_lost("acquire"); }
@@ -2426,8 +2338,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) wsi_skipped++;
         else {
         if(index>=screen_count)die("Vulkan acquire image bounds");screen_rendered=screen_present_wait[index];
-        // 退役证据：当前交换链上一张已提交过出图的图像（screen_initialized 在 blit 提交时置位、紧接着就 vkQueuePresentKHR；被拒绝的出图按规范仍算入队，
-        // 过期则下一帧换链、表面丢失则整块释放）又被取到了，消费这次取图的 blit 一完成，它上一次出图就已完成（见 screen_retire 的说明）。
         // Retirement evidence: an image of the current swapchain already submitted to vkQueuePresentKHR (screen_initialized,
         // one table per chain, set at the blit right before the present; a rejected present still counts as enqueued) is
         // acquired again; once the blit consuming this acquire completes, its previous present has completed (see screen_retire).
@@ -2443,7 +2353,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
                 VkBufferImageCopy pc = {.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageOffset = {probe_x - 2, probe_y - 2, 0}, .imageExtent = {4, 4, 1}};
                 vkCmdCopyImageToBuffer(command, e->image, VK_IMAGE_LAYOUT_GENERAL, probe.buffer, 1, &pc); } }
         VkImageMemoryBarrier barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .oldLayout = screen_initialized[index] ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = screen_images[index], .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-        // 首布局转换与 acquire 的 TRANSFER wait 相接，不越过显示引擎对 image 的使用。
         // Connect the first layout transition to the acquire TRANSFER wait, after the presentation engine's image use.
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);
         VkClearColorValue black = {.float32 = {0,0,0,1}}; vkCmdClearColorImage(command, screen_images[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &barrier.subresourceRange);
@@ -2451,20 +2360,21 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &clear_order, 0, NULL, 0, NULL);
         int sx = crop ? crop[0] : 0, sy = crop ? crop[1] : 0, sw = crop && crop[2] > 0 ? crop[2] : t->d.width, sh = crop && crop[3] > 0 ? crop[3] : t->d.height;
         if (source) { sx = sy = 0; sw = (int)source->texture.d.width; sh = (int)source->texture.d.height; }
-        if (!repeat) lat_probe_record(e, t, sx, sy, sw, sh, pace_id + 1);   /* TOTK_LATENCY_PROBE */
-        // The picture is fitted into the swapchain keeping its aspect ratio, centred.
+        if (!repeat) lat_probe_record(e, t, sx, sy, sw, sh, pace_id + 1);
         int fit[4];
         dm_android_present_fit(sw, sh, (int)screen_extent.width, (int)screen_extent.height, fit);
         int dw = fit[2], dh = fit[3], x = fit[0], y = fit[1];
         { static uint32_t lw, lh; if (lw != (uint32_t)sw || lh != (uint32_t)sh) { lw = sw; lh = sh; LOG("[vulkan-present] picture %dx%d (texture %ux%u nvn format %#x vk %d) -> %dx%d of %ux%u", sw, sh, t->d.width, t->d.height, t->d.format, (int)e->format, dw, dh, screen_extent.width, screen_extent.height); } }
         VkImageBlit blit = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}, .srcOffsets = {{sx,sy,0},{sx+sw,sy+sh,1}}, .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}, .dstOffsets = {{x,y,0},{x+dw,y+dh,1}}};
-        if (!upscale_present(e, sx, sy, sw, sh, screen_images[index], x, y, dw, dh))   /* FSR 1, else the linear stretch */
+        /* FSR 1, else the linear stretch */
+        if (!upscale_present(e, sx, sy, sw, sh, screen_images[index], x, y, dw, dh))
         vkCmdBlitImage(command, e->image, VK_IMAGE_LAYOUT_GENERAL, screen_images[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
-        if (!repeat) rec_picture(e, sx, sy, sw, sh);   /* bug-report recording (nvn_vulkan_record.inc), before the menu and HUD */
+        /* bug-report recording (nvn_vulkan_record.inc), before the menu and HUD */
+        if (!repeat) rec_picture(e, sx, sy, sw, sh);
         if (screen_color_attachment) { dv_drain();
             uint64_t q = atomic_load(&async_pso_queued), done = atomic_load(&async_pso_built) + atomic_load(&async_pso_failed);
             overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz()};
-            overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }   /* menu / HUD; it records straight into the command buffer */
+            overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask = 0; barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);
         screen_submission = 1; completion_ticket=screen_acquire_ticket=screen_acquire_ring_ticket[acquire_slot]=mtl_sub_commit(); screen_submission = 0; screen_initialized[index] = 1;
@@ -2472,7 +2382,8 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         lat_probe_collect(screen_acquire_ticket);
         if (retire_evidence) { screen_retire_ticket = screen_acquire_ticket; screen_retire_image = index; }
         if (passlog_samples) { mtl_wait(screen_acquire_ticket, UINT64_MAX); passlog_print(); }
-        { static int sync = -1; if (sync < 0) sync = exp_env("sync");   /* experiment: no CPU/GPU overlap */
+        /* experiment: no CPU/GPU overlap */
+        { static int sync = -1; if (sync < 0) sync = exp_env("sync");
           if (sync) mtl_wait(screen_acquire_ticket, UINT64_MAX); }
         if (probe.buffer) { mtl_wait(screen_acquire_ticket, UINT64_MAX); const uint8_t *px = probe.mapped; char hex[3 * 16 + 1] = {0};
             for (int i = 0; i < probe_bpb && i < 16; i++) sprintf(hex + 3 * i, "%02x ", px[i]);
@@ -2494,7 +2405,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         dm_cpu_phase_end(DM_CPU_PHASE_PRESENT,present_lock_start);
         pthread_mutex_unlock(&queue_lock);
         wsi_count(wsi_present, result);
-        // 过期 / 丢失的出图请求里的信号量等待照样执行（规范），所以这里拆建是安全的：下一帧开头重建，或当场释放表面。
         // The semaphore waits of an out-of-date / lost present request still execute (per the spec), so tearing down is
         // safe here: rebuild at the top of the next frame, or release the surface right away.
         if (result == VK_SUBOPTIMAL_KHR) screen_note_suboptimal("present");
@@ -2534,7 +2444,8 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     pthread_mutex_unlock(&queue_lock);
     if(ticket==1){perf_time=now;perf_submit=atomic_load(&submitted);perf_bytes=snapshot_bytes;perf_allocations=buffer_allocations;perf_hits=read_cache_hits;perf_create_wall=buffer_create_wall_ns;perf_create_cpu=buffer_create_cpu_ns;}
     else if(!inner&&ticket%60==0){unsigned frames=ticket==60?59:60;dm_cpu_phase_report(frames);LOG("[vulkan-perf] frame=%llu fps=%.2f submits/frame=%.1f snapshots/frame=%.1f MB allocations/frame=%.1f new_buf_wall_ms/frame=%.3f new_buf_cpu_ms/frame=%.3f vertex_hits=%llu cache=%llu MB",(unsigned long long)ticket,frames*1e9/(now-perf_time),(double)(atomic_load(&submitted)-perf_submit)/frames,(double)(snapshot_bytes-perf_bytes)/(frames*1048576.),(double)(buffer_allocations-perf_allocations)/frames,(double)(buffer_create_wall_ns-perf_create_wall)/(frames*1e6),(double)(buffer_create_cpu_ns-perf_create_cpu)/(frames*1e6),(unsigned long long)(read_cache_hits-perf_hits),(unsigned long long)(read_cache_bytes>>20));LOG("[vulkan-images] frame=%llu created=%llu reused=%llu free_list=%llu MiB",(unsigned long long)ticket,(unsigned long long)image_creations,(unsigned long long)image_reuses,(unsigned long long)(free_image_bytes>>20));{static uint64_t c0,b0,u0;if(zc_pools)LOG("[zerocopy] frame=%llu in-place reads/frame=%.1f (%.2f MB) still snapshotted/frame=%.1f; pools exported=%llu (%.0f MiB) refused=%llu overlays=%u",(unsigned long long)ticket,(double)(zc_bound_calls-c0)/frames,(double)(zc_bound_bytes-b0)/(frames*1048576.),(double)(zc_unbound_calls-u0)/frames,(unsigned long long)zc_pools,zc_bytes/1048576.0,(unsigned long long)zc_failures,compat_overlay_count());
-      { static uint64_t f0,p0,mc0,mp0,mn0;uint64_t f=0,pr=0,mc=0,mpg=0,mns=0;if(nvn_dirty_stats)nvn_dirty_stats(&f,&pr);if(nvn_dirty_mp_stats)nvn_dirty_mp_stats(&mc,&mpg,&mns);   /* the dirty tracker's cost on the game's threads */
+      /* the dirty tracker's cost on the game's threads */
+      { static uint64_t f0,p0,mc0,mp0,mn0;uint64_t f=0,pr=0,mc=0,mpg=0,mns=0;if(nvn_dirty_stats)nvn_dirty_stats(&f,&pr);if(nvn_dirty_mp_stats)nvn_dirty_mp_stats(&mc,&mpg,&mns);
         LOG("[dirty] frame=%llu write faults/frame=%.1f protects/frame=%.1f mprotect calls/frame=%.1f pages/frame=%.0f ms/frame=%.3f",(unsigned long long)ticket,(double)(f-f0)/frames,(double)(pr-p0)/frames,(double)(mc-mc0)/frames,(double)(mpg-mp0)/frames,(double)(mns-mn0)/(frames*1e6));f0=f;p0=pr;mc0=mc;mp0=mpg;mn0=mns; }c0=zc_bound_calls;b0=zc_bound_bytes;u0=zc_unbound_calls;}perf_time=now;perf_submit=atomic_load(&submitted);perf_bytes=snapshot_bytes;perf_allocations=buffer_allocations;perf_hits=read_cache_hits;perf_create_wall=buffer_create_wall_ns;perf_create_cpu=buffer_create_cpu_ns;}
     if(ticket==1||ticket%60==0){static uint64_t large_alloc,large_bytes,large_reuse,large_freed;
         pthread_mutex_lock(&buffer_cache_lock);uint64_t a=buffer_large_allocations,ab=buffer_large_allocated_bytes,r=buffer_large_reuses,f=buffer_large_freed,cached=buffer_large_cache_bytes;pthread_mutex_unlock(&buffer_cache_lock);
@@ -2545,7 +2456,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         large_alloc=a;large_bytes=ab;large_reuse=r;large_freed=f;}
     if(ticket==1){perf_gpu=current_gpu;perf_wait=current_wait;}
     else if(!inner&&ticket%60==0){unsigned frames=ticket==60?59:60;LOG("[vulkan-time] frame=%llu GPU=%.2f ms/frame fence_wait=%.2f ms/frame (GPU batch spans; exclude present/vsync)",(unsigned long long)ticket,batch_times?(current_gpu-perf_gpu)/(frames*1e6):-1,(current_wait-perf_wait)/(frames*1e6));perf_gpu=current_gpu;perf_wait=current_wait;}
-    // 异常帧日志：每个出图边界取一次本帧的间隔、线程 CPU 与 GPU；只有越线的帧写进单独文件。
     // Abnormal-frame log: take this frame's interval, thread CPU and GPU at every present boundary; only frames
     // over the thresholds are written to their own file.
     {static uint64_t abnormal_wall,abnormal_cpu,abnormal_gpu;
@@ -2572,7 +2482,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     static uint64_t texel_hits,texel_creations,texel_reads,texel_forwarded;
     if(ticket==1){texel_hits=texel_view_hits;texel_creations=texel_view_creations;texel_reads=texel_cpu_read_bytes;texel_forwarded=texel_forward_bytes;}
     else if(!inner&&ticket%60==0){unsigned frames=ticket==60?59:60;LOG("[vulkan-texel] frame=%llu view_hits/new=%.1f/%.1f CPU_read=%.2f MB/frame forwarded=%.2f MB/frame",(unsigned long long)ticket,(texel_view_hits-texel_hits)/(double)frames,(texel_view_creations-texel_creations)/(double)frames,(texel_cpu_read_bytes-texel_reads)/(frames*1048576.),(texel_forward_bytes-texel_forwarded)/(frames*1048576.));texel_hits=texel_view_hits;texel_creations=texel_view_creations;texel_reads=texel_cpu_read_bytes;texel_forwarded=texel_forward_bytes;}
-    dm_android_perf_hint_frame();   /* ADPF: this frame's duration against the target */
+    dm_android_perf_hint_frame();
     static uint64_t texture_calls_previous,texture_blocks_previous,texture_ns_previous;
     if(ticket==1||ticket%60==0){uint64_t calls=atomic_load(&present_texture_wait_calls),blocks=atomic_load(&present_texture_wait_blocks),ns=atomic_load(&present_texture_wait_ns);
         if(ticket!=1){unsigned frames=ticket==60?59:60;LOG("[vulkan-texture-reuse-wait] frame=%llu calls/frame=%.2f initially_pending/frame=%.2f wall_ms/frame=%.3f completion=GPU_fence_and_guest_publication",(unsigned long long)ticket,(calls-texture_calls_previous)/(double)frames,(blocks-texture_blocks_previous)/(double)frames,(ns-texture_ns_previous)/(frames*1e6));}
@@ -2581,20 +2491,22 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     return completion_ticket;
 }
 static const tex_t *present_last; static double present_last_period; static int present_last_crop[4], present_last_has_crop;
-void runtime_audio_hold(int on) __attribute__((weak));   /* runtime/audio_mixer.c */
+void runtime_audio_hold(int on) __attribute__((weak));
 uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     pthread_mutex_lock(&present_serial);
     /* The mixer starts silent until the renderer says the game is up: nvn_mtl.m does it after its shader warm-up, which this
-       backend does not have, so the first picture does. Without this the game is silent (2026-11-03, the upstream sync). */
+       backend does not have, so the first picture does. Without this the game is silent. */
     { static int released; if (!released) { released = 1; if (runtime_audio_hold) runtime_audio_hold(0); } }
-    shader_setup_start();   /* the first session's background shader setup (nvn_vulkan_shader_setup.inc) */
+    shader_setup_start();
     { static uint64_t prev; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
       if (prev && now > prev) { float ms = (now - prev) / 1e6f; present_ms = present_ms ? present_ms * 0.9f + ms * 0.1f : ms; present_fps = present_ms > 0 ? 1000.0f / present_ms : 0; }
       prev = now; }
-    image_entry *gen[LSFG_MAX_OUT]; int ngen = lsfg_prepare(t, crop, gen);   /* LSFG frame generation (nvn_vulkan_lsfg.inc) */
-    image_entry *mid = lsfg_enabled() ? NULL : fg_prepare(t, crop);   /* frame generation: the picture between the previous and this frame first */
+    image_entry *gen[LSFG_MAX_OUT]; int ngen = lsfg_prepare(t, crop, gen);
+    /* frame generation: the picture between the previous and this frame first */
+    image_entry *mid = lsfg_enabled() ? NULL : fg_prepare(t, crop);
     present_shown = present_shown * 0.9f + (1.0f + (ngen > 0 ? (float)ngen : mid ? 1.0f : 0.0f)) * 0.1f;
-    int64_t desired[LSFG_MAX_OUT + 1]; int planned = ngen > 0 ? ngen : mid ? 1 : 0;   /* nvn_vulkan_pacing.inc: even parts of a game frame at the frame cap */
+    /* nvn_vulkan_pacing.inc: even parts of a game frame at the frame cap */
+    int64_t desired[LSFG_MAX_OUT + 1]; int planned = ngen > 0 ? ngen : mid ? 1 : 0;
     { int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0; pace_plan(planned, cap > 0 ? 1000.0 / cap : 1000.0 / 30, desired); }
     if (mid) { pace_desired = desired[0]; present_one(t, period, crop, mid, 0); }
     for (int i = 0; i < ngen; i++) { pace_desired = desired[i]; present_one(t, period, crop, gen[i], 0); }
@@ -2623,20 +2535,21 @@ static void *overlay_present_thread(void *arg) {
         struct timespec ts = {0, 16000000}; nanosleep(&ts, NULL);
         if (!overlay_wants_present() || !present_last) { saved = 0; continue; }
         pthread_mutex_lock(&present_serial);
-        if (!saved++ && !prepare_mode()) backdrop_save(present_last, present_last_has_crop ? present_last_crop : NULL);   /* prepare mode shows its panel over the boot frame: the player's last frame stays */
+        /* prepare mode shows its panel over the boot frame: the player's last frame stays */
+        if (!saved++ && !prepare_mode()) backdrop_save(present_last, present_last_has_crop ? present_last_crop : NULL);
         present_one(present_last, present_last_period, present_last_has_crop ? present_last_crop : NULL, NULL, 1);
         pthread_mutex_unlock(&present_serial);
     }
     return NULL;
 }
-void mtl_overlay_start(void) {   /* once, from the backend's initialisation */
+void mtl_overlay_start(void) {
     static int started; if (started++) return;
     pthread_t th; if (!pthread_create(&th, NULL, overlay_present_thread, NULL)) pthread_detach(th);
 }
 void mtl_present_wait(uint64_t ticket) {
     if(!ticket)return;
     /* experiment TOTK_VK_EXP=nopresentwait: the window texture's next rendering is ordered after its present copy on the
-       one Vulkan queue, so the CPU need not wait for that copy (it blocked the game's acquire ~22 ms per frame) */
+       one Vulkan queue, so the CPU need not wait for that copy (it blocks the game's acquire ~22 ms per frame) */
     { static int skip=-1;if(skip<0)skip=exp_env("nopresentwait");if(skip)return; }
     if(ticket>mtl_last_fence())die("Vulkan unknown present completion ticket %llu",(unsigned long long)ticket);
     uint64_t started=dm_android_clock_ns(CLOCK_MONOTONIC);int pending=atomic_load(&completed)<ticket;
@@ -2646,7 +2559,6 @@ void mtl_present_wait(uint64_t ticket) {
 }
 int mtl_display_hz(void) {
 #ifdef __ANDROID__
-    // 有真实 surface 且前端已查询屏幕才报告刷新率；无窗口/未链接前端的 fixture 仍为0。
     // Report the queried refresh rate only with a real surface and frontend; headless or frontend-free fixtures remain zero.
     extern int dm_android_display_hz(void) __attribute__((weak));
     if(surface&&dm_android_display_hz)return dm_android_display_hz();
@@ -2657,8 +2569,8 @@ int mtl_has_window(void) { return surface != VK_NULL_HANDLE; }
 int mtl_link_active(void) { return 0; }
 int mtl_link_wait_tick(uint64_t timeout, unsigned frame_ticks) { (void)timeout; (void)frame_ticks; return 0; }
 int mtl_warm_wait(int timeout) {
-    // hle_nvn 在第一次进局读取画面处调用：预热没跑完就在这里等（读取画面多停一会儿），进局后不再现编管线。
-    // Called by hle_nvn at the first run-entry loading screen: wait for warm-up here (the loading screen stays a bit longer) so pipelines are not compiled on the fly after entering the run.
+    // Called by hle_nvn at the first run-entry loading screen: wait for warm-up here (the loading screen stays a bit
+    // longer) so pipelines are not compiled on the fly after entering the run.
     if(!atomic_load(&pso_warm_running))return 0;
     uint64_t start=dm_android_clock_ns(CLOCK_MONOTONIC),limit=(uint64_t)(timeout>0?timeout:0)*1000000ull;
     while(atomic_load(&pso_warm_running)&&dm_android_clock_ns(CLOCK_MONOTONIC)-start<limit)usleep(2000);

@@ -1,20 +1,11 @@
-// 驱动专用着色器变体：离线 build_shaders.py 为特定驱动产出语义等价的替代模块，运行期只在该驱动上换用。
 // Driver-specific shader variants: build_shaders.py emits semantics-preserving replacement modules offline for a
 // specific driver, and the runtime swaps them in on that driver only.
 //
-// 着色器缓存目录里的 driver-variants.tsv（格式严格，任何一行不合规都直接终止，不论它属于哪个驱动，在任何驱动上（包括
-// Turnip）都一样：清单损坏就是着色器缓存损坏）：
 // driver-variants.tsv in the shader cache directory (strict format; any malformed line aborts, whichever driver it is for,
 // and on every driver, Turnip included: a damaged manifest means a damaged shader cache):
 //   # DMVKVARIANT2
-//   V\t<id>\t<VkDriverId>\t<描述 | description>
-//   K\t<16 位十六进制键 | 16-hex key>\t<变体 SHA-256>\t<基础 .spv SHA-256>\t<基础 .meta SHA-256>
-//                                     | <variant SHA-256>\t<base .spv SHA-256>\t<base .meta SHA-256>
-// K 行归属于它前面最近的 V 行。只有实际选中驱动的 driverID 等于 V 行声明值时该变体才启用；启用后清单里的键一律
-// 读 <key>.<id>.spv，并且核对三份摘要：变体本身、它所派生自的基础模块、共用的反射 .meta。数据包导入不清理旧文件，
-// 所以旧包留下的清单与变体可能配上新包的基础模块（不同翻译版本或子组档位）；基础摘要不符即终止，不会把旧变体
-// 配到新反射上执行。缺文件或摘要不符一律终止，不退回基础模块（基础模块正是在这个驱动上出问题的那份）；
-// 预热路径也一样（它对普通模块是非致命读取）。
+//   V\t<id>\t<VkDriverId>\t<description>
+//   K\t<16-hex key>\t<variant SHA-256>\t<base .spv SHA-256>\t<base .meta SHA-256>
 // K lines belong to the closest preceding V line. A variant is enabled only when the selected driver's driverID equals
 // the V line's value; then every listed key loads <key>.<id>.spv and three digests are checked: the variant itself, the
 // base module it was derived from, and the shared .meta reflection. Package import does not remove old files, so a
@@ -22,10 +13,8 @@
 // subgroup profile); a base digest mismatch aborts instead of running an old variant against new reflection. A missing
 // file or any digest mismatch aborts rather than falling back to the base module (the base module is exactly what fails
 // on this driver), on the warm path too (which reads ordinary modules non-fatally).
-// 变体 ID 与清单摘要进入管线缓存身份，换变体就换驱动缓存命名空间。
 // The variant ID and the manifest digest enter the pipeline-cache identity, so a different variant gets a different
 // driver-cache namespace.
-// 构建期变体生成失败时留下 driver-variants.failed（打包拒收）；运行期见到它也终止：那份缓存不完整。
 // A failed variant build leaves driver-variants.failed (packaging refuses it); the runtime aborts on it as well, since
 // that cache is incomplete.
 #define SHADER_VARIANT_MANIFEST "driver-variants.tsv"
@@ -48,14 +37,13 @@ static int shader_variant_id_valid(const char *id){
     for(size_t i=0;i<n;i++)if(!((id[i]>='a'&&id[i]<='z')||(id[i]>='0'&&id[i]<='9')))return 0;
     return 1;
 }
-// 64 个小写十六进制字符 -> 32 字节；不合规返回 0。| 64 lowercase hex characters -> 32 bytes; 0 when malformed.
+// 64 lowercase hex characters -> 32 bytes; 0 when malformed.
 static int shader_variant_digest(const char *text,uint8_t out[32]){
     for(unsigned i=0;i<32;i++){int high=shader_variant_hex(text[2*i]),low=shader_variant_hex(text[2*i+1]);if(high<0||low<0)return 0;out[i]=(uint8_t)(high<<4|low);}
     return 1;
 }
 #ifdef __ANDROID__
-// 在 Vulkan 设备建好、驱动不会再回退之后，管线缓存初始化之前调用一次。
-// Call once after the Vulkan device exists and the driver can no longer fall back, before the pipeline cache is initialized.
+// Call once after the Vulkan device exists and the driver choice is final, before the pipeline cache is initialized.
 static void shader_variant_init(uint32_t driver_id) {
     if(shader_variant.initialized)die("Vulkan shader variants initialized twice");
     shader_variant.initialized=1;shader_variant.driver_id=driver_id;
@@ -85,7 +73,6 @@ static void shader_variant_init(uint32_t driver_id) {
     fclose(file);text[size]=0;
     dm_android_sha256_context digest;dm_android_sha256_init(&digest);dm_android_sha256_update(&digest,text,(uint32_t)size);dm_android_sha256_final(shader_variant.manifest_sha256,&digest);
     if(strlen(text)!=(size_t)size||text[size-1]!='\n')die("Vulkan shader variant manifest is not newline-terminated text");
-    // 整份清单先完整校验（所有段的键行、摘要与段内重复），再按 driverID 挑段。
     // Validate the whole manifest first (key lines, digests and in-section duplicates of every section), then pick by driverID.
     shader_variant_row *rows=calloc(SHADER_VARIANT_MAX_KEYS,sizeof *rows);if(!rows)die("Vulkan shader variant key allocation");
     unsigned nrows=0,variants=0,line_number=0,selected_section=0;int selected=0;char selected_id[32]={0};uint32_t declared_ids[64];
@@ -127,7 +114,8 @@ static void shader_variant_init(uint32_t driver_id) {
     unsigned count=0;for(unsigned i=0;i<nrows;i++)count+=rows[i].section==selected_section;
     if(!count)die("Vulkan shader variant %s lists no modules",selected_id);
     shader_variant_key *keys=calloc(count,sizeof *keys);if(!keys)die("Vulkan shader variant key allocation");
-    for(unsigned i=0,j=0;i<nrows;i++)if(rows[i].section==selected_section)keys[j++]=rows[i].k;   // 已按键排序 | already sorted by key
+    // already sorted by key
+    for(unsigned i=0,j=0;i<nrows;i++)if(rows[i].section==selected_section)keys[j++]=rows[i].k;
     free(rows);
     shader_variant.active=1;shader_variant.keys=keys;shader_variant.count=count;snprintf(shader_variant.id,sizeof shader_variant.id,"%s",selected_id);
     char hex[65];for(unsigned i=0;i<32;i++)snprintf(hex+2*i,3,"%02x",shader_variant.manifest_sha256[i]);
@@ -139,7 +127,6 @@ static const shader_variant_key *shader_variant_lookup(const char *key) {
     shader_variant_key probe;snprintf(probe.key,sizeof probe.key,"%s",key);
     return bsearch(&probe,shader_variant.keys,shader_variant.count,sizeof *shader_variant.keys,shader_variant_key_compare);
 }
-// 核对变体与它派生自的那一代基础模块与反射；全部相符返回 NULL，否则返回不符的那一项。
 // Check a variant against the base module and reflection generation it was derived from; NULL when all match,
 // otherwise the item that differs.
 static const char *shader_variant_verify(const shader_variant_key *v,const void *variant,size_t variant_bytes,const void *base,size_t base_bytes,const void *meta,size_t meta_bytes) {
@@ -152,8 +139,6 @@ static const char *shader_variant_verify(const shader_variant_key *v,const void 
     }
     return NULL;
 }
-// 读一个清单列出的键的变体：变体与基础模块一律致命读取（read 是致命读取函数），三份摘要不符即终止，绝不退回基础模块。
-// 返回变体字节（调用方 free）。抽成函数是为了宿主测试能用桩读取函数覆盖这条分支。
 // Read the variant of a manifest-listed key: variant and base module are read fatally (read is the fatal reader), any
 // digest mismatch aborts, and it never falls back to the base module. Returns the variant bytes (the caller frees them).
 // It is a function so the host test can cover this branch with a stub reader.
@@ -164,9 +149,8 @@ static void *shader_variant_load(const shader_variant_key *v,const char *key,con
     if(mismatch)die("Vulkan shader variant %s.%s: %s does not match driver-variants.tsv (variant files from another shader cache: rebuild the shader cache, or delete driver-variants.tsv and the *.%s.spv files from the shader directory before importing a package again)",key,variant_suffix,mismatch,shader_variant.id);
     return code;
 }
-// 管线缓存身份：每个变体各自一个命名空间。| Pipeline-cache identity: every variant gets its own namespace.
-// 未启用时不改摘要：其它驱动（Turnip）的命名空间与旧版逐位相同，已有驱动缓存继续命中。
-// Leave the digest untouched when inactive: other drivers (Turnip) keep exactly the old namespace and existing caches still hit.
+// Pipeline-cache identity: every variant gets its own namespace.
+// Leave the digest untouched when inactive, so other drivers (Turnip) keep their namespace and their caches still hit.
 static void shader_variant_identity(dm_android_sha256_context *digest) {
     static const char tag[]="shader-variant=";
     if(!shader_variant.active)return;

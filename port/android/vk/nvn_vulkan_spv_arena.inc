@@ -1,8 +1,8 @@
 /* Where shader code lives. A translated shader is usually 70-200 KB, past what Android's allocator keeps in its size
    classes, so each malloc of one is its own mapping with guard pages around it: about two of the process's 65,530
    (vm.max_map_count). Every shader module holds a copy of its SPIR-V in the driver, and every vertex shader one more for
-   stage linking, so a long session reached the limit on these alone (5,450 of the heap's 5,513 large blocks, 2026-11-04;
-   mprotect and vkMapMemory then fail). Here they share large chunks instead: one mapping for many shaders.
+   stage linking, so a long session reaches the limit on these alone (5,450 of the heap's 5,513 large blocks; mprotect
+   and vkMapMemory then fail). Here they share large chunks instead: one mapping for many shaders.
 
    spv_callbacks goes to every vkCreateShaderModule and vkDestroyShaderModule of a game shader, and Vulkan requires the two
    to match: a module made with it must be destroyed with it. A chunk is unmapped once nothing in it is alive. */
@@ -11,12 +11,14 @@
 #include <linux/prctl.h>
 #define SPV_CHUNK ((size_t)32 << 20)
 #define SPV_CHUNKS 512
-typedef struct { size_t size; uint32_t chunk, magic; } spv_header;   /* 16 bytes, before each block */
+/* 16 bytes, before each block */
+typedef struct { size_t size; uint32_t chunk, magic; } spv_header;
 enum { SPV_MAGIC = 0x53505641 };
 static struct { uint8_t *base[SPV_CHUNKS]; size_t size[SPV_CHUNKS]; uint32_t live[SPV_CHUNKS]; unsigned current; size_t used; int started; } spv_arena;
 static pthread_mutex_t spv_arena_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int spv_new_chunk(size_t need) {   /* the slot of a fresh chunk of at least need bytes, or -1; the lock is held */
+/* the slot of a fresh chunk of at least need bytes, or -1; the lock is held */
+static int spv_new_chunk(size_t need) {
     size_t size = need > SPV_CHUNK ? (need + 0xffff) & ~(size_t)0xffff : SPV_CHUNK;
     for (unsigned i = 0; i < SPV_CHUNKS; i++) if (!spv_arena.base[i]) {
         void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -46,7 +48,8 @@ static void *spv_alloc(size_t size, size_t align) {
     pthread_mutex_unlock(&spv_arena_lock);
     return (void *)at;
 }
-static int spv_owns(const void *p) {   /* the lock is held */
+/* the lock is held */
+static int spv_owns(const void *p) {
     for (unsigned i = 0; i < SPV_CHUNKS; i++)
         if (spv_arena.base[i] && (const uint8_t *)p >= spv_arena.base[i] && (const uint8_t *)p < spv_arena.base[i] + spv_arena.size[i]) return 1;
     return 0;

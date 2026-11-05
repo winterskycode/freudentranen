@@ -8,8 +8,10 @@
 #include <unistd.h>
 #include <zstd.h>
 
-#define LEVEL 19               /* of the blobs, as the Python: what Java reads does not depend on it */
-#define MAX_FILE (1ull << 30)  /* no pack is near this: a size above it is damage */
+/* zstd level of the blobs, as the Python: what Java reads does not depend on it */
+#define LEVEL 19
+/* no pack is near this: a size above it is damage */
+#define MAX_FILE (1ull << 30)
 #define STEP (1u << 20)
 #define MAX_DICTS 8
 
@@ -22,7 +24,8 @@ typedef struct {
     const tokc_game *g;
     ZSTD_DDict *dicts[MAX_DICTS]; unsigned dict_ids[MAX_DICTS], ndicts;
     pair *pairs; uint64_t npairs;
-    out_row *rows;                           /* one slot per pair, used when the file differs */
+    /* one slot per pair, used when the file differs */
+    out_row *rows;
     _Atomic uint64_t next, done, read_files, read_bytes;
     _Atomic int stop;
     tokm_progress progress; void *ctx;
@@ -240,7 +243,8 @@ int tokm_make(const tokc_game *g, int threads, tokm_progress progress, void *ctx
     uint64_t most = old.count < now.count ? old.count : now.count;
     j.pairs = malloc((size_t)(most ? most : 1) * sizeof *j.pairs);
     if (!j.pairs) { rc = tokc_fail(err, errlen, TOKC_E_NOMEM, "out of memory"); goto out; }
-    for (uint64_t a = 0, b = 0; a < old.count && b < now.count;) {   /* both sorted by path */
+    /* both sorted by path */
+    for (uint64_t a = 0, b = 0; a < old.count && b < now.count;) {
         int c = strcmp(old.rows[a].path, now.rows[b].path);
         if (!c) j.pairs[j.npairs++] = (pair){&old.rows[a], &now.rows[b]};
         a += c <= 0; b += c >= 0;

@@ -1,6 +1,6 @@
 // In-game overlay: the quick menu, the settings screen, the button layout and the performance HUD, drawn with Dear ImGui
-// (third_party/imgui, MIT) into the presented image. See overlay.h. Design: the "TotK Android settings overlay" canvas
-// (screens 2, 3, 4 and 6). ImGui moves the focus and reports activations; every row, tab and ornament is drawn here.
+// (third_party/imgui, MIT) into the presented image. See overlay.h. ImGui moves the focus and reports activations; every
+// row, tab and ornament is drawn here.
 #ifndef IMGUI_IMPL_VULKAN_NO_PROTOTYPES
 #define IMGUI_IMPL_VULKAN_NO_PROTOTYPES
 #endif
@@ -25,7 +25,7 @@
 
 namespace {
 
-/* The canvas's colours: ink ground, cream text, gold for the cursor, jade for values, ochre for restart-only. */
+/* The colours: ink ground, cream text, gold for the cursor, jade for values, ochre for restart-only. */
 const ImU32 kInk = IM_COL32(10, 17, 20, 255), kCream = IM_COL32(238, 232, 216, 255), kMuted = IM_COL32(167, 174, 162, 255);
 const ImU32 kSoft = IM_COL32(207, 201, 184, 255), kHelp = IM_COL32(214, 208, 192, 255), kGold = IM_COL32(216, 180, 92, 255);
 const ImU32 kGoldText = IM_COL32(235, 203, 124, 255), kGoldFrame = IM_COL32(216, 180, 92, 178), kGoldFill = IM_COL32(216, 180, 92, 26);
@@ -57,7 +57,8 @@ std::vector<std::string> split(const std::string &s, char c) {
 
 /* ---- the button layout (host/controller_map.h order) ---- */
 enum { BUTTONS = 17, SWITCH_BUTTONS = 16 };
-const int kLabelPosition[4] = {1, 0, 3, 2};   /* where each face row's button sits on the drawing, by label */
+/* where each face row's button sits on the drawing, by label */
+const int kLabelPosition[4] = {1, 0, 3, 2};
 /* The actions' help, the buttons an action can go on (in the order left / right steps through them) and the buttons'
    short names, from assets/actions.tsv: the startup screen shows the same table (load_actions) */
 std::string g_action_help[GAME_ACTIONS], g_short[BUTTONS], g_label_short[4];
@@ -79,16 +80,23 @@ struct State {
     bool ready = false, failed = false; VkFormat format = VK_FORMAT_UNDEFINED;
     VkRenderPass pass = VK_NULL_HANDLE; VkDescriptorPool pool = VK_NULL_HANDLE;
     Framebuffer fbs[8] = {}; unsigned next_fb = 0;
-    ImFont *title = nullptr, *head = nullptr, *body = nullptr, *value = nullptr, *help = nullptr, *small = nullptr, *tag = nullptr, *mono = nullptr;   /* mono: the fps number (digits of one width: a steady readout) */
+    /* mono: the fps number (digits of one width: a steady readout) */
+    ImFont *title = nullptr, *head = nullptr, *body = nullptr, *value = nullptr, *help = nullptr, *small = nullptr, *tag = nullptr, *mono = nullptr;
     std::atomic<bool> open{false};
-    std::atomic<int> toggles{0};   /* overlay_toggle from other threads, applied by the drawing thread (overlay_record) */
+    /* overlay_toggle from other threads, applied by the drawing thread (overlay_record) */
+    std::atomic<int> toggles{0};
     int page = PAGE_QUICK, controls_back = PAGE_QUICK, tab = 0, focused = -1, pad_row = 0, rows = 0, row_focused = -1, loop_to = -1; bool focus_first = false, changed_restart = false;
-    char report[300] = "";   /* the bug report's progress (host/report.c) */
-    bool report_capture = false;   /* the report row's choice: with a frame capture */
-    int8_t actions[GAME_ACTIONS] = {};   /* the field controls: each action's physical button */
+    /* the bug report's progress (host/report.c) */
+    char report[300] = "";
+    /* the report row's choice: with a frame capture */
+    bool report_capture = false;
+    /* the field controls: each action's physical button */
+    int8_t actions[GAME_ACTIONS] = {};
     float frame_ms[120] = {}; int frame_i = 0;
-    char driver[160] = ""; overlay_stats st = {};   /* HUD: the driver line and the shader counters */
-    float s = 1.5f;   /* screen pixels per design unit (the canvas is 1280 x 720) */
+    /* HUD: the driver line and the shader counters */
+    char driver[160] = ""; overlay_stats st = {};
+    /* screen pixels per design unit (the design is 1280 x 720) */
+    float s = 1.5f;
     pthread_mutex_t input = PTHREAD_MUTEX_INITIALIZER;
     uint32_t buttons = 0, seen = 0, edges = 0, pressed = 0; int32_t lx = 0, ly = 0;
     struct Touch { float x, y; int down; } touches[16]; unsigned ntouch = 0;
@@ -204,7 +212,8 @@ void layout_write() { if (S.set.controls) S.set.controls(S.actions, 1); }
 ImFont *font_asset(const char *name, float px, const ImWchar *ranges) {
     size_t n = 0; void *ttf = S.set.asset ? S.set.asset(name, &n) : nullptr;
     if (!ttf) return nullptr;
-    ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1;   /* the atlas takes ttf and frees it */
+    /* the atlas takes ttf and frees it */
+    ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1;
     return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(ttf, (int)n, px, &c, ranges);
 }
 
@@ -215,7 +224,8 @@ bool init(VkFormat format) {
     VkAttachmentDescription a = {};
     a.format = format; a.samples = VK_SAMPLE_COUNT_1_BIT; a.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; a.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     a.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    a.initialLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; a.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;   // the present's own barrier follows
+    // the present's own barrier follows
+    a.initialLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; a.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     VkAttachmentReference ref = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
     VkSubpassDescription sub = {}; sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; sub.colorAttachmentCount = 1; sub.pColorAttachments = &ref;
     VkSubpassDependency dep[2] = {};
@@ -247,7 +257,8 @@ bool init(VkFormat format) {
     S.tag = font_asset("fonts/Figtree-SemiBold.ttf", 17, ranges);
     if (!S.body) { fprintf(stderr, "[overlay] fonts missing from the APK's assets: system font\n");
         S.body = io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 27.0f); if (!S.body) S.body = io.Fonts->AddFontDefault(); }
-    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", 30, &c, ranges); }   /* the device's monospace font (every Android has it) */
+    /* the device's monospace font (every Android has it) */
+    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", 30, &c, ranges); }
     for (ImFont **f : {&S.title, &S.head, &S.value, &S.help, &S.small, &S.tag}) if (!*f) *f = S.body;
     if (!S.mono) S.mono = S.head;
     ImGuiStyle &st = ImGui::GetStyle();
@@ -319,13 +330,15 @@ void diamond(ImDrawList *dl, ImVec2 c, float r, ImU32 fill, ImU32 outline = 0) {
     if (fill) dl->AddQuadFilled(a, b, d, e, fill);
     if (outline) dl->AddQuad(a, b, d, e, outline, u(1));
 }
-void ornament(ImDrawList *dl, ImVec2 p, float w) {   /* a gold rule with a diamond in the middle */
+/* a gold rule with a diamond in the middle */
+void ornament(ImDrawList *dl, ImVec2 p, float w) {
     float m = p.x + w / 2;
     dl->AddLine(ImVec2(p.x, p.y), ImVec2(m - u(8), p.y), IM_COL32(216, 180, 92, 150), u(1));
     dl->AddLine(ImVec2(m + u(8), p.y), ImVec2(p.x + w, p.y), IM_COL32(216, 180, 92, 150), u(1));
     diamond(dl, ImVec2(m, p.y), u(4), kGold);
 }
-void brackets(ImDrawList *dl, ImVec2 a, ImVec2 b) {   /* a panel: fill, hairline and gold corner brackets */
+/* a panel: fill, hairline and gold corner brackets */
+void brackets(ImDrawList *dl, ImVec2 a, ImVec2 b) {
     dl->AddRectFilled(a, b, kPanel); dl->AddRect(a, b, kLine, 0, 0, u(1));
     float k = u(16), t = u(2);
     dl->AddLine(a, ImVec2(a.x + k, a.y), kGold, t); dl->AddLine(a, ImVec2(a.x, a.y + k), kGold, t);
@@ -333,12 +346,14 @@ void brackets(ImDrawList *dl, ImVec2 a, ImVec2 b) {   /* a panel: fill, hairline
     dl->AddLine(ImVec2(a.x, b.y), ImVec2(a.x + k, b.y), kGold, t); dl->AddLine(ImVec2(a.x, b.y), ImVec2(a.x, b.y - k), kGold, t);
     dl->AddLine(b, ImVec2(b.x - k, b.y), kGold, t); dl->AddLine(b, ImVec2(b.x, b.y - k), kGold, t);
 }
-/* A focusable row: ImGui's button for focus and activation, drawn as the canvas's selection (a gold frame and diamond). */
+/* A focusable row: ImGui's button for focus and activation, drawn as the selection (a gold frame and diamond). */
 struct Row { bool focused, clicked; ImVec2 a, b; };
 Row row(const char *id, float w, float h, bool focus = false) {
     ImGui::PushID(id);
-    if (S.loop_to == S.rows) { if (!S.rows) ImGui::SetScrollY(0); focus = true; S.loop_to = -1; }   /* the top: its heading too */
-    if (S.focus_first && !S.rows) ImGui::SetScrollY(0);   /* a new tab starts at its first heading */
+    /* the top: its heading too */
+    if (S.loop_to == S.rows) { if (!S.rows) ImGui::SetScrollY(0); focus = true; S.loop_to = -1; }
+    /* a new tab starts at its first heading */
+    if (S.focus_first && !S.rows) ImGui::SetScrollY(0);
     if (focus || S.focus_first) { ImGui::SetKeyboardFocusHere(); S.focus_first = false; }
     Row r; r.a = ImGui::GetCursorScreenPos(); r.clicked = ImGui::Button("##row", ImVec2(w, h)); r.b = ImVec2(r.a.x + w, r.a.y + h);
     r.focused = ImGui::IsItemFocused();
@@ -366,7 +381,8 @@ bool touch_button(const char *id, ImVec2 p, ImVec2 size) {
     ImGui::PopItemFlag();
     return hit;
 }
-void hint(ImDrawList *dl, ImVec2 &p, const char *glyph, const char *what) {   /* a footer button hint: glyph chip and words */
+/* a footer button hint: glyph chip and words */
+void hint(ImDrawList *dl, ImVec2 &p, const char *glyph, const char *what) {
     float h = u(24), w = strlen(glyph) > 1 ? text_size(S.tag, glyph).x + u(14) : h;
     ImVec2 a(p.x, p.y), b(p.x + w, p.y + h);
     if (strlen(glyph) > 1) dl->AddRectFilled(a, b, kCream, u(6)); else dl->AddCircleFilled(ImVec2(a.x + h / 2, a.y + h / 2), h / 2, kCream);
@@ -389,13 +405,14 @@ float value_text(ImDrawList *dl, float x, float mid, const char *v, ImU32 col) {
 }
 void begin_page(const char *name) {
     ImGuiIO &io = ImGui::GetIO();
-    static int drawn = -1; if (drawn != S.page) { ImGui::SetNextWindowFocus(); drawn = S.page; }   /* the d-pad moves in the page shown */
+    /* the d-pad moves in the page shown */
+    static int drawn = -1; if (drawn != S.page) { ImGui::SetNextWindowFocus(); drawn = S.page; }
     ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(io.DisplaySize);
     ImGui::Begin(name, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                  ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollWithMouse);
 }
 
-/* ---- the quick menu (screen 2) ---- */
+/* ---- the quick menu ---- */
 void quick_page(float w, float h, float fps, float frame_ms) {
     ImDrawList *bg = ImGui::GetBackgroundDrawList();
     ImU32 a0 = IM_COL32(7, 11, 13, 64), a1 = IM_COL32(7, 11, 13, 115), a2 = IM_COL32(7, 11, 13, 230);
@@ -406,7 +423,8 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     ImDrawList *dl = ImGui::GetWindowDrawList();
     float x = w - u(440) + u(36), iw = u(440 - 36 - 40), y = u(40);
     text(dl, S.title, ImVec2(x, y), kGoldText, "Paused"); y += u(40);
-    ornament(dl, ImVec2(x, y + u(6)), u(220)); y += u(28);   /* the frame rate is on the HUD already */
+    /* the frame rate is on the HUD already */
+    ornament(dl, ImVec2(x, y + u(6)), u(220)); y += u(28);
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     auto item = [&](const char *id, const char *label, float hgt, ImU32 col, bool chevron) {
         Row r = row(id, iw, u(hgt));
@@ -418,7 +436,8 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     };
     auto rule = [&]() { float ry = ImGui::GetCursorScreenPos().y + u(8); dl->AddLine(ImVec2(x + u(36), ry), ImVec2(x + iw, ry), kLine, u(1)); ImGui::SetCursorScreenPos(ImVec2(x, ry + u(9))); };
     bool resume = item("resume", "Resume", 48, kCream, false);
-    ImGui::SetItemDefaultFocus();   /* the menu opens on Resume */
+    /* the menu opens on Resume */
+    ImGui::SetItemDefaultFocus();
     if (resume) S.open = false;
     if (item("settings", "All settings", 42, kCream, true)) { S.page = PAGE_SETTINGS; S.focus_first = true; }
     if (S.set.controls && item("layout", "Controls", 42, kCream, true)) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_QUICK; S.pad_row = 0; S.focus_first = true; }
@@ -444,14 +463,17 @@ void quick_page(float w, float h, float fps, float frame_ms) {
           if (r.focused || !S.report[0]) value_text(dl, r.b.x - u(16), (r.a.y + r.b.y) / 2, S.report_capture ? "+ frame capture" : "video, log and save", kJade);
           if (r.focused && (left_pressed() || right_pressed())) S.report_capture = !S.report_capture;
           ImGui::SetCursorScreenPos(ImVec2(x, r.b.y + u(2))); }
-        if (r.clicked && ImGui::GetIO().MouseReleased[0] && ImGui::GetIO().MousePos.x > r.a.x + iw * 0.55f) r.clicked = false, S.report_capture = !S.report_capture;   /* touch: the value side picks */
+        /* touch: the value side picks */
+        if (r.clicked && ImGui::GetIO().MouseReleased[0] && ImGui::GetIO().MousePos.x > r.a.x + iw * 0.55f) r.clicked = false, S.report_capture = !S.report_capture;
         if (r.clicked) {
             const Option *rec = option("TOTK_RECORD"); char details[900];
             snprintf(details, sizeof details, "%s\nFrame rate: %.0f fps, %.1f ms a frame\nRecording: %s", S.info, fps, frame_ms, rec && rec->cur ? "on" : "off");
             S.set.report(S.report_capture ? 2 : 1, details, S.report, sizeof S.report);
-            if (S.report_capture) S.open = false;   /* the capture needs the game running into the freeze */
+            /* the capture needs the game running into the freeze */
+            if (S.report_capture) S.open = false;
         }
-        if (S.report[0] && !r.focused) {   /* its progress at the row's right, the folder's name once saved */
+        /* its progress at the row's right, the folder's name once saved */
+        if (S.report[0] && !r.focused) {
             const char *shown = strncmp(S.report, "Bug report saved: ", 18) ? S.report : strrchr(S.report, '/') ? strrchr(S.report, '/') + 1 : S.report;
             char t[120]; snprintf(t, sizeof t, "%s%s", shown == S.report ? "" : "saved \u00b7 ", shown);
             if (!strncmp(t, "Saving the bug report: ", 23)) memmove(t, t + 23, strlen(t + 23) + 1);
@@ -466,7 +488,7 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     ImGui::End();
 }
 
-/* ---- the full settings (screen 3) ---- */
+/* ---- the full settings ---- */
 void settings_page(float w, float h) {
     ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(7, 11, 13, 205));
     begin_page("settings"); rows_begin();
@@ -572,7 +594,7 @@ void settings_page(float w, float h) {
     ImGui::End();
 }
 
-/* ---- the field controls (screen 4): each action on a button of this device ---- */
+/* ---- the field controls: each action on a button of this device ---- */
 void controls_page(float w, float h) {
     ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(7, 11, 13, 214));
     begin_page("controls"); rows_begin();
@@ -583,7 +605,8 @@ void controls_page(float w, float h) {
     float cx = u(56) + text_size(S.title, "Controls").x + u(16);
     text(dl, S.help, ImVec2(cx, u(44)), kMuted, S.controls_back == PAGE_SETTINGS ? "Settings › Controls" : "Quick menu");
     char status[64]; int changes = layout_changes(); snprintf(status, sizeof status, changes ? "%d changed from the game's defaults" : "Using the game's default controls", changes);
-    ImVec2 bs = text_size(S.head, "Back"), st = text_size(S.help, status);   /* touch: back where the page was opened from */
+    /* touch: back where the page was opened from */
+    ImVec2 bs = text_size(S.head, "Back"), st = text_size(S.help, status);
     if (touch_button("back", ImVec2(w - u(56) - bs.x, u(30)), ImVec2(bs.x, u(44)))) { S.page = S.controls_back; S.focus_first = S.controls_back == PAGE_SETTINGS; }
     text(dl, S.head, ImVec2(w - u(56) - bs.x, u(34)), kSoft, "Back");
     text(dl, S.help, ImVec2(w - u(56) - bs.x - u(28) - st.x, u(44)), kJade, status);
@@ -608,7 +631,8 @@ void controls_page(float w, float h) {
       dl->AddRectFilled(pa, pb, kPanel); dl->AddRect(pa, pb, kLine, 0, 0, u(1));
       float pw = pb.x - pa.x - u(44), hx = pa.x + u(22), hy = pa.y + u(18), hh = text_size(S.head, game_actions[a].label).y;
       text(dl, S.head, ImVec2(hx, hy), kGoldText, game_actions[a].label); hx += text_size(S.head, game_actions[a].label).x + u(10);
-      ImVec2 as = text_size(S.value, "→"); text(dl, S.value, ImVec2(hx, hy + (hh - as.y) / 2), kGoldText, "→"); hx += as.x + u(10);   /* the title font has no arrow */
+      /* the title font has no arrow */
+      ImVec2 as = text_size(S.value, "→"); text(dl, S.value, ImVec2(hx, hy + (hh - as.y) / 2), kGoldText, "→"); hx += as.x + u(10);
       text(dl, S.head, ImVec2(hx, hy), kGoldText, button(sel));
       char help[400]; snprintf(help, sizeof help, "%s Menus are not changed by this: they confirm with %s and go back with %s.", g_action_help[a].c_str(), button(1), button(0));
       text(dl, S.help, ImVec2(pa.x + u(22), hy + hh + u(10)), kHelp, help, pw); }
@@ -621,7 +645,8 @@ void controls_page(float w, float h) {
     ImGui::BeginChild("actions", ImVec2(lw, h - u(76) - top - u(24)), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
     ImDrawList *rl = ImGui::GetWindowDrawList();
     float col = (lw - u(36) - u(16)) / 2;
-    bool changed = false, focus = S.focus_first; S.focus_first = false;   /* the focus goes to the row of S.pad_row */
+    /* the focus goes to the row of S.pad_row */
+    bool changed = false, focus = S.focus_first; S.focus_first = false;
     for (int i = 0; i < GAME_ACTIONS; i++) {
         if (!game_actions[i].label) continue;
         Row r = row(game_actions[i].name, lw, u(30), focus && i == a);
@@ -635,10 +660,12 @@ void controls_page(float w, float h) {
         int step = r.clicked ? 1 : 0;
         if (r.focused && left_pressed()) step = -1;
         if (r.focused && right_pressed()) step = 1;
-        if (step) {   /* the buttons that carry actions in order, then nothing */
+        /* the buttons that carry actions in order, then nothing */
+        if (step) {
             int n = (int)g_carry.size(), cur = n; for (int k = 0; k < n; k++) if (g_carry[k] == S.actions[i]) cur = k;
             int next = (cur + step + n + 1) % (n + 1);
-            while (game_actions[i].held && next < n && (g_carry[next] == 4 || g_carry[next] == 5))   /* the game reads no held stick clicks */
+            /* the game reads no held stick clicks */
+            while (game_actions[i].held && next < n && (g_carry[next] == 4 || g_carry[next] == 5))
                 next = (next + step + n + 1) % (n + 1);
             S.actions[i] = (int8_t)(next == n ? -1 : g_carry[next]); changed = true;
         }
@@ -694,7 +721,8 @@ void hud(float fps, float frame_ms) {
     g_temp_on = tp;
     if (tp) { static bool started; if (!started) { started = true; pthread_t t; if (!pthread_create(&t, nullptr, temp_thread, nullptr)) pthread_detach(t); } }
     if (!(f || g || sh || dr || rf || tp)) return;
-    const Option *co = option("TOTK_HUD_CORNER"); int corner = co ? co->cur : 0;   /* 0 bottom-left, 1 bottom-right, 2 top-left, 3 top-right */
+    /* 0 bottom-left, 1 bottom-right, 2 top-left, 3 top-right */
+    const Option *co = option("TOTK_HUD_CORNER"); int corner = co ? co->cur : 0;
     ImDrawList *dl = ImGui::GetForegroundDrawList(); ImVec2 ds = ImGui::GetIO().DisplaySize;
     ImFont *fn = S.mono; float lh = text_size(fn, "0").y, gap = u(16), gw = u(120), pad = u(5);
     struct Seg { char text[192]; bool graph; float w; } segs[8]; int n = 0; float total = 0;
@@ -704,14 +732,16 @@ void hud(float fps, float frame_ms) {
     if (g) { snprintf(b, sizeof b, "%5.1f ms", frame_ms); add(b, false); add("", true); }
     if (rf) { if (S.st.screen_hz) snprintf(b, sizeof b, "%3u Hz", S.st.screen_hz); else snprintf(b, sizeof b, " -- Hz"); add(b, false); }
     if (tp) { int t = std::max(g_temp_cpu.load(), g_temp_gpu.load()); if (t >= 0) snprintf(b, sizeof b, "%3dC", t); else snprintf(b, sizeof b, " --C"); add(b, false); }
-    if (sh) { snprintf(b, sizeof b, "compiling %3llu", (unsigned long long)S.st.pipelines_queued); add(b, false); }   /* pipelines handed to the compile thread and not built yet, the one in progress included */
+    /* pipelines handed to the compile thread and not built yet, the one in progress included */
+    if (sh) { snprintf(b, sizeof b, "compiling %3llu", (unsigned long long)S.st.pipelines_queued); add(b, false); }
     if (dr && S.driver[0]) add(S.driver, false);
     total -= gap;
     float x = corner & 1 ? ds.x - u(6) - total : u(6), y = corner & 2 ? u(4) : ds.y - lh - u(4);
     dl->AddRectFilled(ImVec2(x - pad, y - pad + u(1)), ImVec2(x + total + pad, y + lh + pad), IM_COL32(0, 0, 0, 120));
     const ImU32 ink = IM_COL32(236, 236, 230, 255), shadow = IM_COL32(0, 0, 0, 160);
     for (int i = 0; i < n; i++) {
-        if (segs[i].graph) {   /* the last 120 frames, 33 ms full height, frames over the 60 fps budget red */
+        /* the last 120 frames, 33 ms full height, frames over the 60 fps budget red */
+        if (segs[i].graph) {
             float gh = lh - u(2), bar = gw / 120, gy = y + lh - u(1);
             for (int k = 0; k < 120; k++) {
                 float m = S.frame_ms[(S.frame_i + k) % 120], v = m > 33.3f ? 1 : m / 33.3f;
@@ -722,7 +752,7 @@ void hud(float fps, float frame_ms) {
     }
 }
 
-}  // namespace
+}
 
 extern "C" {
 
@@ -757,7 +787,8 @@ void overlay_touch(float x, float y, int down) {
     pthread_mutex_unlock(&S.input);
 }
 
-static void prepare_page(float w, float h) {   /* the progress panel of prepare mode */
+/* the progress panel of prepare mode */
+static void prepare_page(float w, float h) {
     char stage[160], detail[240]; float frac;
     pthread_mutex_lock(&S.prep_lock); memcpy(stage, S.prep_stage, sizeof stage); memcpy(detail, S.prep_detail, sizeof detail); frac = S.prep_frac; pthread_mutex_unlock(&S.prep_lock);
     ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(ImVec2(w, h));
@@ -777,7 +808,8 @@ static void prepare_page(float w, float h) {   /* the progress panel of prepare 
     ImGui::End();
 }
 int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t w, uint32_t h, float fps, float frame_ms, const overlay_stats *stats) {
-    if (S.preparing.load()) {   /* prepare mode: the panel only, no menu, no input */
+    /* prepare mode: the panel only, no menu, no input */
+    if (S.preparing.load()) {
         S.toggles = 0; if (!init(format)) return 0;
         Framebuffer *fb = framebuffer(image, w, h); if (!fb) return 0;
         ImGuiIO &io = ImGui::GetIO(); io.DeltaTime = 1.0f / 60.0f; io.DisplaySize = ImVec2((float)w, (float)h);
@@ -798,7 +830,7 @@ int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t 
     if (stats) S.st = *stats;
     if (!open && !hud_any()) {
         /* presses while playing are the game's: dropped, or the first frame of the menu would take them (B closing the
-           game's own menu, or sprint, read as B: the menu closed again at once) */
+           game's own menu, or sprint, read as B: the menu would close again at once) */
         pthread_mutex_lock(&S.input); S.edges = 0; S.seen = S.buttons; pthread_mutex_unlock(&S.input);
         return 0;
     }
@@ -809,7 +841,8 @@ int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t 
     uint64_t t = now_ns(); io.DeltaTime = S.last_ns && t > S.last_ns ? (float)((t - S.last_ns) / 1e9) : 1.0f / 60.0f; S.last_ns = t;
     if (io.DeltaTime <= 0 || io.DeltaTime > 0.25f) io.DeltaTime = 1.0f / 60.0f;
     io.DisplaySize = ImVec2((float)w, (float)h);
-    S.s = (float)h / 720.0f; io.FontGlobalScale = S.s / 1.5f;   /* the fonts are made for 1080 lines */
+    /* the fonts are made for 1080 lines */
+    S.s = (float)h / 720.0f; io.FontGlobalScale = S.s / 1.5f;
     feed_input();
     if (!open) { pthread_mutex_lock(&S.input); S.pressed = 0; pthread_mutex_unlock(&S.input); }
     ImGui_ImplVulkan_NewFrame();
@@ -830,4 +863,4 @@ int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t 
     return 1;
 }
 
-}  // extern "C"
+}

@@ -13,10 +13,13 @@ typedef struct { unsigned mod; uint64_t off; uint8_t old[8]; unsigned n; } fz_un
 
 typedef struct {
     tokt_files f[TOKT_MODULE_COUNT];
-    uint8_t *image[TOKT_MODULE_COUNT];      /* f[].image, damaged and put back by fz_edit and fz_revert */
-    uint8_t *nso[TOKT_MODULE_COUNT];        /* the first 0x100 bytes, exact size */
+    /* f[].image, damaged and put back by fz_edit and fz_revert */
+    uint8_t *image[TOKT_MODULE_COUNT];
+    /* the first 0x100 bytes, exact size */
+    uint8_t *nso[TOKT_MODULE_COUNT];
     size_t nso_size[TOKT_MODULE_COUNT];
-    tokp_result rewrite[TOKT_MODULE_COUNT]; /* the working results */
+    /* the working results */
+    tokp_result rewrite[TOKT_MODULE_COUNT];
     tokp_gate *gates[TOKT_MODULE_COUNT];
     fz_region region[TOKT_MODULE_COUNT][FZ_REGIONS];
     char digest[TOKT_MODULE_COUNT][65];

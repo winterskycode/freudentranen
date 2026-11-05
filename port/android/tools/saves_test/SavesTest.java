@@ -121,7 +121,8 @@ public class SavesTest {
         s.exportZip(out, QUIET);
         same(before, Saves.sums(live(files)), "export left the save alone");
         Map<String, byte[]> unpacked = new LinkedHashMap<>();
-        try (ZipInputStream in = new ZipInputStream(new FileInputStream(out))) {   // a plain unzip, as an emulator user would
+        // a plain unzip, as an emulator user would
+        try (ZipInputStream in = new ZipInputStream(new FileInputStream(out))) {
             for (ZipEntry e; (e = in.getNextEntry()) != null; ) unpacked.put(e.getName(), in.readAllBytes());
         }
         for (Map.Entry<String, byte[]> e : fake(10).entrySet()) check(Arrays.equals(e.getValue(), unpacked.get(e.getKey())), "in the zip, at its top: " + e.getKey());
@@ -274,7 +275,8 @@ public class SavesTest {
         Files.createSymbolicLink(new File(live(linked), "album/out").toPath(), outsideDir.toPath());
         Saves t = saves(linked);
         File good = zip("good.zip", "", fake(67));
-        refuses(Saves.LINK, () -> importZip(t, good));   // the backup finds the link in the current save
+        // the backup finds the link in the current save
+        refuses(Saves.LINK, () -> importZip(t, good));
         check(new File(live(linked), "slot_00/progress.sav").exists(), "the save stayed");
         Saves.delete(live(linked));
         check(new File(outsideDir, "keep.txt").exists(), "deleting does not go through a link");
@@ -361,7 +363,8 @@ public class SavesTest {
             refuses(Saves.DAMAGED, () -> stage(s, z));
         }
         byte[] bad = all.clone();
-        bad[100] ^= 0x55;   // in the first entry's data
+        // in the first entry's data
+        bad[100] ^= 0x55;
         File z = new File(base, "flipped.zip");
         Files.write(z.toPath(), bad);
         refuses(Saves.DAMAGED, () -> stage(s, z));
@@ -418,7 +421,8 @@ public class SavesTest {
             same(step.equals("swapped") ? Saves.sums(other) : before, Saves.sums(live(files)), "after " + step);
             noLeftovers(files);
             check(!new File(files, "save-backups").exists() || Arrays.stream(new File(files, "save-backups").list()).noneMatch(n -> n.startsWith(".")), "no half backup");
-            importZip(s, good);   // and the next import works
+            // and the next import works
+            importZip(s, good);
             same(Saves.sums(other), Saves.sums(live(files)), "import after " + step);
         }
     }

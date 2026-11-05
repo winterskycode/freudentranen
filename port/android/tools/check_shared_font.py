@@ -17,7 +17,8 @@ from fontTools.ttLib import TTFont
 ROOT = Path(__file__).resolve().parents[3]
 FONT_ARCHIVES = {'CNzh': 'Font/Font_CNzh.Nin_NX_NVN.bfarc.zs', 'KRko': 'Font/Font_KRko.Nin_NX_NVN.bfarc.zs', 'TWzh': 'Font/Font_TWzh.Nin_NX_NVN.bfarc.zs'}
 BASE_ARCHIVE = 'Font/Font.Nin_NX_NVN.bfarc.zs'
-SHARED = re.compile(r'nintendo_(udsg|udjxh|ext)')   # the six names main+0x105dc60 maps to slots
+# the six names main+0x105dc60 maps to slots
+SHARED = re.compile(r'nintendo_(udsg|udjxh|ext)')
 
 
 def sarc(d):
@@ -59,7 +60,8 @@ def msbt_chars(b):
                 t = body[offs[i]:offs[i + 1]]; q = 0
                 while q + 2 <= len(t):
                     c = struct.unpack_from(e + 'H', t, q)[0]; q += 2
-                    if c == 0x0e: q += 4; q += 2 + struct.unpack_from(e + 'H', t, q)[0]   # a tag and its data
+                    # a tag and its data
+                    if c == 0x0e: q += 4; q += 2 + struct.unpack_from(e + 'H', t, q)[0]
                     elif c == 0x0f: q += 4
                     elif c: out.add(c)
         p = (p + 0x10 + size + 15) & ~15

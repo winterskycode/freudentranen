@@ -4,10 +4,13 @@
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
-    vec2 origin;       // the picture's rectangle in the source texture, in texels
+    // the picture's rectangle in the source texture, in texels
+    vec2 origin;
     vec2 extent;
-    ivec2 size;        // the video, a multiple of 4 x 2
-    int srgb;          // the source is sampled through an sRGB view: values come back linear
+    // the video, a multiple of 4 x 2
+    ivec2 size;
+    // the source is sampled through an sRGB view: values come back linear
+    int srgb;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D src;
 layout(set = 0, binding = 1, std430) writeonly buffer Out { uint words[]; } nv12;
@@ -35,7 +38,8 @@ void main() {
     int row = p.size.x / 4;
     nv12.words[b.y * row + b.x / 4] = pack4(luma(c[0]), luma(c[1]), luma(c[2]), luma(c[3]));
     nv12.words[(b.y + 1) * row + b.x / 4] = pack4(luma(c[4]), luma(c[5]), luma(c[6]), luma(c[7]));
-    vec3 l = (c[0] + c[1] + c[4] + c[5]) * 0.25, r = (c[2] + c[3] + c[6] + c[7]) * 0.25;   // a chroma pair per 2x2
+    // a chroma pair per 2x2
+    vec3 l = (c[0] + c[1] + c[4] + c[5]) * 0.25, r = (c[2] + c[3] + c[6] + c[7]) * 0.25;
     vec2 cl = vec2(dot(l, vec3(-0.1146, -0.3854, 0.5)), dot(l, vec3(0.5, -0.4542, -0.0458)));
     vec2 cr = vec2(dot(r, vec3(-0.1146, -0.3854, 0.5)), dot(r, vec3(0.5, -0.4542, -0.0458)));
     cl = (128.0 + 224.0 * cl) / 255.0; cr = (128.0 + 224.0 * cr) / 255.0;

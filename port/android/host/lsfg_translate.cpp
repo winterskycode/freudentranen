@@ -99,7 +99,8 @@ bool dxbc_intact(const uint8_t *dxbc, size_t size) {
 // DXBC compute shader -> SPIR-V; bindings renumbered 0..n-1 in declaration order (what the lsfg framegen library expects).
 // Throws on anything else: DxvkError (not a std::exception) from the compiler, std::exception from what it allocates.
 std::vector<uint8_t> translate(const std::vector<uint8_t> &dxbc, uint32_t expected_bindings) {
-    uint32_t size = 0;   // the container's own size: a resource can be padded past it
+    // the container's own size: a resource can be padded past it
+    uint32_t size = 0;
     if (dxbc.size() >= 32) std::memcpy(&size, dxbc.data() + 24, 4);
     if (size < 32 || size > dxbc.size() || std::memcmp(dxbc.data(), "DXBC", 4) || !dxbc_intact(dxbc.data(), size)) throw dxvk::DxvkError("damaged DXBC");
     dxvk::DxbcReader reader(reinterpret_cast<const char *>(dxbc.data()), size);

@@ -22,7 +22,8 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[3]
 SDK = Path(os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME") or "/opt/android-sdk")
-NDK = SDK / "ndk/29.0.14206865"   # tools/env.sh's NDK_VERSION, never ANDROID_NDK_HOME
+# tools/env.sh's NDK_VERSION, never ANDROID_NDK_HOME
+NDK = SDK / "ndk/29.0.14206865"
 BIN = NDK / "toolchains/llvm/prebuilt/linux-x86_64/bin"
 PINNED = (("eden-emulator/libadrenotools", "8ba23b42d7"),
           ("bylaws/liblinkernsbypass", "aa3975893d"))
@@ -90,7 +91,8 @@ def build(output):
         "gsl_alloc_hook": [by_name["gsl_alloc_hook"]],
     }
     libraries = []
-    for name, inputs in targets.items():   # in order: the hooks link against libhook_impl.so
+    # in order: the hooks link against libhook_impl.so
+    for name, inputs in targets.items():
         library = output / ("lib" + name + ".so")
         command = [str(BIN / "aarch64-linux-android29-clang++"), "-shared", "-static-libstdc++",
                    "-Wl,-z,defs", "-Wl,-z,max-page-size=16384", "-Wl,-soname," + library.name, *map(str, inputs)]

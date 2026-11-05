@@ -12,7 +12,8 @@
 #   frz.sh live [words]                live experiment words (files/exp.live, nvn_vulkan_forward.inc), e.g. "restart@0-2999";
 #                                      no words: none. Each replay uses them, so a frozen frame can be compared with and without.
 set -e
-APP=${TOTK_APP:-dev.tok.totk}   # the BotW app: TOTK_APP=dev.tok.botw
+# the BotW app: TOTK_APP=dev.tok.botw
+APP=${TOTK_APP:-dev.tok.totk}
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 run() { adb shell run-as $APP sh -c "'$1'"; }
 case "$1" in

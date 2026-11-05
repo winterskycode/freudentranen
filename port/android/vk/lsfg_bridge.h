@@ -19,7 +19,8 @@ int lsfg_bridge_create(int in0, int in1, const int *out, int nout, uint32_t widt
 /* Records and submits the generation of one frame on the queue. Ordering is by submission order: the newest input must
    be written (and made visible with a barrier) by work submitted earlier; the outputs are read by work submitted later. */
 int lsfg_bridge_present(int context);
-int lsfg_bridge_present_at(int context, const float *timestamps, int n);   /* n pictures at these timestamps (n = 0: none this frame, the flow is still computed) */
+/* n pictures at these timestamps (n = 0: none this frame, the flow is still computed) */
+int lsfg_bridge_present_at(int context, const float *timestamps, int n);
 /* Ends LSFG (its contexts and device state; the app's instance, device and adopted images stay): lsfg_bridge_init may
    then start it again with other settings. Waits for the device to be idle. */
 void lsfg_bridge_finalize(void);

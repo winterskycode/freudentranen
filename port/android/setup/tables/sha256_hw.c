@@ -26,7 +26,8 @@ HW void tokt_sha256_hw_blocks(uint32_t h[8], const uint8_t *p, size_t blocks) {
         uint32x4_t a = s0, b = s1, m[4];
         for (int i = 0; i < 4; i++) m[i] = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 16 * i)));
 #pragma clang loop unroll(full)
-        for (int i = 0; i < 16; i++) {   /* four rounds each */
+        /* four rounds each */
+        for (int i = 0; i < 16; i++) {
             uint32x4_t w = vaddq_u32(m[i & 3], vld1q_u32(K + 4 * i)), was = a;
             a = vsha256hq_u32(a, b, w);
             b = vsha256h2q_u32(b, was, w);

@@ -48,20 +48,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-/** Startup screen (design: the "TotK Android settings overlay" canvas, screens 1, 3 and 4): the game's last frame as the
-    backdrop with the menu on its left, the settings of assets/settings.tsv (written to files/launch.env for the native
-    side; the in-game menu shows the same table), the field controls (files/actions.txt, ActionLayout) and a Tools page
-    with the last run's log, the Saves page (Saves.java) and the Game files page (Setup.java), which a new player sees first, and
-    the Mods page (Mods.java). Controller: the d-pad / stick moves, left / right change a
-    value, A confirms, B goes back, X restores a default (or removes / deletes, pressed twice), Y moves a mod, L / R
-    switch tabs. */
+/** Startup screen: the game's last frame as the backdrop with the menu on its left, the settings of assets/settings.tsv
+    (written to files/launch.env for the native side; the in-game menu shows the same table), the field controls
+    (files/actions.txt, ActionLayout) and a Tools page with the last run's log, the Saves page (Saves.java) and the Game
+    files page (Setup.java), which a new player sees first, and the Mods page (Mods.java). Controller: the d-pad / stick
+    moves, left / right change a value, A confirms, B goes back, X restores a default (or removes / deletes, pressed
+    twice), Y moves a mod, L / R switch tabs. */
 public class LauncherActivity extends Activity {
     private static final String DATA = Mods.DATA;
-    private static final int PICK_MOD = 41;   // the system file picker's request (a mod .zip)
-    private static final int PICK_DRIVER = 42;   // ... and a GPU driver .zip (Drivers.java)
-    private static final int PICK_LSFG = 43;   // ... and Lossless.dll (Lsfg.java)
-    private static final int PICK_SAVE_ZIP = 44, PICK_SAVE_FOLDER = 45, MAKE_SAVE_ZIP = 46;   // ... and a save to import, or where to export one (Saves.java)
-    private static final int PICK_KEYS = 47, PICK_GAME_FOLDER = 48, PICK_GAME_FILES = 49;   // ... and prod.keys and the game files (Setup.java)
+    private static final int PICK_MOD = 41;
+    private static final int PICK_DRIVER = 42;
+    private static final int PICK_LSFG = 43;
+    private static final int PICK_SAVE_ZIP = 44, PICK_SAVE_FOLDER = 45, MAKE_SAVE_ZIP = 46;
+    private static final int PICK_KEYS = 47, PICK_GAME_FOLDER = 48, PICK_GAME_FILES = 49;
 
     private SharedPreferences prefs;
     private SettingsTable table;
@@ -71,26 +70,34 @@ public class LauncherActivity extends Activity {
     private int tab;
     private SettingsTable.Setting detail;
     private boolean ready;
-    private View preferred;   // the page's default row: confirm acts on it when nothing has focus (touch mode)
+    // the page's default row: confirm acts on it when nothing has focus (touch mode)
+    private View preferred;
     private final List<Row> padRows = new ArrayList<>();
     private int padRow;
     private View detailView, padView, controlsDeco;
-    private String crashNotice;   // a crash report made at this start
+    private String crashNotice;
     private List<Mods.Mod> mods = new ArrayList<>();
-    private Mods.Mod modDetail, modArmed;   // the mod the right panel shows; X pressed once on it
-    private String modFocus, modGeneral;    // the mod to focus when the page is rebuilt; a last-start problem no mod can be named for
-    private boolean modMoving;              // Y: up / down move the focused mod
-    private boolean preparing;   // launch() for the "Prepare shaders" row
-    private boolean iconsTried; private String iconsProblem;   // this run made, or failed to make, the icon mod (IconMod)
-    private volatile String modStatus = "", launchStatus, launchError;   // installing / merging progress; the Continue row while mods are prepared; why they could not be
-    private List<File> modCandidates = new ArrayList<>();   // mods found in the inbox / Downloads to install
+    // the mod the right panel shows; X pressed once on it
+    private Mods.Mod modDetail, modArmed;
+    // the mod to focus when the page is rebuilt; a last-start problem no mod can be named for
+    private String modFocus, modGeneral;
+    private boolean modMoving;
+    // launch() for the "Prepare shaders" row
+    private boolean preparing;
+    // this run made, or failed to make, the icon mod (IconMod)
+    private boolean iconsTried; private String iconsProblem;
+    // installing / merging progress; the Continue row while mods are prepared; why they could not be
+    private volatile String modStatus = "", launchStatus, launchError;
+    // mods found in the inbox / Downloads to install
+    private List<File> modCandidates = new ArrayList<>();
     private File modCandidate;
-    private volatile boolean modBusy;   // an install running
+    private volatile boolean modBusy;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
-        deleteSharedPreferences("launch");   // the settings before the shared table (keyed by label); not carried over
+        // the settings store from before the shared table (keyed by label): not carried over
+        deleteSharedPreferences("launch");
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
         table = new SettingsTable(this);
         saves = new Saves(getFilesDir(), this::gameRunning);
@@ -114,31 +121,37 @@ public class LauncherActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if (Game.SAVES && !Saves.busy() && saveStaged == null) saves.recover();   // before the game can start: a swap of the save that was cut
-        if (Game.SETUP) {   // a picked file is gone (GameActivity came back), or there is nothing to play yet: the Game files page first
+        // before the game can start: finish a swap of the save that was cut off
+        if (Game.SAVES && !Saves.busy() && saveStaged == null) saves.recover();
+        // a picked file is gone (GameActivity came back), or there is nothing to play yet: the Game files page first
+        if (Game.SETUP) {
             boolean gone = setup.state.takeReported();
             if (gone || (current.equals("home") && !setupOffered && !gamePresent())) { setupOffered = true; setupBack = "home"; setupFocus = -1; current = "setup"; }
         }
         importOverlaySettings();
-        new File(getFilesDir(), "controls.txt").delete();   // the button layout before actions (2026-10-27): not converted
-        ActionLayout.load(this);   // assets/actions.tsv, once
-        layout = new ActionLayout(new File(getFilesDir(), "actions.txt"));   // the in-game menu may have changed it
+        // the button layout from before actions: not converted
+        new File(getFilesDir(), "controls.txt").delete();
+        ActionLayout.load(this);
+        // the in-game menu may have changed it
+        layout = new ActionLayout(new File(getFilesDir(), "actions.txt"));
         lsfg = Lsfg.ready(getFilesDir());
-        if (!lsfgBusy) lsfgCopy().delete();   // left by a translation that did not end
+        // left by a translation that did not end
+        if (!lsfgBusy) lsfgCopy().delete();
         File frame = new File(getFilesDir(), "backdrop.ppm");
         new Thread(() -> {
             Backdrop.load(frame);
-            File crash = ReportStore.crashReport(this, prefs);   // the last run ended with a crash: its report
+            File crash = ReportStore.crashReport(this, prefs);
             if (crash != null) crashNotice = crash.getName();
-            if (crash != null && driverChoice().startsWith(Drivers.ZIP) && ReportStore.driverFailed(this)) {   // a driver from a zip did not start: say so where the player looks
-                String name = driverLabel(driverChoice());   // the reason is in the crash report (Tools)
+            // a driver from a zip did not start: say so where the player looks
+            if (crash != null && driverChoice().startsWith(Drivers.ZIP) && ReportStore.driverFailed(this)) {
+                String name = driverLabel(driverChoice());
                 runOnUiThread(() -> { launchError = name + " failed to start. Try another driver."; invalidateAll(page); });
             }
             List<Mods.Mod> list = Mods.list(); String general = Mods.lastRun(new File(getFilesDir(), "profile/totk.log"), list);
             runOnUiThread(() -> { mods = list; modGeneral = general; if (page != null && (current.equals("mods") || current.equals("home"))) show(current); });
             runOnUiThread(() -> { if (page != null) { if (crash != null) show(current); else invalidateAll(page); } });
             boolean changed = false;
-            for (File r : ReportStore.list()) if (ReportStore.pending(r)) { ReportStore.finish(r); changed = true; }   // replay.mp4, frame.png
+            for (File r : ReportStore.list()) if (ReportStore.pending(r)) { ReportStore.finish(r); changed = true; }
             if (changed) runOnUiThread(() -> { if (current.equals("tools")) show("tools"); });
         }).start();
         show(current);
@@ -229,7 +242,6 @@ public class LauncherActivity extends Activity {
         page.addView(v, p);
     }
 
-    /** A view that only draws. */
     private static final class Drawn extends View {
         interface Painter { void paint(Canvas c, float w, float h); }
         private final Painter painter;
@@ -250,7 +262,7 @@ public class LauncherActivity extends Activity {
 
     private LinearLayout column() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
 
-    // ---- 1 · the startup screen ----
+    // ---- the startup screen ----
 
     /** The data made on a PC and pushed to /sdcard/tok (tools/push_data.sh): what the game plays from with nothing picked. */
     private boolean preparedData() {
@@ -261,7 +273,8 @@ public class LauncherActivity extends Activity {
     private boolean gamePresent() { return picked() || preparedData(); }
 
     private void homePage() {
-        boolean allFiles = Environment.isExternalStorageManager(), access = allFiles || Game.SETUP;   // only prepared data under /sdcard/tok needs it
+        // only prepared data under /sdcard/tok needs it
+        boolean allFiles = Environment.isExternalStorageManager(), access = allFiles || Game.SETUP;
         File romfs = new File(DATA + "/romfs/romfs.bin");
         boolean picked = picked(), files = gamePresent();
         int shaders = count(shaderCache(driverChoice()), ".spv");
@@ -273,7 +286,8 @@ public class LauncherActivity extends Activity {
             + (value("TOTK_AA").equals("off") ? "" : " · " + name("TOTK_AA")) + (value("TOTK_FG").equals("off") ? "" : " · " + name("TOTK_FG"));
 
         page.addView(new Backdrop(this, true), new FrameLayout.LayoutParams(-1, -1));
-        boolean prepared = new File(getFilesDir(), "prepared.txt").exists();   // written by the game's prepare mode (vk/nvn_vulkan_prepare.inc)
+        // written by the game's prepare mode (vk/nvn_vulkan_prepare.inc)
+        boolean prepared = new File(getFilesDir(), "prepared.txt").exists();
         String shaderText = prepared ? String.format("%,d shaders prepared", shaders) : shaders > 0 ? String.format("%,d shaders ready", shaders) : "Shaders are built on first start";
         place(new Drawn(this, (c, w, h) -> {
             Paint ring = Ui.stroke(Ui.JADE, 1.5f);
@@ -286,7 +300,6 @@ public class LauncherActivity extends Activity {
             Paint title = Ui.text(Ui.title, 50, Ui.CREAM);
             c.drawText(Game.TITLE, Ui.u(72), Ui.u(64 + 34 + 14 + 44), title);
             Ui.ornament(c, Ui.u(72), Ui.u(64 + 34 + 14 + 62), Ui.u(360));
-            // status chips, top right
             float x = w - Ui.u(56);
             String[][] chips = Game.SETUP ? new String[][]{{shaderText, prepared ? "ok" : "wait"}, {files ? "Game files " + Game.VERSION : "Game files missing", files ? "ok" : "bad"}}
                 : new String[][]{{shaderText, prepared ? "ok" : "wait"}, {access ? "Storage access" : "No storage access", access ? "ok" : "bad"}, {files ? "Game files " + Game.VERSION : "Game files missing", files ? "ok" : "bad"}};
@@ -343,7 +356,7 @@ public class LauncherActivity extends Activity {
         }, click);
     }
 
-    // ---- 3 · settings ----
+    // ---- settings ----
 
     private void header(Canvas c, float w, String title, String trail) {
         c.drawText(title, Ui.u(56), Ui.u(70), Ui.text(Ui.title, 30, Ui.CREAM));
@@ -382,7 +395,7 @@ public class LauncherActivity extends Activity {
             Paint n = Ui.text(Ui.body, 14, Ui.SOFT); n.setTextAlign(Paint.Align.RIGHT);
             Ui.centred(c, "Changes are saved as you make them and used when the game starts.", w - Ui.u(56), fy + Ui.u(12), n);
         });
-        deco.setOnTouchListener((v, e) -> {   // tabs by touch
+        deco.setOnTouchListener((v, e) -> {
             if (e.getAction() != MotionEvent.ACTION_UP || e.getY() > Ui.u(96)) return e.getY() <= Ui.u(96);
             for (int t = 0; t < table.tabs.size(); t++) if (e.getX() >= tabX[t] && e.getX() < tabX[t + 1]) { tab = t; show("settings"); }
             return true;
@@ -419,7 +432,8 @@ public class LauncherActivity extends Activity {
             r.setTag(s);
             if (!s.page()) r.stepper = by -> step(s, by);
             r.onFocus = row -> { detail = s; detailView.invalidate(); };
-            if (first == null) { first = r; r.onFocus = row -> { detail = s; detailView.invalidate(); scroll.post(() -> scroll.scrollTo(0, 0)); }; }   // its heading too
+            // focusing the first row scrolls up to show its heading too
+            if (first == null) { first = r; r.onFocus = row -> { detail = s; detailView.invalidate(); scroll.post(() -> scroll.scrollTo(0, 0)); }; }
             if (s.key.equals(settingAgain)) again = r;
         }
         detail = first != null ? (SettingsTable.Setting) first.getTag() : null;
@@ -452,7 +466,8 @@ public class LauncherActivity extends Activity {
         settingAgain = null;
     }
 
-    private String settingAgain;   // the row to focus when the list is rebuilt
+    // the row to focus when the list is rebuilt
+    private String settingAgain;
     /** A step of a setting's value; other rows may show or hide with it. */
     private void step(SettingsTable.Setting s, int by) {
         int n = s.values.length, i = index(s);
@@ -469,7 +484,7 @@ public class LauncherActivity extends Activity {
         return y + l.getHeight();
     }
 
-    // ---- 4 · the field controls (actions) ----
+    // ---- the field controls (actions) ----
 
     private boolean byLabel() { return value("TOTK_FACE_BUTTONS").equals("label"); }
 
@@ -480,7 +495,8 @@ public class LauncherActivity extends Activity {
         {44, 10, 76, 20, 10}, {350, 10, 76, 20, 10}, {246, 98, 30, 22, 6}, {194, 98, 30, 22, 6},
         {112, 196, 22, 22, 4}, {134, 174, 22, 22, 4}, {156, 196, 22, 22, 4}, {134, 218, 22, 22, 4}, {0, 0, 0, 0, 0}};
     private static final String[] PAD_TEXT = {"", "", "", "", "L3", "R3", "L1", "R1", "L2", "R2", "+", "−", "", "", "", "", ""};
-    private static final int[] LABEL_POSITION = {1, 0, 3, 2};   // where each face row's button sits on the drawing, by label
+    // where each face row's button sits on the drawing, by label
+    private static final int[] LABEL_POSITION = {1, 0, 3, 2};
 
     private int padAt(int i) { return byLabel() && i < 4 ? LABEL_POSITION[i] : i; }
 
@@ -494,7 +510,6 @@ public class LauncherActivity extends Activity {
             Paint col = Ui.text(Ui.semibold, 12, Ui.MUTED); col.setLetterSpacing(0.14f); float cw = (Ui.u(listW) - Ui.u(52)) / 2;
             String[] cols = {"ACTION", "BUTTON"};
             for (int k = 0; k < 2; k++) c.drawText(cols[k], Ui.u(listX + 36) + cw * k, Ui.u(132), col);
-            // the selected action
             float l = Ui.u(56), t = Ui.u(444), r = Ui.u(526), b = h - Ui.u(76);
             c.drawRect(l, t, r, b, Ui.fill(Ui.PANEL)); c.drawRect(l, t, r, b, Ui.stroke(Ui.LINE, 1));
             int a = padRow;
@@ -555,12 +570,17 @@ public class LauncherActivity extends Activity {
 
     // ---- Tools: the log and the bug reports ----
 
-    private File toolsReport;          // the report the right panel shows (null: the log)
-    private File reportArmed;          // X pressed once on it: a second X deletes it
-    private String reportStatus = "";  // sharing progress
-    private boolean toolsLsfg;         // the right panel shows the Lossless Scaling row
-    private boolean toolsSaves;        // back from the Saves page: its row keeps the focus
-    private boolean toolsSetup;        // ... and from the Game files page
+    // the report the right panel shows (null: the log)
+    private File toolsReport;
+    // X pressed once on it: a second X deletes it
+    private File reportArmed;
+    private String reportStatus = "";
+    // the right panel shows the Lossless Scaling row
+    private boolean toolsLsfg;
+    // back from the Saves page: its row keeps the focus
+    private boolean toolsSaves;
+    // back from the Game files page: its row keeps the focus
+    private boolean toolsSetup;
 
     private void toolsPage() {
         page.addView(new Backdrop(this, false), new FrameLayout.LayoutParams(-1, -1));
@@ -588,7 +608,7 @@ public class LauncherActivity extends Activity {
             if (b != null) { float ih = iw * b.getHeight() / b.getWidth(); c.drawBitmap(b, null, new RectF(x, y, x + iw, y + ih), new Paint(Paint.FILTER_BITMAP_FLAG)); y += ih + Ui.u(16); }
             String video = new File(r, "replay.mp4").exists() ? "includes a video of the last 30 seconds" : ReportStore.pending(r) ? "the video is still being prepared" : "no video, because recording was off";
             y = wrap(c, r.getName() + " \u00b7 " + String.format(Locale.ROOT, "%.1f MB", ReportStore.size(r) / 1048576.0) + " \u00b7 " + video, Ui.body, 15, Ui.GOLD_TEXT, x, y, iw) + Ui.u(10);
-            String device = ReportStore.head(new File(r, "device.txt"), 700);   /* build, GPU, driver, device modes */
+            String device = ReportStore.head(new File(r, "device.txt"), 700);
             wrap(c, device, Ui.body, 13, Ui.HELP, x, y, iw);
         });
         place(detail, px, 120, pw, H() - 120 - 76);
@@ -600,7 +620,8 @@ public class LauncherActivity extends Activity {
         place(navScroll, 56, 120, 420, H() - 120 - 76);
         Row access = addRow(nav, 50, (c, r, on) -> Ui.centred(c, "Storage access", Ui.u(39), r.getHeight() / 2f, Ui.text(Ui.title, 21, on ? Ui.GOLD_TEXT : Ui.CREAM)),
             v -> startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName()))));
-        if (Game.SETUP) access.setVisibility(View.GONE);   // the player's files come through the picker
+        // the player's files come through the picker
+        if (Game.SETUP) access.setVisibility(View.GONE);
         Row logRow = addRow(nav, 50, (c, r, on) -> Ui.centred(c, "Last run's log", Ui.u(39), r.getHeight() / 2f, Ui.text(Ui.title, 21, on ? Ui.GOLD_TEXT : Ui.CREAM)), null);
         String gameFiles = !Game.SETUP ? "" : picked() ? "Your keys and game files" : preparedData() ? "Using the prepared data. You can pick your own files" : "Not set up";
         Row gameRow = !Game.SETUP ? null : addRow(nav, 64, (c, r, on) -> {
@@ -621,7 +642,8 @@ public class LauncherActivity extends Activity {
         if (savesRow != null) savesRow.onFocus = showLog;
         if (gameRow != null) gameRow.onFocus = showLog;
         lossless.onFocus = row -> { toolsReport = null; toolsLsfg = true; logScroll.setVisibility(View.GONE); detail.invalidate(); };
-        logRow.setOnClickListener(v -> showLog.focused(logRow));   // touch mode gives rows no focus: a tap brings the log back
+        // touch mode gives rows no focus: a tap brings the log back
+        logRow.setOnClickListener(v -> showLog.focused(logRow));
         View label = new Drawn(this, (c, w, h) -> c.drawText(reports.isEmpty() ? "NO BUG REPORTS YET" : "BUG REPORTS", Ui.u(39), h - Ui.u(10), spaced(Ui.text(Ui.semibold, 12, Ui.MUTED))));
         nav.addView(label, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.ui(40)));
         Row firstReport = null;
@@ -639,7 +661,8 @@ public class LauncherActivity extends Activity {
         }
         if (toolsSetup && gameRow != null) { toolsSetup = false; prefer(gameRow); }
         else if (toolsSaves && savesRow != null) { toolsSaves = false; prefer(savesRow); }
-        else if (toolsLsfg) { logScroll.setVisibility(View.GONE); prefer(lossless); }   // back from the file picker, which touch mode reaches without focus
+        // back from the file picker, which touch mode reaches without focus
+        else if (toolsLsfg) { logScroll.setVisibility(View.GONE); prefer(lossless); }
         else prefer(firstReport != null ? firstReport : Game.SETUP ? logRow : access);
     }
 
@@ -665,10 +688,11 @@ public class LauncherActivity extends Activity {
 
     // ---- Lossless Scaling: LSFG's shaders from the player's own Lossless.dll (Lsfg.java) ----
 
-    private boolean lsfg;   // the shaders are there, so the settings offer LSFG
+    // the shaders are there, so the settings offer LSFG
+    private boolean lsfg;
     private volatile boolean lsfgBusy;
-    private volatile String lsfgProgress;   // copying / translating
-    private String lsfgError;   // why the last file could not be used
+    private volatile String lsfgProgress;
+    private String lsfgError;
 
     /** The app's copy of the chosen file, there only while its shaders are made. */
     private File lsfgCopy() { return new File(getCacheDir(), "import/Lossless.dll"); }
@@ -721,9 +745,12 @@ public class LauncherActivity extends Activity {
     private interface SaveWork { void run() throws IOException; }
 
     private Saves saves;
-    private volatile String saveProgress, saveNote, saveError;   // what a task is doing; how the last one ended
-    private volatile Saves.Staged saveStaged;   // a save read and checked, waiting for the player's answer
-    private String askTitle, askText;   // the question page: what it says, its rows (the last one is Cancel), and B
+    // what a task is doing; how the last one ended
+    private volatile String saveProgress, saveNote, saveError;
+    // a save read and checked, waiting for the player's answer
+    private volatile Saves.Staged saveStaged;
+    // the question page: what it says, its rows (the last one is Cancel), and B
+    private String askTitle, askText;
     private String[] askRows;
     private Runnable[] askDo;
     private Runnable askBack;
@@ -945,12 +972,17 @@ public class LauncherActivity extends Activity {
             + "and nothing is copied. If you move or delete the file, the app asks for it again."};
 
     private SetupFiles setup;
-    private String setupBack = "home";   // where B goes, and a first setup when it is done
-    private boolean setupOffered;        // the page opens by itself once: B then reaches the startup screen
-    private int setupFocus = -1;         // the row to focus when the page is rebuilt; -1: the first that needs something
-    private int setupSlot;               // the file row that opened the picker
-    private String setupError;           // no file picker on this device
-    private volatile String setupProgress;   // a pick being read
+    // where B goes, and a first setup when it is done
+    private String setupBack = "home";
+    // the page opens by itself once: B then reaches the startup screen
+    private boolean setupOffered;
+    // the row to focus when the page is rebuilt; -1: the first that needs something
+    private int setupFocus = -1;
+    // the file row that opened the picker
+    private int setupSlot;
+    // no file picker on this device
+    private String setupError;
+    private volatile String setupProgress;
 
     private String setupNote(int row) {
         Setup s = setup.state;
@@ -1056,7 +1088,8 @@ public class LauncherActivity extends Activity {
 
     // ---- Licences: the third-party software in this APK and its licence texts (app/licenses.tsv, assets/licenses) ----
 
-    private ScrollView licenceScroll;   // the licence text: L1 / R1 page through it (focus stays on the list)
+    // the licence text: L1 / R1 page through it (focus stays on the list)
+    private ScrollView licenceScroll;
 
     private void licencesPage() {
         page.addView(new Backdrop(this, false), new FrameLayout.LayoutParams(-1, -1));
@@ -1087,7 +1120,8 @@ public class LauncherActivity extends Activity {
                 StringBuilder b = new StringBuilder(f[0]).append("\n").append(f[2]).append("\n");
                 for (String file : f[3].split(",")) {
                     if (file.isEmpty()) continue;
-                    b.append("\n").append("──────── ").append(file.substring(3, file.length() - 4)).append(" ────────\n\n");   // as the source names it (build_apk.sh adds .txt)
+                    // as the source names it: build_apk.sh adds .txt
+                    b.append("\n").append("──────── ").append(file.substring(3, file.length() - 4)).append(" ────────\n\n");
                     try (InputStream in = getAssets().open("licenses/" + file)) {
                         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[1 << 14];
                         for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
@@ -1422,16 +1456,21 @@ public class LauncherActivity extends Activity {
         }
         List<Mods.Mod> on = Game.MODS && modsOn() ? Mods.enabled(mods) : new ArrayList<>();
         String iconNote = null;
-        if (Game.MODS && value("TOTK_BUTTON_STYLE").equals("playstation")) {   // the icon mod is a 1.4.3 RomFS mod   // the icons, below the player's mods (theirs win), even with mods off
+        // the icons, below the player's mods (theirs win), even with mods off; the icon mod is a 1.4.3 RomFS mod
+        if (Game.MODS && value("TOTK_BUTTON_STYLE").equals("playstation")) {
             Mods.Mod icons = Mods.builtIn(Mods.ICONS_PLAYSTATION);
-            if (picked() && !iconsCurrent(icons)) {   // the player's files: made here, once. A folder from the PC does not fit them.
+            // the player's files: made here, once. A folder from the PC does not fit them.
+            if (picked() && !iconsCurrent(icons)) {
                 if (!iconsTried) { makeIcons(); return; }
-                icons = null; iconNote = iconsProblem;   // they could not be made: the game starts with the Switch's buttons
-            } else if (!picked() && icons != null && !icons.version.isEmpty()) icons = null;   // made from picks: with prepared data its layout file meets the PC's overlay, and the game stops
+                // they could not be made: the game starts with the Switch's buttons
+                icons = null; iconNote = iconsProblem;
+            // made from picks: with prepared data its layout file meets the PC's overlay, and the game stops
+            } else if (!picked() && icons != null && !icons.version.isEmpty()) icons = null;
             if (icons != null) on.add(icons);
         }
         if (!on.isEmpty()) {
-            if (!Mods.upToDate(on)) {   // merge the mods first (a few seconds), then start
+            // merge the mods first (a few seconds), then start
+            if (!Mods.upToDate(on)) {
                 if (launchStatus != null) return;
                 launchStatus = "Preparing mods…"; invalidateAll(page);
                 boolean prep = preparing;
@@ -1440,18 +1479,22 @@ public class LauncherActivity extends Activity {
                     try { Mods.apply(on, what -> runOnUiThread(() -> { launchStatus = what; invalidateAll(page); })); }
                     catch (IOException | RuntimeException e) { failed = "The mods could not be prepared. " + e.getMessage(); }
                     String f = failed;
-                    /* a failure is shown on the Continue row until the next press (launchStatus also keeps a second merge
-                       from starting, so it must not stay set: Continue did nothing after a failed merge until every mod was off) */
-                    runOnUiThread(() -> { launchStatus = null; launchError = f; invalidateAll(page); if (f == null) { preparing = prep; launch(); preparing = false; } });   // a Prepare shaders press stays one after the merge
+                    /* a failure is shown on the Continue row until the next press (launchStatus also keeps a second
+                       merge from starting, so it must not stay set: Continue would do nothing until every mod was off)
+                       */
+                    // a Prepare shaders press stays one after the merge
+                    runOnUiThread(() -> { launchStatus = null; launchError = f; invalidateAll(page); if (f == null) { preparing = prep; launch(); preparing = false; } });
                 }).start();
                 return;
             }
             env.append("TOTK_ROMFS_MODS=").append(Mods.ACTIVE).append('\n');
         }
-        if (preparing) env.append("TOTK_PREPARE=1\n");   // one start: the game translates and builds every shader, then returns here
+        // one start: the game translates and builds every shader, then returns here
+        if (preparing) env.append("TOTK_PREPARE=1\n");
         env.append("TOTK_CONTROLS=").append(new File(getFilesDir(), "actions.txt")).append('\n');
         env.append("TOTK_REPORTS_DIR=").append(ReportStore.ROOT).append('\n');
-        String driver = driverChoice();   // host/app.c: the bundled Turnip, the system's driver, or one from a zip (Drivers.java)
+        // read by host/app.c: the bundled Turnip, the system's driver, or one from a zip (Drivers.java)
+        String driver = driverChoice();
         Drivers.Driver zip = driver.startsWith(Drivers.ZIP) ? Drivers.find(this, driver.substring(Drivers.ZIP.length())) : null;
         env.append("TOTK_GPU_DRIVER=").append(zip != null ? "zip" : driver).append('\n');
         if (zip != null) env.append("DM_VK_DRIVER_DIR=").append(zip.dir).append("\nDM_VK_DRIVER_NAME=").append(zip.library)
@@ -1460,7 +1503,7 @@ public class LauncherActivity extends Activity {
             out.write(env.toString().getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) { return; }
         launchStatus = null; launchError = iconNote;
-        // a crossfade instead of the default open transition, which slid this screen off to the left
+        // a crossfade: the default open transition slides this screen off to the left
         startActivity(new Intent(this, GameActivity.class),
             ActivityOptions.makeCustomAnimation(this, android.R.anim.fade_in, android.R.anim.fade_out).toBundle());
     }
@@ -1527,7 +1570,8 @@ public class LauncherActivity extends Activity {
         int k = e.getKeyCode(); boolean up = e.getAction() == KeyEvent.ACTION_UP; char face = switchFace(k);
         if (face == 'A' || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER) {
             if (up) {
-                View f = getCurrentFocus(); if (f == null || !f.hasFocus()) f = preferred;   // touch mode: nothing focused yet
+                // touch mode: nothing focused yet
+                View f = getCurrentFocus(); if (f == null || !f.hasFocus()) f = preferred;
                 if (f != null && f.isEnabled()) { f.requestFocus(); f.performClick(); }
             }
             return true;
@@ -1539,7 +1583,8 @@ public class LauncherActivity extends Activity {
                 else if (current.equals("addmod")) show("mods");
                 else if (current.equals("drivers")) show("settings");
                 else if (current.equals("licences")) show("tools");
-                else if (current.equals("saves")) { if (!Saves.busy()) { toolsSaves = true; show("tools"); } }   // a task ends in seconds, and says how it went here
+                // a task ends in seconds, and says how it went here
+                else if (current.equals("saves")) { if (!Saves.busy()) { toolsSaves = true; show("tools"); } }
                 else if (current.equals("saveask")) askBack.run();
                 else if (current.equals("setup")) {
                     if (setupProgress != null) { setup.cancel(); setupProgress = "Stopping…"; invalidateAll(page); }
@@ -1594,7 +1639,8 @@ public class LauncherActivity extends Activity {
             if (e.getAction() == KeyEvent.ACTION_DOWN) moveMod(k == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
             return true;
         }
-        if (current.equals("controls")) {   // a shoulder button or a stick press puts the focused action on it
+        // a shoulder button or a stick press puts the focused action on it
+        if (current.equals("controls")) {
             int p = physicalOf(k);
             if (p >= 4 && p < 10) {
                 View f = getCurrentFocus();

@@ -60,7 +60,8 @@ step "source archive"
 git -C "$ROOT" diff --quiet HEAD || echo "warning: uncommitted changes are in the APK but not in the source archive (HEAD)" >&2
 S=$ROOT/work/release-source; N=totk-$TAG-source; rm -rf "$S"; mkdir -p "$S/$N/upstream"
 git -C "$ROOT" archive --prefix=totk/ HEAD | tar -x -C "$S/$N"
-MNG=$(sed -n 's/^COMMIT=//p' "$ROOT/port/setup.sh")   # the parts of MacNativeGames the build uses
+# the parts of MacNativeGames the build uses
+MNG=$(sed -n 's/^COMMIT=//p' "$ROOT/port/setup.sh")
 git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor |
   tar -x -C "$S/$N"
 MESA=$(sed -n 's/.*COMMIT=\([0-9a-f]*\).*/\1/p' "$T/build_turnip.sh")

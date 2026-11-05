@@ -9,8 +9,10 @@ import java.io.IOException;
 final class Lsfg {
     interface Progress { void at(int done, int total); }
 
-    static final int SHADERS = 52;   // LSFG_SHADER_COUNT in host/lsfg_translate.h
-    static final long MAX_SIZE = 256L << 20;   // no Lossless.dll comes near this: a bigger file is not copied to the end
+    /** LSFG_SHADER_COUNT in host/lsfg_translate.h. */
+    static final int SHADERS = 52;
+    /** No Lossless.dll comes near this: a bigger file is not copied to the end. */
+    static final long MAX_SIZE = 256L << 20;
     static final String NOT_DLL = "This file is not Lossless.dll.";
 
     private Lsfg() {}

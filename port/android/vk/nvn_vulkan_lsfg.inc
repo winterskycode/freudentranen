@@ -15,15 +15,23 @@
 static struct {
     int on, failed, ctx, generated; uint32_t w, h;
     image_entry source, out[LSFG_MAX_OUT];
-    int source_id, out_id[LSFG_MAX_OUT], nout;   /* the images made so far and LSFG's handles for them */
-    int mult, perf; float flow;   /* wanted (mult 0: not read yet) */
-    int active_mult, active_perf; float active_flow; int restart;   /* in use; restart: the wanted ones differ */
+    /* the images made so far and LSFG's handles for them */
+    int source_id, out_id[LSFG_MAX_OUT], nout;
+    /* wanted (mult 0: not read yet) */
+    int mult, perf; float flow;
+    /* in use; restart: the wanted ones differ */
+    int active_mult, active_perf; float active_flow; int restart;
     uint64_t frames, shown, hud, limited;
-    int gap;   /* frames were skipped (menu mode): the next generation has no previous picture */
-    int adaptive;   /* lsfg<cap>xa: the pictures shown a second match the display (lsfg_adaptive_count) */
-    uint64_t ad_last; double ad_due, ad_interval; uint64_t ad_hist[LSFG_MAX_OUT + 2], ad_frames, ad_pictures;   /* adaptive state and statistics */
-    double ad_gpu_prev, ad_gpu_ours, ad_gpu_lsfg, ad_floor_sum; uint64_t ad_floored;   /* the GPU floor: our batches' GPU time a frame and LSFG's (lsfg_time), smoothed */
-    int last_scene;   /* the previous frame's input was a scene (HUD-less), not the finished picture */
+    /* frames were skipped (menu mode): the next generation has no previous picture */
+    int gap;
+    /* lsfg<cap>xa: the pictures shown a second match the display (lsfg_adaptive_count) */
+    int adaptive;
+    /* adaptive state and statistics */
+    uint64_t ad_last; double ad_due, ad_interval; uint64_t ad_hist[LSFG_MAX_OUT + 2], ad_frames, ad_pictures;
+    /* the GPU floor: our batches' GPU time a frame and LSFG's (lsfg_time), smoothed */
+    double ad_gpu_prev, ad_gpu_ours, ad_gpu_lsfg, ad_floor_sum; uint64_t ad_floored;
+    /* the previous frame's input was a scene (HUD-less), not the finished picture */
+    int last_scene;
 } lsfg = {.on = -1, .ctx = -1};
 
 static int lsfg_enabled(void) {
@@ -86,7 +94,8 @@ static int lsfg_setup(uint32_t w, uint32_t h) {
     char dir[600]; snprintf(dir, sizeof dir, "%s/lsfg", files);
     lsfg_settings();
     int perf = lsfg.perf; float flow = lsfg.flow; int mult = lsfg.mult;
-    if (!lsfg.w || lsfg.nout < mult - 1) {   /* the images: the source at the first start, outputs as a multiplier first needs them */
+    /* the images: the source at the first start, outputs as a multiplier first needs them */
+    if (!lsfg.w || lsfg.nout < mult - 1) {
         mtl_sub_begin();
         int bad = !lsfg.w && lsfg_image(&lsfg.source, w, h, VK_FORMAT_R8G8B8A8_UNORM);
         for (int i = lsfg.nout; i < mult - 1 && !bad; i++) bad = lsfg_image(&lsfg.out[i], w, h, VK_FORMAT_R8G8B8A8_UNORM);
@@ -95,10 +104,12 @@ static int lsfg_setup(uint32_t w, uint32_t h) {
         if (!lsfg.w) { lsfg.source_id = lsfg_bridge_adopt(lsfg.source.image); lsfg.w = w; lsfg.h = h; }
         for (; lsfg.nout < mult - 1; lsfg.nout++) lsfg.out_id[lsfg.nout] = lsfg_bridge_adopt(lsfg.out[lsfg.nout].image);
     }
-    pthread_mutex_lock(&queue_lock);   /* LSFG submits (its images are cleared at creation) */
+    /* LSFG submits (its images are cleared at creation) */
+    pthread_mutex_lock(&queue_lock);
     int ctx = -1;
     if (lsfg_bridge_init(vk_api.vkGetInstanceProcAddr, instance, physical, device, queue, queue_family, perf, flow, mult - 1, dir) == 0)
-        ctx = lsfg_bridge_create(lsfg.source_id, lsfg.source_id, lsfg.out_id, mult - 1, w, h, VK_FORMAT_R8G8B8A8_UNORM);   /* the same image twice: copy-in mode */
+        /* the same image twice: copy-in mode */
+        ctx = lsfg_bridge_create(lsfg.source_id, lsfg.source_id, lsfg.out_id, mult - 1, w, h, VK_FORMAT_R8G8B8A8_UNORM);
     pthread_mutex_unlock(&queue_lock);
     if (ctx < 0) { lsfg_fail("the library did not start (see [lsfg] above)"); return -1; }
     lsfg.ctx = ctx; lsfg.generated = mult - 1; lsfg.active_mult = mult; lsfg.active_perf = perf; lsfg.active_flow = flow;
@@ -110,7 +121,8 @@ static void lsfg_restart(void) {
     lsfg.restart = 0;
     if (lsfg.ctx < 0 || (lsfg.mult == lsfg.active_mult && lsfg.perf == lsfg.active_perf && lsfg.flow == lsfg.active_flow)) return;
     pthread_mutex_lock(&queue_lock);
-    dv_drain();   /* our recorded work first; finalize waits for the device */
+    /* our recorded work first; finalize waits for the device */
+    dv_drain();
     lsfg_bridge_finalize();
     pthread_mutex_unlock(&queue_lock);
     LOG("[lsfg] restarting with new settings (x%d -> x%d)", lsfg.active_mult, lsfg.mult);
@@ -122,7 +134,8 @@ static void lsfg_restart(void) {
 static int lsfg_dump_armed(void) {
     const char *dir = getenv("DM_VK_SHADERS"); char path[1200];
     if (!dir || !lsfg.frames) return 0;
-    static uint64_t next; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC); if (now < next) return 0; next = now + 250000000ull;   /* polled every 250 ms */
+    /* polled every 250 ms */
+    static uint64_t next; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC); if (now < next) return 0; next = now + 250000000ull;
     snprintf(path, sizeof path, "%s/../lsfgdump.trigger", dir);
     if (access(path, F_OK)) return 0;
     unlink(path); return 1;
@@ -167,19 +180,21 @@ static void lsfg_time_end(void) { vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE
 static int lsfg_adaptive_count(void) {
     uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), block = present_block_ns; present_block_ns = 0;
     int hz = mtl_display_hz(); if (hz <= 0) { const char *e = getenv("TOTK_DISPLAY_HZ"); hz = e && atoi(e) > 0 ? atoi(e) : 60; }
-    double refresh = pace_refresh ? (double)pace_refresh : 1e9 / hz;   /* measured once presents have timings, else the rate asked for */
+    /* measured once presents have timings, else the rate asked for */
+    double refresh = pace_refresh ? (double)pace_refresh : 1e9 / hz;
     int max = lsfg.generated + 1;
     if (!lsfg.ad_last) { lsfg.ad_last = now; return 1; }
     double d = (double)(now - lsfg.ad_last) - (double)block; lsfg.ad_last = now;
-    /* the GPU floor: with the GPU saturated (the game's work and LSFG's), a frame cannot be shorter than its GPU time
-       whatever the presents' blocking says (that blocking then holds pictures the GPU has not finished, not a burst
-       the compositor paces), and an estimate below it under-delivers pictures (first cave run: 98 a second, 22%
+    /* the GPU floor: with the GPU saturated (the game's work and LSFG's), a frame cannot be shorter than its GPU
+       time whatever the presents' blocking says (that blocking then holds pictures the GPU has not finished, not a
+       burst the compositor paces), and an estimate below it under-delivers pictures (in the cave: 98 a second, 22%
        shown twice) */
     { double g = gpu_total_ns; double ours = g - lsfg.ad_gpu_prev; lsfg.ad_gpu_prev = g;
       if (ours > 0 && ours < 1e8) lsfg.ad_gpu_ours = lsfg.ad_gpu_ours > 0 ? lsfg.ad_gpu_ours * 0.8 + ours / 1e6 * 0.2 : ours / 1e6;
       double floor_ns = (lsfg.ad_gpu_ours + lsfg.ad_gpu_lsfg) * 1e6 * 1.02; lsfg.ad_floor_sum += floor_ns;
       if (d < floor_ns) { d = floor_ns; lsfg.ad_floored++; } }
-    if (d < 0) d = 0; if (d > refresh * (max + 1)) d = refresh * (max + 1);   /* a menu, a load: nothing to catch up */
+    /* a menu, a load: nothing to catch up */
+    if (d < 0) d = 0; if (d > refresh * (max + 1)) d = refresh * (max + 1);
     lsfg.ad_due += d / refresh; int k = (int)lsfg.ad_due; if (k < 1) k = 1; if (k > max) k = max; lsfg.ad_due -= k;
     if (lsfg.ad_due > 1.0) lsfg.ad_due = 1.0; if (lsfg.ad_due < 0) lsfg.ad_due = 0;
     lsfg.ad_hist[k]++; lsfg.ad_frames++; lsfg.ad_interval += d; lsfg.ad_pictures += (uint64_t)k;
@@ -192,24 +207,29 @@ static int lsfg_adaptive_count(void) {
 static int lsfg_prepare(const tex_t *t, const int crop[4], image_entry **out) {
     if (!lsfg_enabled()) return 0;
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
-    /* LSFG's start (its images, the library, its context: ~300 ms) on the first boot frame that has the screen's size,
-       behind the logo, instead of the first frame of the world (2026-11-03: a 300 ms hitch as the world appeared) */
+    /* LSFG's start (its images, the library, its context: ~300 ms) on the first boot frame that has the screen's
+       size, behind the logo: on the first frame of the world it is a hitch */
     if (lsfg.ctx < 0 && !lsfg.w && !(crop && (crop[0] || crop[1])) && sw == screen_extent.width && sh == screen_extent.height) {
         uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC); if (lsfg_setup(sw, sh)) return 0;
         LOG("[lsfg] started at boot in %.0f ms", (dm_android_clock_ns(CLOCK_MONOTONIC) - t0) / 1e6); }
-    if (fg.menu || fg_menu_frame()) { lsfg.gap = 1; return 0; }   /* menu mode (nvn_vulkan_framegen.inc): LSFG skips it */
+    /* menu mode (nvn_vulkan_framegen.inc): LSFG skips it */
+    if (fg.menu || fg_menu_frame()) { lsfg.gap = 1; return 0; }
     /* the panel has room for fewer pictures than the multiplier (pace_refresh_poll): only the real one, without LSFG's work */
     int fit = lsfg.adaptive ? 16 : pace_pictures_fit(nvn_frame_cap_get ? nvn_frame_cap_get() : 0);
     if (fit < 2) { lsfg.gap = 1; lsfg.limited++; return 0; }
     if (crop && (crop[0] || crop[1])) return 0;
     if (lsfg.restart) lsfg_restart();
-    if (lsfg.w && (sw != lsfg.w || sh != lsfg.h)) return 0;   /* the picture size changed (menus): no generation; LSFG keeps its context */
+    /* the picture size changed (menus): no generation; LSFG keeps its context */
+    if (lsfg.w && (sw != lsfg.w || sh != lsfg.h)) return 0;
     if (lsfg.ctx < 0 && lsfg_setup(sw, sh)) return 0;
     int dump = lsfg_dump_armed();
-    int n = lsfg.adaptive ? lsfg_adaptive_count() - 1 : lsfg.generated;   /* pictures generated this frame */
+    /* pictures generated this frame */
+    int n = lsfg.adaptive ? lsfg_adaptive_count() - 1 : lsfg.generated;
     float at[LSFG_MAX_OUT]; for (int i = 0; i < n; i++) at[i] = (float)(i + 1) / (float)(n + 1);
-    if (dump) fg_dump_image(&lsfg.source, sw, sh, "lsfg-in-prev");   /* still the previous picture */
-    static double cpu_copy, cpu_lib, cpu_hud; static uint64_t cpu_n; uint64_t cpu_t0 = dm_android_clock_ns(CLOCK_MONOTONIC);   /* the translation thread's time in here (TOTK_LSFG_CPU=1) */
+    /* still the previous picture */
+    if (dump) fg_dump_image(&lsfg.source, sw, sh, "lsfg-in-prev");
+    /* the translation thread's time in here (TOTK_LSFG_CPU=1) */
+    static double cpu_copy, cpu_lib, cpu_hud; static uint64_t cpu_n; uint64_t cpu_t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
     /* 1. this picture into the source image LSFG copies in, then everything before is done and visible for LSFG */
     if (async_recording_owned) mtl_sub_commit();
     mtl_sub_begin();
@@ -217,7 +237,8 @@ static int lsfg_prepare(const tex_t *t, const int crop[4], image_entry **out) {
     /* the scene (the canvas before the UI, nvn_vulkan_framegen.inc) when there is one: LSFG then never sees the HUD,
        which goes on top of its pictures from this frame's picture (fg_hud_composite) */
     image_entry *scene = fg_scene(sw, sh, 0);
-    if (scene) fg_scene_encode(&lsfg.source, scene, sw, sh);   /* linear canvas values, sRGB-encoded as the game's last pass does */
+    /* linear canvas values, sRGB-encoded as the game's last pass does */
+    if (scene) fg_scene_encode(&lsfg.source, scene, sw, sh);
     else {
         image_access(fin, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
         image_access(&lsfg.source, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -236,7 +257,8 @@ static int lsfg_prepare(const tex_t *t, const int crop[4], image_entry **out) {
     uint64_t cpu_t1 = dm_android_clock_ns(CLOCK_MONOTONIC);
     /* 2. LSFG's work for this frame, next on the queue */
     pthread_mutex_lock(&queue_lock);
-    dv_drain();   /* LSFG submits on its own: our recorded submits first */
+    /* LSFG submits on its own: our recorded submits first */
+    dv_drain();
     uint64_t cpu_t2 = dm_android_clock_ns(CLOCK_MONOTONIC);
     int r = lsfg.adaptive ? lsfg_bridge_present_at(lsfg.ctx, at, n) : lsfg_bridge_present(lsfg.ctx);
     pthread_mutex_unlock(&queue_lock);
@@ -248,21 +270,25 @@ static int lsfg_prepare(const tex_t *t, const int crop[4], image_entry **out) {
     /* a scene after a finished picture or the other way round (menus, loading): LSFG's two inputs differ in the HUD and
        its pictures would show it half faded; this frame shows none (LSFG has moved on to this input) */
     int mixed = lsfg.frames && ((scene != NULL) != lsfg.last_scene || lsfg.gap); lsfg.last_scene = scene != NULL; lsfg.gap = 0;
-    if (scene) {   /* this frame's HUD over the generated pictures, after LSFG's work on the queue; then this picture kept for the next */
+    /* this frame's HUD over the generated pictures, after LSFG's work on the queue; then this picture kept for the
+       next */
+    if (scene) {
         mtl_sub_begin();
         if (lsfg.adaptive) lsfg_time_end();
         if (lsfg.frames && !mixed) { hud_time_begin(); for (int i = 0; i < n; i++) fg_hud_composite(&lsfg.out[i], fin, scene, sw, sh); hud_time_end(); lsfg.hud++; }
         fg_keep_record(fin, sw, sh);
         mtl_sub_commit();
-    } else if (lsfg.adaptive) { mtl_sub_begin(); lsfg_time_end(); mtl_sub_commit(); }   /* the timestamp after LSFG's work */
+    } else if (lsfg.adaptive) { mtl_sub_begin(); lsfg_time_end(); mtl_sub_commit(); }
     { static int on = -1; if (on < 0) { const char *e = getenv("TOTK_LSFG_CPU"); on = e && atoi(e) > 0; }
       if (on) { uint64_t t4 = dm_android_clock_ns(CLOCK_MONOTONIC); cpu_copy += (cpu_t1 - cpu_t0) / 1e6; cpu_lib += (cpu_t3 - cpu_t2) / 1e6; cpu_hud += (t4 - cpu_t3) / 1e6;
         static double cpu_drain; cpu_drain += (cpu_t2 - cpu_t1) / 1e6;
         if (++cpu_n % 600 == 0) { LOG("[lsfg] translation-thread CPU a frame: source copy+commit %.2f ms, queue lock+drain %.2f, library present %.2f, HUD composite+keep %.2f", cpu_copy / 600, cpu_drain / 600, cpu_lib / 600, cpu_hud / 600); cpu_copy = cpu_drain = cpu_lib = cpu_hud = 0; } } }
     if (dump) { fg_dump_image(&lsfg.source, sw, sh, "lsfg-in-new"); fg_dump_image(&lsfg.out[0], sw, sh, "lsfg-gen"); fg_dump_image(fin, sw, sh, "lsfg-final"); }
     lsfg.frames++;
-    if (lsfg.frames == 1 || mixed) return 0;   /* the first frame has no previous picture: nothing to show yet */
-    if (fit <= n) { int was = n; n = fit - 1; for (int i = 0; i < n; i++) out[i] = &lsfg.out[(i + 1) * (was + 1) / fit - 1]; }   /* evenly spaced: the middle one of x4 on a 60 Hz panel at 30 */
+    /* the first frame has no previous picture: nothing to show yet */
+    if (lsfg.frames == 1 || mixed) return 0;
+    /* evenly spaced: the middle one of x4 on a 60 Hz panel at 30 */
+    if (fit <= n) { int was = n; n = fit - 1; for (int i = 0; i < n; i++) out[i] = &lsfg.out[(i + 1) * (was + 1) / fit - 1]; }
     lsfg.shown += (uint64_t)n;
     if (!(lsfg.frames % 600)) LOG("[lsfg] %llu game frames, %llu generated pictures shown, %llu frames with the HUD on top, %llu frames without room on the panel", (unsigned long long)lsfg.frames, (unsigned long long)lsfg.shown, (unsigned long long)lsfg.hud, (unsigned long long)lsfg.limited);
     return n;

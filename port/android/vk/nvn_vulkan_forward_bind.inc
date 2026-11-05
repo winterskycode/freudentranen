@@ -1,9 +1,10 @@
-// GPU 消费者复用先前输出；需要客体 CPU 数据的索引、uniform 和贴图解排布仍走真正完成等待。
 // GPU consumers reuse prior outputs; indices, uniforms and texture deswizzling that require guest CPU data still wait for real completion.
 static uint64_t forward_read_bytes,forward_seed_bytes;
-static uint64_t zc_bound_calls,zc_bound_bytes,zc_unbound_calls;   /* zero-copy reads in place / reads of zero-copy pools that still snapshot */
+/* zero-copy reads in place / reads of zero-copy pools that still snapshot */
+static uint64_t zc_bound_calls,zc_bound_bytes,zc_unbound_calls;
 #include "nvn_vulkan_forward_compose.inc"
-static int zc_last_in_place;   /* the last forward_readonly_buffer answered with the pool itself (memoable) */
+/* the last forward_readonly_buffer answered with the pool itself (memoable) */
+static int zc_last_in_place;
 static uint64_t forward_memo_hits;
 static VkDescriptorBufferInfo forward_readonly_buffer(uintptr_t address,uint64_t bytes,uint64_t alignment,VkPipelineStageFlags stage,VkAccessFlags access) {
     zc_last_in_place=0;forward_slice slice;forward_result result=forward_find(address,bytes,alignment,forward_scope_marker,&slice);
@@ -31,7 +32,6 @@ static VkDescriptorBufferInfo forward_readonly_buffer_m(fwd_memo *m,uintptr_t ad
     if(m){if(zc_last_in_place){*m=(fwd_memo){address,bytes,sa,su,pools,r,1};}else m->valid=0;}
     return r;
 }
-// 仅给已确认的只读 shader 路径附来源；原 forward 查询与消费同步仍各执行一次。
 // Tag only the confirmed read-only shader paths; original forward lookup and consumer synchronization still execute once each.
 static VkDescriptorBufferInfo forward_readonly_shader_buffer(fwd_memo *m,const shader_entry *shader,const shader_binding *binding,unsigned element,unsigned slot,unsigned handle,unsigned role,uint64_t bound_bytes,uintptr_t address,uint64_t bytes,uint64_t alignment,VkPipelineStageFlags stage,VkAccessFlags access) {
     if(!snapshot_diag_frame||bytes<=65536)return forward_readonly_buffer_m(m,address,bytes,alignment,stage,access);

@@ -4,7 +4,8 @@
 #define DRAWSTAT_CAPACITY 8192
 typedef struct { const char *vs, *fs; uint32_t ordinal, count, instances, prim; uint64_t frame; } drawstat_info;
 static struct { VkQueryPool pool; drawstat_info *info; uint32_t used; } drawstat_slots[DM_VK_BATCH_SLOTS];
-static int drawstat_state = -1;   /* -1 unknown, 0 off, 1 on */
+/* -1 unknown, 0 off, 1 on */
+static int drawstat_state = -1;
 static int drawstat_on(void) {
     if (drawstat_state < 0) { const char *e = getenv("TOTK_VK_DRAWSTATS"); drawstat_state = e && atoi(e) > 0; }
     return drawstat_state;

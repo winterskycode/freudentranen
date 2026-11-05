@@ -22,17 +22,24 @@ static uint32_t aim(sy_region r) {
     switch (r) {
     case SY_NCA_HEADER:
         switch (below(5)) {
-        case 0: return 0x200 + below(0x40);          /* magic, types, size, title */
-        case 1: return 0x240 + below(0x40);          /* section table */
-        case 2: return 0x400 + below(0x800);         /* section headers */
-        case 3: return 0x500 + below(0x40) + 0x200 * below(2);   /* BKTR headers */
+        /* magic, types, size, title */
+        case 0: return 0x200 + below(0x40);
+        /* section table */
+        case 1: return 0x240 + below(0x40);
+        /* section headers */
+        case 2: return 0x400 + below(0x800);
+        /* BKTR headers */
+        case 3: return 0x500 + below(0x40) + 0x200 * below(2);
         default: return below(0xC00);
         }
     case SY_BKTR_REL: case SY_BKTR_SUB:
         switch (below(4)) {
-        case 0: return below(0x40);                  /* outer node */
-        case 1: return 0x4000 + below(0x100);        /* first bucket */
-        case 2: return 0x8000 + below(0x40);         /* a second bucket, or past the table */
+        /* outer node */
+        case 0: return below(0x40);
+        /* first bucket */
+        case 1: return 0x4000 + below(0x100);
+        /* a second bucket, or past the table */
+        case 2: return 0x8000 + below(0x40);
         default: return below(0x8000);
         }
     case SY_ROMFS_HEADER: return below(0x50);

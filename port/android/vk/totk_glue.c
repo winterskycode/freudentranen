@@ -12,7 +12,8 @@
 
 /* ---- window ---- */
 void *android_vi_window(void);
-void *front_metal_layer(void) { return android_vi_window(); }   /* the ANativeWindow, NULL until the activity has one */
+/* the ANativeWindow, NULL until the activity has one */
+void *front_metal_layer(void) { return android_vi_window(); }
 
 
 /* ---- not yet implemented in the Vulkan backend ---- */
@@ -47,7 +48,8 @@ void mtl_upload_wait_stats(uint64_t *a, uint64_t *b) { *a = *b = 0; }
 /* ---- diagnostics hooks ---- */
 void dm_gfx_set_flag(const char *name, int value) { (void)name; (void)value; }
 void dm_gfx_anomdump(void) {}
-void dm_gfx_ashot(const char *path) { (void)path; }   /* the Metal backend's screenshot of the current frame (runtime/input.c "ashot" on Breath of the Wild): none here */
+/* the Metal backend's screenshot of the current frame (runtime/input.c "ashot" on Breath of the Wild): none here */
+void dm_gfx_ashot(const char *path) { (void)path; }
 void dm_gfx_passdump_next(long n) { (void)n; }
 void dm_gfx_querylog_next(long n) { (void)n; }
 void dm_gfx_texdump_next(const char *path) { (void)path; }

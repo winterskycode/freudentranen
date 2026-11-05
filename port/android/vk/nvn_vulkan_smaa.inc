@@ -1,7 +1,7 @@
 /* Anti-aliasing (TOTK_AA=smaa): SMAA 1x, high preset (third_party/smaa, MIT; shaders/smaa_*.comp; ultra: TOTK_SMAA_ULTRA=1,
    the menu's SMAA quality). Docked, on the scene at its render size: compose's output (0ac9a549 and the passes after it
-   into its target, 1600x900 by default), before the game's FXAA and its upscale to the 1920x1080 canvas, which softened
-   the stair-steps before SMAA saw them (taa_compose / taa_before_draw: the first draw that reads that target). Handheld (and docked when compose's output was not caught), on the
+   into its target, 1600x900 by default), before the game's FXAA and its upscale to the 1920x1080 canvas, which would soften
+   the stair-steps before SMAA sees them (taa_compose / taa_before_draw: the first draw that reads that target). Handheld (and docked when compose's output was not caught), on the
    game's canvas at the first UI draw into it (fg_before_draw): the scene is finished there (lit, bloomed, tonemapped to linear
    display values in R11G11B10F) and the HUD is not drawn yet, so text and icons stay sharp and our upscale works on an
    anti-aliased picture. In handheld mode the game has no anti-aliasing of its own; docked it runs FXAA before this.
@@ -14,14 +14,18 @@
 #include "third_party/smaa/AreaTex.h"
 #include "third_party/smaa/SearchTex.h"
 static struct {
-    int on;   /* -1 unread */
+    /* -1 unread */
+    int on;
     VkDescriptorSetLayout set_layout[3]; VkPipelineLayout layout[3]; VkPipeline pipeline[3];
     VkSampler linear, nearest;
     image_entry edges, blend, copy, area, search;
-    int usable;   /* -1 unchecked: the canvas format as a storage image */
+    /* -1 unchecked: the canvas format as a storage image */
+    int usable;
     VkPipeline ultra[3];
-    float sub[4];     /* the blending weights' subsample indices: 0 (SMAA 1x), T2x's (1,1,1,0) / (2,2,2,0) */
-    int scene_done;   /* this frame's scene was anti-aliased at its render size (the canvas is then left alone) */
+    /* the blending weights' subsample indices: 0 (SMAA 1x), T2x's (1,1,1,0) / (2,2,2,0) */
+    float sub[4];
+    /* this frame's scene was anti-aliased at its render size (the canvas is then left alone) */
+    int scene_done;
     uint64_t frames;
 } smaa = {.on = -1, .usable = -1};
 static int smaa_on(void) {
@@ -36,8 +40,10 @@ static int smaa_scene(void) {
     return docked && smaa_on();
 }
 static int smaa_scene_done(void) { return smaa.scene_done; }
-static void smaa_scene_mark(int done) { smaa.scene_done = done; }   /* taa_before_draw: done; taa_frame_end: a new frame */
-static int smaa_ultra_on = -1;   /* TOTK_SMAA_ULTRA; the menu sets it live (ov_apply) */
+/* taa_before_draw: done; taa_frame_end: a new frame */
+static void smaa_scene_mark(int done) { smaa.scene_done = done; }
+/* TOTK_SMAA_ULTRA; the menu sets it live (ov_apply) */
+static int smaa_ultra_on = -1;
 static int smaa_ultra(void) { if (smaa_ultra_on < 0) { const char *e = getenv("TOTK_SMAA_ULTRA"); smaa_ultra_on = e && atoi(e) > 0; } return smaa_ultra_on; }
 static void smaa_pipeline(int i, const uint32_t *code, size_t bytes, unsigned samplers, unsigned storages) {
     VkDescriptorSetLayoutBinding b[5];
@@ -45,7 +51,8 @@ static void smaa_pipeline(int i, const uint32_t *code, size_t bytes, unsigned sa
         .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
     VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = samplers + storages, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &smaa.set_layout[i]));
-    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 32};   /* metrics, subsample indices */
+    /* metrics, subsample indices */
+    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 32};
     VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &smaa.set_layout[i], .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
     VK_CHECK(vkCreatePipelineLayout(device, &pl, NULL, &smaa.layout[i]));
     VkShaderModuleCreateInfo mi = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = bytes, .pCode = code};
@@ -78,7 +85,8 @@ static void smaa_setup(void) {
     };
     smaa_pipeline(0, edge, sizeof edge, 1, 2); smaa_pipeline(1, blend, sizeof blend, 3, 1); smaa_pipeline(2, neighbor, sizeof neighbor, 2, 1);
     const uint32_t *u[3] = {edge_u, blend_u, neighbor_u}; size_t ub[3] = {sizeof edge_u, sizeof blend_u, sizeof neighbor_u};
-    for (int i = 0; i < 3; i++) {   /* the ultra preset (glslang -DSMAA_PRESET_ULTRA): the same layouts */
+    /* the ultra preset (glslang -DSMAA_PRESET_ULTRA): the same layouts */
+    for (int i = 0; i < 3; i++) {
         VkShaderModuleCreateInfo mi = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = ub[i], .pCode = u[i]};
         VkShaderModule module; VK_CHECK(vkCreateShaderModule(device, &mi, NULL, &module));
         VkComputePipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -110,7 +118,8 @@ static void smaa_pass(int i, unsigned n, image_entry *const *in, const VkSampler
 /* The canvas (R11G11B10F) anti-aliased in place; recorded into the current command buffer outside any pass. 0 when not. */
 static int smaa_apply(image_entry *canvas) {
     if (smaa.usable < 0) { VkFormatProperties fp; vkGetPhysicalDeviceFormatProperties(physical, VK_FORMAT_B10G11R11_UFLOAT_PACK32, &fp);
-        smaa.usable = !!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);   /* image_get gives the canvas storage usage then */
+        /* image_get gives the canvas storage usage then */
+        smaa.usable = !!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
         if (!smaa.usable) LOG("[aa] R11G11B10F is not a storage format on this device: no anti-aliasing"); }
     if (!smaa.usable || canvas->format != VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
         static int said; if (!said++ && smaa.usable) LOG("[aa] canvas format %d: not anti-aliased", canvas->format); return 0; }
@@ -135,7 +144,8 @@ static int smaa_apply(image_entry *canvas) {
    each (the lamps' halos alternate between two states instead of pulsing through sixteen), and only one earlier frame
    is ever used, so what the camera's motion gets wrong (Link moving by himself) leaves at most a one-frame trace. */
 static struct { VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipe; VkSampler point; image_entry cur[2], vel[2], depth[2]; int i; uint64_t frames; } t2x;
-static int t2x_storage(int i) { return i == 4 || i == 5 || i == 7; }   /* the resolve's outputs */
+/* the resolve's outputs */
+static int t2x_storage(int i) { return i == 4 || i == 5 || i == 7; }
 static void smaa_t2x_pipeline(void) {
     if (t2x.pipe) return;
     VkDescriptorSetLayoutBinding b[8];
@@ -193,7 +203,8 @@ static int smaa_t2x_apply(image_entry *target, image_entry *depth, int sub, cons
         .descriptorType = t2x_storage(i) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii[i]};
     vkUpdateDescriptorSets(device, 8, wr, 0, NULL);
     float push[24];
-    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)reproj[r * 4 + c];   /* GLSL mat4 is column-major */
+    /* GLSL mat4 is column-major */
+    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)reproj[r * 4 + c];
     push[16] = (float)w; push[17] = (float)h; push[18] = 1.0f / w; push[19] = 1.0f / h;
     push[20] = reset ? 1.0f : 0.0f; push[21] = 1.0f; push[22] = live_exp_has("t2xclamp") ? 1.0f : 0.0f; push[23] = live_exp_has("t2xnodepth") ? 1.0f : 0.0f;
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, t2x.layout, 0, 1, &set, 0, NULL);

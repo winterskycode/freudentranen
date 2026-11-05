@@ -10,7 +10,8 @@
 #include <unistd.h>
 
 static jstring text(JNIEnv *env, char *err) {
-    for (char *p = err; *p; p++) if ((unsigned char)*p >= 0x80) *p = '?';   /* NewStringUTF wants modified UTF-8 */
+    /* NewStringUTF wants modified UTF-8 */
+    for (char *p = err; *p; p++) if ((unsigned char)*p >= 0x80) *p = '?';
     return (*env)->NewStringUTF(env, err);
 }
 

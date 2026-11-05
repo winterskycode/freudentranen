@@ -38,11 +38,14 @@ def ldr32(rt, rn, off):
 def symbol_name(r, i):
     kind = r.randrange(12)
     if kind == 0:
-        return 'café_' + str(i)     # two-byte UTF-8
+        # two-byte UTF-8
+        return 'café_' + str(i)
     if kind == 1:
-        return '漢字' + str(i)   # three bytes
+        # three bytes
+        return '漢字' + str(i)
     if kind == 2:
-        return '\U0001F600' + str(i)     # four bytes
+        # four bytes
+        return '\U0001F600' + str(i)
     return ''.join(r.choice('abcdefgh_ZN0123') for _ in range(r.randrange(1, 40))) + str(i)
 
 
@@ -57,7 +60,8 @@ class Module:
         if main:
             names.append(PROBE)
             if r.randrange(3) == 0:
-                names.append(PROBE)     # two symbols of that name: the first slot found wins
+                # two symbols of that name: the first slot found wins
+                names.append(PROBE)
         nsym = len(names)
         self.text_end = align((0x12000 if main else 0x3000) + r.randrange(0x2000), 4)
         ro = align(self.text_end, 0x1000)
@@ -85,7 +89,8 @@ class Module:
         dynamic_room = 0x200
         slots = data + dynamic_room
         data_size = align(0x2000 + r.randrange(0x3000), 8)
-        end = data + data_size + r.randrange(0x2000)      # bss after the file data
+        # bss after the file data
+        end = data + data_size + r.randrange(0x2000)
         key = align(end, 0x4000)
         patch = align(end + 0x4000, 0x10000)
         patch_size = r.choice((0, 0x40, 0x400)) if name == 'subsdk0' else 0x400
@@ -167,7 +172,8 @@ class Module:
         flag_low = flag - page
         assert flag_low % 4 == 0
 
-        if main:   # the stub of the first jump slot of that name, somewhere in the last 64 KB of the text, and another beside it
+        # the stub of the first jump slot of that name, somewhere in the last 64 KB of the text, and another beside it
+        if main:
             self.probe_slot = None
             for off, count in ((rela_at, nrela), (jmprel, nplt)):
                 for i in range(count):
@@ -191,7 +197,8 @@ class Module:
             tags += [(25, data + 0x100), (27, 8 * r.randrange(16))]
         tags += [(r.choice((1, 3, 13, 14, 26, 28, 30, 0x6FFFFEF5, -2)), r.getrandbits(32)) for _ in range(r.randrange(4))]
         r.shuffle(tags)
-        if r.randrange(4) == 0:   # a tag given twice: the last one counts
+        # a tag given twice: the last one counts
+        if r.randrange(4) == 0:
             tags.insert(0, (10, 1))
         for i, (t, v) in enumerate(tags):
             struct.pack_into('<qQ', img, data + 16 * i, t, v)
@@ -228,39 +235,50 @@ def fault(r, modules):
     elif kind == 2: w32(p['mod0'] + 4, odd())
     elif kind == 3: w64(p['dynamic'] + 16 * r.randrange(p['ntags']) + 8, odd())
     elif kind == 4: w64(p['dynamic'] + 16 * r.randrange(p['ntags']), r.choice((0, 0, 4, 9, 11, 20, 35, 36, 37)))
-    elif kind == 5:   # no terminator in the dynamic table's room
+    # no terminator in the dynamic table's room
+    elif kind == 5:
         for i in range(0x1000):
             if p['dynamic'] + 16 * i + 16 > len(img): break
             w64(p['dynamic'] + 16 * i, 1)
     elif kind == 6: w32(p['symtab'] + 24 * r.randrange(p['nsym']), r.choice((p['strsz'], p['strsz'] - 1, p['strsz'] + 10, 2**32 - 1, r.getrandbits(32))))
-    elif kind == 7:   # names without their last terminator
+    # names without their last terminator
+    elif kind == 7:
         img[p['strtab'] + p['strsz'] - 1] = 0x41
-    elif kind == 8:   # bad UTF-8
+    # bad UTF-8
+    elif kind == 8:
         img[p['strtab'] + r.randrange(p['strsz'])] = r.choice((0x80, 0xC0, 0xC1, 0xE0, 0xED, 0xF0, 0xF4, 0xF5, 0xFF))
     elif kind == 9 and p['nrela']: w64(p['rela'] + 24 * r.randrange(p['nrela']), odd())
     elif kind == 10 and p['nrela']: w64(p['rela'] + 24 * r.randrange(p['nrela']) + 8, r.choice((0, 1024, 1028, 1027 | 2**40, 257 | (p['nsym'] << 32), r.getrandbits(64))))
-    elif kind == 11 and p['nrela']:   # a relative addend out of range
+    # a relative addend out of range
+    elif kind == 11 and p['nrela']:
         e = p['rela'] + 24 * r.randrange(p['nrela'])
         w64(e + 8, 1027); w64(e + 16, r.choice((m.layout['KEY_PAGE_OFF'], m.layout['KEY_PAGE_OFF'] - 1, 2**64 - 1)))
-    elif kind == 12:  # one address relocated twice
+    # one address relocated twice
+    elif kind == 12:
         a = p['jmprel']
         b = p['jmprel'] + 24 * (p['nplt'] - 1)
         struct.pack_into('<Q', img, a, struct.unpack_from('<Q', img, b)[0])
     elif kind == 13 and p['nrelr']: w64(p['relr'] + 8 * r.randrange(p['nrelr']), odd())
-    elif kind == 14 and p['nrelr']: w64(p['relr'], r.getrandbits(62) << 1 | 1)                 # a bitmap first
-    elif kind == 15 and p['nrelr'] > 1: w64(p['relr'] + 8, struct.unpack_from('<Q', img, p['relr'])[0])   # the same address twice
+    # a bitmap first
+    elif kind == 14 and p['nrelr']: w64(p['relr'], r.getrandbits(62) << 1 | 1)
+    # the same address twice
+    elif kind == 15 and p['nrelr'] > 1: w64(p['relr'] + 8, struct.unpack_from('<Q', img, p['relr'])[0])
     elif kind == 16: w32(p['init'] + 16, r.choice((0, r.getrandbits(32), 0x90000013, 0x90FFFFF3)))
     elif kind == 17: w32(p['init'] + 20, r.choice((0, r.getrandbits(32), 0xB9400268, 0xB97FFE68)))
-    elif kind == 18 and m.name == 'main':    # the stub broken
+    # the stub broken
+    elif kind == 18 and m.name == 'main':
         w32(m.plt + 12, 0)
-    elif kind == 19 and m.name == 'main':    # a second stub of the slot
+    # a second stub of the slot
+    elif kind == 19 and m.name == 'main':
         at = m.plt - 32
         page = m.probe_slot & ~4095
         struct.pack_into('<IIII', img, at, adrp(at, page, 16), ldr64(17, 16, m.probe_slot - page), 0, 0xD61F0220)
     elif kind == 20 and p['hash'] is not None: w32(p['hash'] + 4, odd())
-    elif kind == 21 and m.gates:             # two gates on one return address
+    # two gates on one return address
+    elif kind == 21 and m.gates:
         m.gates[0] = (m.gates[-1][0],) + m.gates[0][1:]
-    elif kind == 22:                         # the header's dynsym extent
+    # the header's dynsym extent
+    elif kind == 22:
         struct.pack_into('<II', m.nso, 0x98, r.getrandbits(16), r.choice((0, 1, 24, 2**31, r.getrandbits(32))))
     elif kind == 23: m.nso = m.nso[:r.randrange(0xA0)]
     elif kind == 24:

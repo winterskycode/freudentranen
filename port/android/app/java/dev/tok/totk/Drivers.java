@@ -42,7 +42,8 @@ final class Drivers {
         List<Driver> out = new ArrayList<>();
         File[] dirs = root(c).listFiles();
         if (dirs != null) for (File d : dirs) {
-            try { Driver v = read(d); if (new File(d, v.library).isFile()) out.add(v); } catch (IOException | JSONException e) { /* half-installed: skipped */ }
+            /* a half-installed driver is skipped */
+            try { Driver v = read(d); if (new File(d, v.library).isFile()) out.add(v); } catch (IOException | JSONException e) { }
         }
         out.sort((a, b) -> a.name.compareToIgnoreCase(b.name));
         return out;
@@ -72,7 +73,8 @@ final class Drivers {
                 for (ZipEntry e; (e = in.getNextEntry()) != null; ) {
                     if (e.isDirectory()) continue;
                     String n = e.getName();
-                    if (n.contains("/") || n.contains("\\") || n.equals("..") || n.startsWith(".")) continue;   // top level only, as adrenotools packages are
+                    // top level only, as adrenotools packages are
+                    if (n.contains("/") || n.contains("\\") || n.equals("..") || n.startsWith(".")) continue;
                     try (OutputStream out = new FileOutputStream(new File(tmp, n))) { copy(in, out); }
                     if (++files > 64) throw new IOException("It holds more files than a driver package does.");
                 }

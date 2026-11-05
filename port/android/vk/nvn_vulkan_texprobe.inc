@@ -19,7 +19,8 @@ static int texprobe_on_slow(void) {
 }
 /* bind_shader, translation thread: id = the handle's texture index, type = the binding's NVN sampler type */
 static void texprobe_use(uint32_t id, uint32_t type, const texture_descriptor *d, VkImageView view) {
-    uint32_t key = (id << 4 | ((type & 255) + (type & 256 ? 8 : 0))) + 1;   /* + 1: 0 marks an empty slot */
+    /* + 1: 0 marks an empty slot */
+    uint32_t key = (id << 4 | ((type & 255) + (type & 256 ? 8 : 0))) + 1;
     uint32_t i = (key * 0x9E3779B1u) >> 12 & texprobe_mask;
     while (texprobe_table[i].key && texprobe_table[i].key != key) i = (i + 1) & texprobe_mask;
     texprobe_entry *e = &texprobe_table[i]; uint64_t batch = post_batch_serial; texprobe_uses++;
@@ -27,7 +28,8 @@ static void texprobe_use(uint32_t id, uint32_t type, const texture_descriptor *d
     if (!e->key) { *e = (texprobe_entry){key, view, tex, batch, v}; texprobe_new++; }
     else if (e->view != view) {
         int game = e->tex_serial != tex || memcmp(&e->v, &v, sizeof v);
-        uint64_t oldest = async_first ? async_first->serial : batch;   /* batches before the oldest pending one are done */
+        /* batches before the oldest pending one are done */
+        uint64_t oldest = async_first ? async_first->serial : batch;
         int in_flight = e->batch >= oldest;
         if (game) texprobe_changed_game++; else texprobe_changed_ours++;
         if (in_flight) { if (game) texprobe_conflict_game++; else texprobe_conflict_ours++; if (e->batch == batch) texprobe_same_batch++;

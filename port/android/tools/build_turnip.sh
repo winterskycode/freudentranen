@@ -4,8 +4,8 @@
 # build_apk.sh bundles. The previous driver is kept in work/android/turnip/previous/.
 #   port/android/tools/build_turnip.sh [--debug]   (--debug: debugoptimized, unstripped, ~70 MB)
 # Fix (patches/turnip-a8xx-pvtmem-stack-pad.patch): on a8xx the last SP's hardware stack spills past the end of the
-# private-memory BO and overwrote whatever was allocated next (LSFG's constant buffers: its first stage then computed
-# from zeros and frame generation showed a scaled double image).
+# private-memory BO and overwrites whatever is allocated next (LSFG's constant buffers: its first stage then computes
+# from zeros and frame generation shows a scaled double image).
 # Needs: git, python3 with venv, ninja, glslangValidator, bison, flex; the NDK below.
 set -e
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd); W=$ROOT/work/turnip-build

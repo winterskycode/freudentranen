@@ -1,12 +1,11 @@
-// 驱动编译缓存：独立锁保护Vulkan访问，后台文件IO从不持queue_lock。
 // Driver compilation cache: a dedicated mutex protects Vulkan access; background file I/O never holds queue_lock.
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <unistd.h>
-/* The driver cache outgrew 64 MiB (57 MiB loaded, more after a session): vkGetPipelineCacheData's size over the limit made
-   every save "skipped", so pipelines compiled after the file reached that size were never kept, and the warm-up compiled
-   2,244 of them again at every launch, 35 ms each, 79 s (2026-10-31). 512 MiB; the file is read once at start. */
+/* The driver cache outgrows 64 MiB: a vkGetPipelineCacheData size over the limit makes every save "skipped", so
+   pipelines compiled after the file reaches that size are never kept, and the warm-up compiles them again at every
+   launch (2,244 of them, 35 ms each, 79 s). 512 MiB; the file is read once at start. */
 #define PIPELINE_DISK_LIMIT (512u<<20)
 #define PIPELINE_DISK_HEADER 80u
 static pthread_mutex_t pipeline_disk_mutex=PTHREAD_MUTEX_INITIALIZER;
@@ -19,8 +18,9 @@ static VkPhysicalDeviceProperties pipeline_disk_properties;
 static char pipeline_disk_name[80];
 static _Atomic uint64_t pipeline_cache_generation,pipeline_cache_saved,pipeline_cache_changed;
 static uint64_t pipeline_disk_attempt;
-/* The driver's cache size at the last write (or just after loading). Most creations are hits that add nothing: a 33 s run
-   rewrote 294 MB three times for 14 KB of new data (2026-11-04), so a save first asks for the size. */
+/* The driver's cache size at the last write (or just after loading). Most creations are hits that add nothing:
+   writing every time rewrites 294 MB three times in a 33 s run for 14 KB of new data, so a save first asks for the
+   size. */
 static size_t pipeline_disk_bytes;
 static _Atomic uint64_t pipeline_disk_written;
 static uint32_t pipeline_disk_u32(const uint8_t *p) {return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
@@ -70,11 +70,11 @@ static int pipeline_disk_write(const uint8_t *blob,size_t size) {
 static void pipeline_disk_save(void) {
     uint8_t *blob=NULL;size_t bytes=0;uint64_t generation=0,snapshot_ns=0;
     VkResult result=VK_INCOMPLETE;
-    // 有界重试；分配在cache锁外，截断/变化中的blob不替换旧文件。
     // Bound retries, allocate outside the cache lock, and never replace the old file with an incomplete snapshot.
     for(unsigned attempt=0;attempt<2;attempt++){
         size_t capacity=0;uint64_t begin=dm_android_clock_ns(CLOCK_MONOTONIC);
-        generation=atomic_load(&pipeline_cache_generation);   /* read first: a creation ending during the copy counts as newer, and is saved next time */
+        /* read first: a creation ending during the copy counts as newer, and is saved next time */
+        generation=atomic_load(&pipeline_cache_generation);
         result=vkGetPipelineCacheData(device,pipeline_cache,&capacity,NULL);
         snapshot_ns+=dm_android_clock_ns(CLOCK_MONOTONIC)-begin;
         if(result==VK_SUCCESS&&capacity==pipeline_disk_bytes){atomic_store(&pipeline_cache_saved,generation);return;}
@@ -91,7 +91,8 @@ static void pipeline_disk_save(void) {
     LOG("[vulkan-pipeline-cache] save=%s bytes=%zu generation=%llu snapshot_wall_ms=%.3f io_wall_ms=%.3f queue_lock_held=0",ok?"complete":"failed",bytes,(unsigned long long)generation,snapshot_ns/1e6,(dm_android_clock_ns(CLOCK_MONOTONIC)-io_start)/1e6);
 }
 static void *pipeline_disk_main(void *unused) {
-    (void)unused;pthread_setname_np(pthread_self(),"D2R PSO cache");totk_pin_self("TOTK_PSO_CPUS","all");   /* not the translation thread's core, which created it */
+    /* not the translation thread's core, which created it */
+    (void)unused;pthread_setname_np(pthread_self(),"D2R PSO cache");totk_pin_self("TOTK_PSO_CPUS","all");
     pthread_mutex_lock(&pipeline_disk_mutex);
     for(;;){
         while(!pipeline_disk_requested&&!pipeline_disk_stop)pthread_cond_wait(&pipeline_disk_condition,&pipeline_disk_mutex);
@@ -106,7 +107,6 @@ static void pipeline_disk_request_locked(uint64_t now) {
     if(!pipeline_disk_started){int error=pthread_create(&pipeline_disk_thread,NULL,pipeline_disk_main,NULL);if(error){LOG("[vulkan-pipeline-cache] worker_create_failed=%d",error);return;}pipeline_disk_started=1;}
     pipeline_disk_requested=1;pthread_cond_signal(&pipeline_disk_condition);
 }
-// 只在低频present边界请求；最多一个待办，不在游戏线程读取cache或写文件。
 // Request only at infrequent present boundaries, with one pending job; the game thread never extracts or writes cache data.
 static void pipeline_disk_poll(void) {
     if(pipeline_disk_dir<0||!presents||presents%60)return;
@@ -120,12 +120,11 @@ static void pipeline_disk_poll(void) {
     if(pipeline_disk_stop||now-pipeline_disk_attempt<cooldown||(now-changed<3000000000ull&&now-pipeline_disk_attempt<60000000000ull)){pthread_mutex_unlock(&pipeline_disk_mutex);return;}
     pipeline_disk_request_locked(now);pthread_mutex_unlock(&pipeline_disk_mutex);
 }
-/* A save now, whatever the timing above (the PSO warm-up calls it when it is done). */
+/* A save at once, whatever the timing above (the PSO warm-up calls it when it is done). */
 static void pipeline_disk_request(void) {
     if(pipeline_disk_dir<0)return;
     pthread_mutex_lock(&pipeline_disk_mutex);if(!pipeline_disk_stop)pipeline_disk_request_locked(dm_android_clock_ns(CLOCK_MONOTONIC));pthread_mutex_unlock(&pipeline_disk_mutex);
 }
-// mtl_drain 在释放queue_lock后调用；挂起入口另行阻止新NVN调用，其它入口仍由cache锁保护。
 // Called after mtl_drain releases queue_lock; suspend separately gates NVN calls, while the cache lock protects other callers.
 static void pipeline_disk_stop_join(void) {
     pthread_mutex_lock(&pipeline_disk_join_mutex);
@@ -145,8 +144,10 @@ static void pipeline_cache_note(VkResult result) {
 /* VkPipelineCache is internally synchronized (no EXTERNALLY_SYNCHRONIZED flag): creations run in parallel (the background
    pipeline workers, nvn_vulkan_draw.inc, and the translation thread's compute pipelines), and the change bookkeeping is
    atomics, so a creation waits neither for another compile nor for a save's copy of the cache. */
-static __thread int pipeline_create_background;   /* set on the pipeline thread: its creations are not the frame's */
-static uint64_t pipeline_sync_ns,pipeline_sync_count;   /* creations on the translation thread, inside a frame (the hitch log) */
+/* set on the pipeline thread: its creations are not the frame's */
+static __thread int pipeline_create_background;
+/* creations on the translation thread, inside a frame (the hitch log) */
+static uint64_t pipeline_sync_ns,pipeline_sync_count;
 static VkResult pipeline_create_graphics(const VkGraphicsPipelineCreateInfo *info,VkPipeline *pipeline) {
     uint64_t t0=dm_android_clock_ns(CLOCK_MONOTONIC);
     VkResult result=vkCreateGraphicsPipelines(device,pipeline_cache,1,info,NULL,pipeline);
@@ -155,9 +156,9 @@ static VkResult pipeline_create_graphics(const VkGraphicsPipelineCreateInfo *inf
 static VkResult pipeline_create_compute(const VkComputePipelineCreateInfo *info,VkPipeline *pipeline) {
     VkResult result=vkCreateComputePipelines(device,pipeline_cache,1,info,NULL,pipeline);pipeline_cache_note(result);return result;
 }
-/* Caches of other namespaces (another driver or driver build, another translator generation) are never read again unless
-   that driver comes back: each is 30-200 MB, and on the Odin 3 414 of them had piled up to 11.8 GB by 2026-11-03. The
-   writer (it holds writer.lock) removes those untouched for 7 days, and temporary files a crashed save left behind. */
+/* Caches of other namespaces (another driver or driver build, another translator generation) are never read again
+   unless that driver comes back: each is 30-200 MB, and they pile up to many GB. The writer (it holds writer.lock)
+   removes those untouched for 7 days, and temporary files a crashed save left behind. */
 static void pipeline_disk_prune(void) {
     if(pipeline_disk_dir<0||pipeline_disk_lock<0)return;
     int fd=dup(pipeline_disk_dir);if(fd<0)return;DIR *d=fdopendir(fd);if(!d){close(fd);return;}
@@ -181,7 +182,6 @@ static void pipeline_cache_initialize(const VkPhysicalDeviceProperties *properti
         if(pipeline_disk_dir>=0){pipeline_disk_lock=openat(pipeline_disk_dir,"writer.lock",O_RDWR|O_CREAT|O_CLOEXEC|O_NOFOLLOW,0600);
             if(pipeline_disk_lock<0||flock(pipeline_disk_lock,LOCK_EX|LOCK_NB)){if(pipeline_disk_lock>=0)close(pipeline_disk_lock);pipeline_disk_lock=-1;close(pipeline_disk_dir);pipeline_disk_dir=-1;LOG("[vulkan-pipeline-cache] disk_disabled=writer_lock");}}
     }
-    // namespace包含真实设备/驱动与应用ABI；blob内部头另外核实，文件名不是验证依据。
     // Namespace includes actual device/driver and application ABI; validate the blob header independently of its filename.
     uint8_t identity[48]={0};pipeline_disk_put32(identity,properties->vendorID);pipeline_disk_put32(identity+4,properties->deviceID);pipeline_disk_put32(identity+8,properties->driverVersion);pipeline_disk_put32(identity+12,properties->apiVersion);memcpy(identity+16,properties->pipelineCacheUUID,16);pipeline_disk_put32(identity+32,gpu_subgroup_size);
 #ifdef __ANDROID__
@@ -189,8 +189,8 @@ static void pipeline_cache_initialize(const VkPhysicalDeviceProperties *properti
 #endif
     dm_android_sha256_context digest;dm_android_sha256_init(&digest);const char schema[]="d2r-android-pipeline-cache-v1";dm_android_sha256_update(&digest,schema,sizeof schema);dm_android_sha256_update(&digest,identity,sizeof identity);
 #ifdef __ANDROID__
-    /* the driver's name, not its folder: the app's library folder gets a new random name with every install, which made
-       each update start with an empty cache (and left a 30-50 MB file behind each time). The driver build is in
+    /* the driver's name, not its folder: the app's library folder gets a new random name with every install, so each
+       update would start with an empty cache (and leave a 30-50 MB file behind). The driver build is in
        driverVersion and pipelineCacheUUID above, and the driver checks the blob's own header */
     dm_android_sha256_update(&digest,vk_api.driver_name,(uint32_t)strlen(vk_api.driver_name));
 #endif

@@ -1,4 +1,3 @@
-// Android Vulkan分发列表：仅从所选loader/instance/device取得函数。
 // Android Vulkan dispatch lists: resolve exclusively from the selected loader/instance/device.
 #pragma once
 
@@ -129,7 +128,6 @@
     X(vkUpdateDescriptorSets) \
     X(vkWaitForFences)
 
-// 调用宏为function-like，避免改写dispatch结构的字段名。
 // Function-like aliases do not rewrite dispatch member names.
 #ifdef DM_VK_DISPATCH_CONTEXT
 #define vkAcquireNextImageKHR(...) (DM_VK_DISPATCH_CONTEXT.vkAcquireNextImageKHR)(__VA_ARGS__)

@@ -1,4 +1,3 @@
-// 标准 SHA-256，替换 CommonCrypto 调用。
 // Standard SHA-256 in place of CommonCrypto calls.
 #include "legacy_digest.h"
 #include <string.h>
@@ -10,7 +9,6 @@ static void write32(unsigned char *p, uint32_t value, int big) {
     for (unsigned i = 0; i < 4; ++i) p[big ? 3 - i : i] = value >> (8 * i);
 }
 
-// SHA256 增量接口用于可选装载诊断，不用于校验用户游戏包。
 // Incremental SHA256 is for optional load diagnostics, not validating the user's game packages.
 static const uint32_t constants[64] = {
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,

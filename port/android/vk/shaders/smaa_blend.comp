@@ -12,5 +12,6 @@ void main() {
     if (!smaa_pixel(p, texcoord)) return;
     vec2 pixcoord; vec4 offset[3];
     SMAABlendingWeightCalculationVS(texcoord, pixcoord, offset);
-    imageStore(blendOut, p, SMAABlendingWeightCalculationPS(texcoord, pixcoord, offset, edgesTex, areaTex, searchTex, pc.sub));   // 0: SMAA 1x; T2x: (1,1,1,0) / (2,2,2,0)
+    // 0: SMAA 1x; T2x: (1,1,1,0) / (2,2,2,0)
+    imageStore(blendOut, p, SMAABlendingWeightCalculationPS(texcoord, pixcoord, offset, edgesTex, areaTex, searchTex, pc.sub));
 }

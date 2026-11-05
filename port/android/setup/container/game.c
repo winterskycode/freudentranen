@@ -150,7 +150,8 @@ int tokc_game_module(const tokc_game *g, tokc_module m, uint8_t **bytes, size_t 
     if (!g || !bytes || !size || (unsigned)m >= TOKC_MODULE_COUNT) return tokc_fail(err, errlen, TOKC_E_ARGS, "no such module");
     *bytes = NULL; *size = 0;
     const tokc_entry *e = g->modules;
-    while (strcmp(e->name, module_names[m])) e++;   /* open_exefs saw it */
+    /* open_exefs saw it */
+    while (strcmp(e->name, module_names[m])) e++;
     uint8_t *table = malloc((size_t)g->hash_size), *block = malloc(g->hash_block), *data = malloc((size_t)e->size), hash[32];
     int rc = TOKC_OK;
     if (!table || !block || !data) { rc = tokc_fail(err, errlen, TOKC_E_NOMEM, "out of memory"); goto out; }

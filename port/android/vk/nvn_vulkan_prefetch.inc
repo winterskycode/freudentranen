@@ -2,11 +2,11 @@
    makes its programs as it loads and streams, before their first draw; what a draw would otherwise do on the translation
    thread is started then, on a background thread:
    - every translated variant of the program's shaders is loaded (reflection, module, descriptor layout: ~0.5 ms each of
-     file reads and parsing; 606 of them in the long frames of a new player's walk, 2026-11-03);
+     file reads and parsing; 606 of them in the long frames of a new player's walk);
    - a vertex shader paired with a fragment shader that reads more than it writes needs a variant with those outputs
-     (graphics_vs_module), a shader the prepare step cannot know: its pipeline library compiled on the translation thread
-     at the first draw (7 of them, 25-47 ms each, 179 ms in the same walk). It is built here into Mesa's disk cache, as
-     the prepare step builds the others (gpl_warming), so the draw's library is a cache hit.
+     (graphics_vs_module), a shader the prepare step cannot know: its pipeline library would compile on the translation
+     thread at the first draw (7 of them, 25-47 ms each, 179 ms in the same walk). It is built here into Mesa's disk cache,
+     as the prepare step builds the others (gpl_warming), so the draw's library is a cache hit.
    Programs are seen once per (program, serial); a job carries the stage ids only (the shader binaries are hashed at
    once, on the caller's thread: the program may be changed before the worker runs). */
 typedef struct prefetch_job { struct prefetch_job *next; int n; int st[6]; char id[6][65]; } prefetch_job;
@@ -22,13 +22,15 @@ static void prefetch_report(void) {
 /* The known variants of a shader (its .variants list), loaded and published; up to max. */
 static unsigned prefetch_variants_of(const char *id, shader_entry **out, unsigned max) {
     char path[1200]; snprintf(path, sizeof path, "%s/%s.variants", totk_cache_dir(), id);
-    char *list = totk_read_text(path); if (!list) return 0;   /* outside totk_shader_lock: the translation thread takes it per draw */
+    /* outside totk_shader_lock: the translation thread takes it per draw */
+    char *list = totk_read_text(path); if (!list) return 0;
     unsigned n = 0;
     for (char *line = strtok(list, "\n"); line && n < max; line = strtok(NULL, "\n")) {
         if (strlen(line) != 16) continue;
         int fresh = 0; { pthread_mutex_lock(&graphics_object_lock); fresh = 1; for (shader_entry *s = shader_hash[shader_key_bucket(line)]; s; s = s->hash_next) if (!strcmp(s->key, line)) { fresh = 0; out[n++] = s; break; } pthread_mutex_unlock(&graphics_object_lock); }
         if (!fresh) continue;
-        char deps[1200]; snprintf(deps, sizeof deps, "%s/%s.deps", totk_cache_dir(), line); if (access(deps, F_OK)) continue;   /* an incomplete translation */
+        /* an incomplete translation */
+        char deps[1200]; snprintf(deps, sizeof deps, "%s/%s.deps", totk_cache_dir(), line); if (access(deps, F_OK)) continue;
         shader_entry *s = shader_load_by_key(line, 0, 0); if (!s) continue;
         atomic_fetch_add(&prefetch_loaded, 1); out[n++] = totk_named(s, id);
     }
@@ -37,7 +39,8 @@ static unsigned prefetch_variants_of(const char *id, shader_entry **out, unsigne
 static void prefetch_pair(shader_entry *vs, shader_entry *fs) {
     uint32_t missing = fs->module ? fs->io_mask & ~vs->io_mask : 0;
     if (!missing || !vs->spirv || !gpl_on()) return;
-    for (struct linked_module *m = vs->linked; m; m = m->next) if (m->missing == missing) return;   /* made before: its library too */
+    /* made before: its library too */
+    for (struct linked_module *m = vs->linked; m; m = m->next) if (m->missing == missing) return;
     static const VkAttachmentDescription attachments[2] = {{.format = VK_FORMAT_R8G8B8A8_UNORM, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE, .initialLayout = VK_IMAGE_LAYOUT_GENERAL, .finalLayout = VK_IMAGE_LAYOUT_GENERAL},
         {.format = VK_FORMAT_D32_SFLOAT, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -46,7 +49,8 @@ static void prefetch_pair(shader_entry *vs, shader_entry *fs) {
     graphics_pass_entry *pass = graphics_pass_get(graphics_pass_key_make(2, 1, attachments, &color, depth), attachments, &color, depth, 0); if (!pass) return;
     pipeline_key k = {.vs = vs, .fs = fs, .colors = 1, .primitive = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC); VkPipeline lib;
-    gpl_warming = 1;   /* the variant module (graphics_vs_module, kept on vs->linked) and its library into Mesa's disk cache */
+    /* the variant module (graphics_vs_module, kept on vs->linked) and its library into Mesa's disk cache */
+    gpl_warming = 1;
     if (graphics_pipeline_build(&k, vs, fs, pass, VK_NULL_HANDLE, &lib, 0, GPL_PR) == VK_SUCCESS) atomic_fetch_add(&prefetch_variants, 1);
     gpl_warming = 0; atomic_fetch_add(&prefetch_ns, dm_android_clock_ns(CLOCK_MONOTONIC) - t0);
 }
@@ -79,7 +83,8 @@ void mtl_prog_prefetch(const prog_t *p) {
         const uint8_t *control = program->sd[i].control, *code = (const uint8_t *)(uintptr_t)program->sd[i].data;
         if (!control || !code) continue;
         uint32_t st, length, c1o; memcpy(&st, control + 0x714, 4); memcpy(&length, control + 0x704, 4); memcpy(&c1o, control + 0x700, 4);
-        if ((st != 0 && st != 1 && st != 5) || !length || length > 16u << 20 || c1o > length || (st != 5 && c1o < 0x30)) continue;   /* totk_shader_id would stop the game */
+        /* totk_shader_id would stop the game */
+        if ((st != 0 && st != 1 && st != 5) || !length || length > 16u << 20 || c1o > length || (st != 5 && c1o < 0x30)) continue;
         j->st[j->n] = (int)st; totk_shader_id(control, code, (int)st, j->id[j->n]); j->n++;
     }
     if (!j->n) { free(j); return; }

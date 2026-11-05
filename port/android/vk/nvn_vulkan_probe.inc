@@ -1,4 +1,3 @@
-// 只在显式请求的一帧记录管线、读回小区域；默认关闭，不修改像素颜色。
 // Trace pipelines and read back small regions of one explicitly requested frame; disabled by default and never changes colors.
 #ifndef DM_ANDROID_VULKAN_PROBE_INCLUDED
 #define DM_ANDROID_VULKAN_PROBE_INCLUDED
@@ -12,7 +11,8 @@ typedef struct probe_query { uint64_t ticket,pass,first,last;uint32_t index;int 
 static uint64_t probe_frame,probe_draws;static int probe_checked,probe_done;static char probe_directory[1024];static FILE *probe_trace;static probe_image *probe_images;
 static probe_buffer_read *probe_buffers;static probe_dump_seen *probe_dumps;static uint64_t probe_dump_bytes;static unsigned probe_dump_count;
 static probe_query *probe_queries;
-static probe_image probe_img[4];static unsigned probe_img_count;   /* probe.trigger "img:" requests */
+/* probe.trigger "img:" requests */
+static probe_image probe_img[4];static unsigned probe_img_count;
 static struct {int selected;uint64_t serial;unsigned mip,layer,count,id;view_t view;} probe_shadow_cube;
 typedef struct probe_cs_buffer {unsigned dispatch,binding,element,writable;VkDescriptorType type;VkDescriptorBufferInfo source;VkFormat format;vk_buffer readback;char phase[5],name[160];struct probe_cs_buffer *next;} probe_cs_buffer;
 static probe_cs_buffer *probe_cs_buffers;
@@ -49,14 +49,13 @@ static void graphics_probe_material(shader_entry *shader,unsigned slot,uint32_t 
     if(priority>entry->priority)entry->priority=priority;
     fprintf(probe_trace,"M\t%llu\tkey=%s\tslot=%u\tid=%u\tserial=%llu\tfmt=%#x\tmip=%u\tlayer=%u\tpriority=%u\n",(unsigned long long)probe_draws,shader->key,slot,handle&0xfffff,(unsigned long long)texture->serial,texture->d.format,mip,layer,priority);
 }
-// GPU 转发版本保留独立 backing，到本次帧完成后复制读回；不能把未发布客体内存误作实际 GPU 输入。
 // Retain forwarded GPU versions for readback after this frame; unpublished guest memory is not the actual GPU input.
-static int probe_draw_selected;static uint64_t probe_selected_bytes;   /* the draw's fragment shader is in the probe's key list: its inputs are captured whole */
+/* the draw's fragment shader is in the probe's key list: its inputs are captured whole */
+static int probe_draw_selected;static uint64_t probe_selected_bytes;
 static const char *graphics_probe_buffer(unsigned role,const shader_entry *shader,unsigned slot,uintptr_t address,uint64_t size) {
     if(!address||!size)return NULL;
     if(probe_draw_selected){if(size>(64u<<20)||probe_selected_bytes+size>(256u<<20))return NULL;}
     else if(size>(1u<<20)||probe_dump_count>=2048||probe_dump_bytes+size>(16u<<20))return NULL;
-    // 大型光照缓冲仅导出第一次实际读取；后续引用明确标为 first_use，不重复扫描整帧。
     // Capture the first real read of large lighting buffers; subsequent references are explicitly first_use, without rescanning the whole frame.
     if(role>=2)for(probe_dump_seen *seen=probe_dumps;seen;seen=seen->next)if(seen->role==role&&seen->address==address&&seen->size==size)return seen->name;
     forward_slice slice;forward_result forwarded=forward_find(address,size,1,forward_scope_marker,&slice);int gpu=forwarded==FORWARD_FULL&&!slice.host_written;
@@ -71,7 +70,6 @@ static const char *graphics_probe_buffer(unsigned role,const shader_entry *shade
     else{char path[1200];snprintf(path,sizeof path,"%s/%s",probe_directory,seen->name);FILE *file=fopen(path,"wb");if(!file)die("Vulkan probe input open");fwrite(bytes,1,size,file);fclose(file);free(bytes);}
     fprintf(probe_trace,"F\t%llu\t%s\tstage=%u\tkey=%s\tslot=%u\taddr=%#llx\tsize=%llu\tsource=%s\tfile=%s\n",(unsigned long long)probe_draws,graphics_probe_role(role),shader->stage,shader->key,slot,(unsigned long long)address,(unsigned long long)size,gpu?"gpu-version":"cpu-snapshot",seen->name);return seen->name;
 }
-// 重用 NVN 计数已经生成的每通道样本结果，不增加 query、绘制或等待。
 // Reuse per-pass sample results already generated for NVN counters; no additional queries, draws or waits.
 static void graphics_probe_query_batch(uint64_t ticket,const uint64_t *counts,uint32_t count) {
     if(!probe_trace)return;for(probe_query *query=probe_queries;query;query=query->next)if(query->ticket==ticket&&!query->written){query->written=1;if(query->index>=count){fprintf(probe_trace,"Q\tticket=%llu\tindex=%u\tpass=%llu\tfirst_draw=%llu\tlast_draw=%llu\tsamples=outside-batch-of-%u\n",(unsigned long long)ticket,query->index,(unsigned long long)query->pass,(unsigned long long)query->first,(unsigned long long)query->last,count);continue;}
@@ -84,9 +82,9 @@ static void graphics_probe_texture(const char *role,unsigned stage,unsigned slot
     if(!strcmp(role,"texture")){unsigned sid=(handle>>20)&0xfff;pthread_mutex_lock(&descriptor_lock);sampler_descriptor sampler=sid<(unsigned)sampler_capacity?sampler_descriptors[sid]:(sampler_descriptor){0};pthread_mutex_unlock(&descriptor_lock);const samp_par *p=&sampler.parameters;
         fprintf(probe_trace,"P\t%llu\tstage=%u\tslot=%u\thandle=%#llx\tsid=%u\tvalid=%d\tfilter=%u,%u\twrap=%u,%u,%u\tcompare=%u,%u\tlod=%g,%g,%g\tborder=%g,%g,%g,%g\n",(unsigned long long)probe_draws,stage,slot,(unsigned long long)handle,sid,sampler.valid,(unsigned)p->magf,(unsigned)p->minf,(unsigned)p->ws,(unsigned)p->wt,(unsigned)p->wr,(unsigned)p->cmp_mode,(unsigned)p->cmp_func,p->lod_min,p->lod_max,p->lod_bias,p->border[0],p->border[1],p->border[2],p->border[3]);}
     if(texture->d.format>=0x32&&texture->d.format<=0x36){uint32_t count=view->set_layers&&view->nlayers>0?(unsigned)view->nlayers:texture->L.layers-layer;if(count>6)count=6;for(unsigned i=0;i<count;i++)graphics_probe_interest(texture->serial,mip,layer+i);}
-    else if(!strcmp(role,"image")||texture->d.target==NVN_TEXTURE_TARGET_3D||stage==0)graphics_probe_interest(texture->serial,mip,layer);   /* vertex-stage textures too (placement maps) */
+    /* vertex-stage textures too (placement maps) */
+    else if(!strcmp(role,"image")||texture->d.target==NVN_TEXTURE_TARGET_3D||stage==0)graphics_probe_interest(texture->serial,mip,layer);
 }
-// 显式诊断帧只选择首个 R16 颜色 shadow cube 的实际 view 六面；最多192 KiB，不改变采样路径。
 // In the requested diagnostic frame, capture up to six actual view faces of the first R16 color shadow cube; at most 192 KiB, without changing sampling.
 static void graphics_probe_shadow_cube(const shader_entry *shader,const shader_binding *binding,int slot,uint32_t handle) {
     if(shader->stage!=1||binding->kind!=3||!(binding->type&1024)||(binding->type&255)!=5)return;
@@ -110,11 +108,10 @@ static void graphics_probe_shader(shader_entry *shader) {
     for(unsigned i=0;i<shader->count;i++){const shader_binding *binding=&shader->bindings[i];unsigned stage=shader->stage;
         if(binding->kind==3||binding->kind==4){for(unsigned j=0;j<binding->count;j++){int slot=binding->kind==4?shader_image_slot(binding,j):shader_texture_slot(binding,j);uint32_t handle=shader_handle(binding,stage,j);graphics_probe_texture(binding->kind==4?"image":"texture",stage,slot>=0?(unsigned)slot:UINT32_MAX,handle);graphics_probe_shadow_cube(shader,binding,slot,handle);
             if(stage==1&&binding->kind==3&&slot>=0)graphics_probe_material(shader,slot,handle);
-            // 显式一帧中额外读 FS slot35 非 BC 图的小区域，定位地面混合输入；不增加压缩材质预算。
             // Add a small non-BC FS slot35 readback in the requested frame to inspect ground-blend inputs without increasing the compressed-material budget.
             if(stage==1&&binding->kind==3&&slot==35){texture_descriptor descriptor=descriptor_texture(handle&0xfffff);if(descriptor.valid){const view_t *view=&descriptor.view;graphics_probe_interest(descriptor.texture.serial,view->set_levels?view->base_level:0,view->set_layers?view->min_layer:0);}}
-            // 已确认营地地形颜色/法线缓存：固定 world(8018,9858) 对应 atlas 约(998,998)，各取256²，不跟随移动角色。
-            // Confirmed camp terrain color/normal caches: fixed world(8018,9858) maps near atlas(998,998); capture 256-square regions without following the moving character.
+            // Camp terrain color/normal caches: fixed world(8018,9858) maps near atlas(998,998); capture 256-square
+            // regions without following the moving character.
             if(stage==1&&binding->kind==3&&(slot==35||slot==36)&&!strcmp(shader->key,"e1c00b41f984949c")){texture_descriptor descriptor=descriptor_texture(handle&0xfffff);if(descriptor.valid&&descriptor.texture.d.format==NVN_FORMAT_RGBA8){const view_t *view=&descriptor.view;unsigned mip=view->set_levels?view->base_level:0,layer=view->set_layers?view->min_layer:0;graphics_probe_interest(descriptor.texture.serial,mip,layer);
                 for(probe_image *entry=probe_images;entry;entry=entry->next)if(entry->serial==descriptor.texture.serial&&entry->mip==mip&&entry->layer==layer){entry->roi_x=870>>mip;entry->roi_y=870>>mip;entry->roi_w=256;entry->roi_h=256;break;}}}
             if(stage==1&&binding->kind==3&&(binding->type&255)==2&&slot==8){texture_descriptor descriptor=descriptor_texture(handle&0xfffff);if(descriptor.valid){const char *name=graphics_probe_buffer(3,shader,slot,(uintptr_t)descriptor.texture.mem,descriptor.texture.L.size);
@@ -131,11 +128,10 @@ static void graphics_probe_shader(shader_entry *shader) {
 }
 static void graphics_probe_program(void) {if(state.program)for(unsigned i=0;i<state.program->nstage;i++)graphics_probe_shader(program_shader(state.program,i));}
 static void graphics_probe_geometry(const p_draw *draw,const p_draw_idx *indexed) {
-    if(!probe_draw_selected&&(!state.rt.n||!state.rt.color[0]||state.rt.color[0]->d.format!=NVN_FORMAT_R11G11B10F))return;   /* selected draws: always, every index */
+    /* selected draws: always, every index */
+    if(!probe_draw_selected&&(!state.rt.n||!state.rt.color[0]||state.rt.color[0]->d.format!=NVN_FORMAT_R11G11B10F))return;
     shader_entry *vs=NULL,*fs=NULL;for(unsigned i=0;i<state.program->nstage;i++){shader_entry *s=program_shader(state.program,i);if(s->stage==0)vs=s;else if(s->stage==1)fs=s;}if(!vs)return;
-    // 每个 VS 最多 16 次真正绘制，足够覆盖角色部件而不会导出整个顶点池。
     // Capture at most 16 draws per VS, enough for character parts without exporting whole vertex pools.
-    // detail_normal 与早先模型共用 VS，用独立 FS 桶捕获前四次，不消耗或重置原 VS 限额。
     // detail_normal shares earlier models' VS; capture its first four draws in a separate FS bucket without consuming or resetting the original VS quota.
     static struct {const char *key;unsigned count;} extra_fs={"b70c638ef69450c5",0};
     if(probe_draw_selected){}
@@ -154,7 +150,8 @@ static void graphics_probe_geometry(const p_draw *draw,const p_draw_idx *indexed
     uint32_t end[16]={0};for(unsigned i=0;i<16;i++){va_st a=state.attributes[i];if(!a.fmt||!vs->attributes[i])continue;if(a.stream>=16)continue;int bw,bh;uint32_t bytes=nvn_fmt_bpb(a.fmt,&bw,&bh);if(a.offset+bytes>end[a.stream])end[a.stream]=a.offset+bytes;
         fprintf(probe_trace,"A\t%llu\tkey=%s\tlocation=%u\tfmt=%#x\tstream=%u\toffset=%u\tstride=%u\tdivisor=%u\n",(unsigned long long)probe_draws,vs->key,i,a.fmt,a.stream,a.offset,state.streams[a.stream].stride,state.streams[a.stream].divisor);}
     for(unsigned i=0;i<16;i++)if(end[i]){const NVNbufferRange *buffer=&state.vertices[i];const vs_st *stream=&state.streams[i];uint64_t element=stream->divisor?(indexed?indexed->base_instance:0):first,offset=element*stream->stride,size=stream->stride?stream->stride*15+end[i]:end[i];
-        if(probe_draw_selected){offset=0;size=buffer->size;}   /* the whole bound stream */
+        /* the whole bound stream */
+        if(probe_draw_selected){offset=0;size=buffer->size;}
         if(!buffer->address||offset>=buffer->size)continue;if(size>buffer->size-offset)size=buffer->size-offset;if(size>4096&&!probe_draw_selected)size=4096;
         const char *name=graphics_probe_buffer(1,vs,i,buffer->address+offset,size);
         fprintf(probe_trace,"V\t%llu\tkey=%s\tstream=%u\tbase=%#llx\tguest_offset=%llu\tfirst_element=%llu\tsize=%llu\tbound_buffer=%#llx\tbound_offset=%llu\tfile=%s\n",(unsigned long long)probe_draws,vs->key,i,(unsigned long long)buffer->address,(unsigned long long)offset,(unsigned long long)element,(unsigned long long)size,(unsigned long long)(uintptr_t)graphics_commands.vertices[i],(unsigned long long)graphics_commands.offsets[i],name?name:"pending-or-budget");}
@@ -165,7 +162,8 @@ static void graphics_probe_geometry(const p_draw *draw,const p_draw_idx *indexed
 typedef struct probe_after { char name[160]; vk_buffer buffer; struct probe_after *next; } probe_after;
 static probe_after *probe_afters;
 static char probe_after_keys[4096];
-static int graphics_probe_after_wanted(const char *fs_key) {   /* DM_VK_PROBE_AFTER_FS=key,key,...: by fragment shader instead */
+/* DM_VK_PROBE_AFTER_FS=key,key,...: by fragment shader instead */
+static int graphics_probe_after_wanted(const char *fs_key) {
     static char list[1024];static int read;char *keys=probe_after_keys;if(!read){read=1;const char *e=getenv("DM_VK_PROBE_AFTER");if(e)snprintf(list,sizeof list,",%s,",e);
         e=getenv("DM_VK_PROBE_AFTER_FS");if(e)snprintf(keys,sizeof probe_after_keys,"%s",e);}
     if((!list[0]&&!keys[0])||!graphics_probe_active())return 0;
@@ -255,7 +253,6 @@ static unsigned graphics_probe_values(int format,const uint8_t *data,unsigned bp
     else if(format==0x3d){uint32_t packed;memcpy(&packed,data,4);count=4;for(unsigned i=0;i<3;i++)values[i]=((packed>>(10*i))&1023)/1023.f;values[3]=(packed>>30)/3.f;}
     return count;
 }
-// 每份客体存储前缀最多4 KiB；这是完成帧后的独立证据，不冒充此前上传的字节或 GPU 图像。
 // Each guest-storage prefix is at most 4 KiB; it is completed-frame evidence, not bytes from an earlier upload or a GPU image.
 typedef struct {uint64_t size,hash;unsigned pending,unknown,nonzero;const char *source;char file[160];} probe_source_prefix;
 static probe_source_prefix graphics_probe_source_prefix(uintptr_t address,uint64_t size,const char *name) {
@@ -276,7 +273,6 @@ static probe_source_prefix graphics_probe_texture_source(image_entry *image,uint
     fprintf(probe_trace,"N\ttexture-source-baseline\tserial=%llu\trole=%s\tprefix_offset=%llu\tvalid=%d\tstamp=%llu\tseen=%llu\ttracked=%d\thash=%#llx\tstorage_in_pool=%d\n",(unsigned long long)image->serial,role,(unsigned long long)offset,image->source_valid,(unsigned long long)image->source_stamp,(unsigned long long)image->source_seen,image->source_tracked,(unsigned long long)image->source_hash,texture->mem&&mtl_addr((uintptr_t)texture->mem,texture->L.size,NULL,NULL));return prefix;
 }
 static void graphics_probe_material_source(image_entry *image) {graphics_probe_texture_source(image,0,4096,"material");}
-// 指定 CS 的输入/输出在 Dispatch 前后立即复制；源随后复用也不会改变诊断真值。
 // Copy the requested CS inputs/outputs immediately around Dispatch; later source reuse cannot change diagnostic evidence.
 static probe_cs_buffer *graphics_probe_cs_copy(unsigned id,unsigned binding,unsigned element,VkDescriptorType type,VkDescriptorBufferInfo source,VkFormat format,unsigned writable,const char *phase) {
     if(!source.buffer||!source.range||source.range==VK_WHOLE_SIZE||source.offset%4||source.range%4||source.range>(8u<<20)||probe_cs_bytes+source.range>(16u<<20))die("Vulkan CS probe buffer range/budget");
@@ -293,7 +289,6 @@ static void graphics_probe_cs_inputs(const struct shader_entry *shader,const VkW
     for(unsigned i=0;i<count;i++){const VkWriteDescriptorSet *write=&writes[i];unsigned writable=0;for(unsigned b=0;b<shader->count;b++)if(shader->bindings[b].binding==write->dstBinding){const shader_binding *binding=&shader->bindings[b];writable=binding->kind==2?(binding->flags&1):binding->kind==4?(binding->flags&4):0;break;}
         for(unsigned element=0;element<write->descriptorCount;element++){VkDescriptorBufferInfo source={0};VkFormat format=VK_FORMAT_UNDEFINED;
             if(write->descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER||write->descriptorType==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)source=write->pBufferInfo[element];
-            // 动态 uniform 的位置不在描述符里；探针必须补上绑定时的偏移，否则记录的是块首而不是真实输入。
             // A dynamic uniform's position is not in the descriptor; the probe must add the bound offset, or it would
             // record the block start instead of the real input.
             else if(write->descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){
@@ -335,7 +330,6 @@ static void graphics_probe_shadow_source(void) {
         fprintf(probe_trace,"X\tshadow-source-prefix\tserial=%llu\tid=%u\tmip=%u\tlayer=%u\tface=%u\toffset=%llu\taddress=%#llx\tsize=%llu\tsource=%s\tpending=%u\tunknown=%u\tnonzero=%u\thash=%#llx\tfile=%s\n",(unsigned long long)image->serial,probe_shadow_cube.id,probe_shadow_cube.mip,layer,face,(unsigned long long)offset,(unsigned long long)address,(unsigned long long)prefix.size,prefix.source,prefix.pending,prefix.unknown,prefix.nonzero,(unsigned long long)prefix.hash,prefix.file);
     }
     for(image_entry *alias=image_list;alias;alias=alias->next)if(graphics_probe_storage_overlap(texture,&alias->texture))graphics_probe_storage_alias(texture,&alias->texture,NULL,-1,"image");
-    // 描述符可能由另一客体线程注册：锁内只复制元数据，解锁后才做查图像、读源或输出。
     // Another guest thread may register descriptors: copy metadata under the lock, then query images/read sources/write output after unlocking.
     typedef struct {int id;texture_descriptor descriptor;} alias_descriptor;alias_descriptor *aliases=NULL;size_t size=0,capacity=0;pthread_mutex_lock(&descriptor_lock);
     for(int id=0;id<texture_capacity;id++)if(texture_descriptors[id].valid&&graphics_probe_storage_overlap(texture,&texture_descriptors[id].texture)){if(size==capacity){capacity=capacity?capacity*2:16;alias_descriptor *grown=realloc(aliases,capacity*sizeof *aliases);if(!grown)die("Vulkan probe alias descriptors allocation");aliases=grown;}aliases[size++]=(alias_descriptor){id,texture_descriptors[id]};}pthread_mutex_unlock(&descriptor_lock);
@@ -356,9 +350,11 @@ static void graphics_probe_capture(uint64_t frame) {
         // Vulkan depth-plane copies use D16=2 / D24=4 / D32=4 bytes; combined stencil bytes are separate.
         int depth=!!(image->aspect&VK_IMAGE_ASPECT_DEPTH_BIT);if(depth)bpb=image->format==VK_FORMAT_D16_UNORM?2:4;
         probe_read *read=calloc(1,sizeof *read);if(!read)die("Vulkan probe read allocation");read->serial=image->serial;read->texture=image->texture.d;read->mip=level;read->layer=interest->layer;
-        unsigned maximum=compressed?(full_w<=1024&&full_h<=1024?1024:256):depth&&full_w<=2048&&full_h<=2048?2048:full_w<=512&&full_h<=512?512:64;   /* small colour images whole */read->w=full_w<maximum?full_w:maximum;read->h=full_h<maximum?full_h:maximum;read->d=full_d<32?full_d:32;read->x=(full_w-read->w)/2;read->y=(full_h-read->h)/2;read->bpb=bpb;
+        /* small colour images whole */
+        unsigned maximum=compressed?(full_w<=1024&&full_h<=1024?1024:256):depth&&full_w<=2048&&full_h<=2048?2048:full_w<=512&&full_h<=512?512:64; read->w=full_w<maximum?full_w:maximum;read->h=full_h<maximum?full_h:maximum;read->d=full_d<32?full_d:32;read->x=(full_w-read->w)/2;read->y=(full_h-read->h)/2;read->bpb=bpb;
         if(!compressed&&!depth&&interest->roi_w&&interest->roi_h){read->w=full_w<interest->roi_w?full_w:interest->roi_w;read->h=full_h<interest->roi_h?full_h:interest->roi_h;read->x=interest->roi_x>full_w-read->w?full_w-read->w:interest->roi_x;read->y=interest->roi_y>full_h-read->h?full_h-read->h:interest->roi_y;}
-        if(!compressed&&!depth&&image->texture.L.size<=4096)graphics_probe_texture_source(image,0,(unsigned)image->texture.L.size,"small");   /* small images: their guest bytes too (stale-upload check) */
+        /* small images: their guest bytes too (stale-upload check) */
+        if(!compressed&&!depth&&image->texture.L.size<=4096)graphics_probe_texture_source(image,0,(unsigned)image->texture.L.size,"small");
         read->bw=bw;read->bh=bh;if(compressed){read->x=read->x/bw*bw;read->y=read->y/bh*bh;}uint64_t bytes=(uint64_t)((read->w+bw-1)/bw)*((read->h+bh-1)/bh)*read->d*bpb;
         if(compressed){if(bc_bytes+bytes>(8u<<20)){free(read);continue;}bc_bytes+=bytes;bc_count++;graphics_probe_material_source(image);}read->buffer=buffer_create(bytes);
         image_access(image,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_READ_BIT);VkBufferImageCopy copy={.imageSubresource={depth?VK_IMAGE_ASPECT_DEPTH_BIT:VK_IMAGE_ASPECT_COLOR_BIT,level,read->layer,1},.imageOffset={(int)read->x,(int)read->y,0},.imageExtent={read->w,read->h,read->d}};
@@ -370,7 +366,8 @@ static void graphics_probe_capture(uint64_t frame) {
     /* whole small images: their guest memory too, deswizzled to the dump's layout (guest-<serial>.bin), to compare the
        GPU image with what the game's CPU last wrote */
     for(probe_read *read=reads;read;read=read->next){const nvn_texdesc *td=&read->texture;
-        int requested=0;for(unsigned i=0;i<probe_img_count;i++)requested|=probe_img[i].serial==read->serial&&probe_img[i].mip==read->mip&&probe_img[i].layer==read->layer;   /* "img:" requests: any level / layer, up to 64 MiB */
+        /* "img:" requests: any level / layer, up to 64 MiB */
+        int requested=0;for(unsigned i=0;i<probe_img_count;i++)requested|=probe_img[i].serial==read->serial&&probe_img[i].mip==read->mip&&probe_img[i].layer==read->layer;
         if(read->bw!=1||read->bh!=1||(!requested&&(read->mip||read->layer))||read->d!=1||read->x||read->y||read->w!=dimension(td->width,read->mip)||read->h!=dimension(td->height,read->mip))continue;
         image_entry *image=graphics_probe_image(read->serial);if(!image||!image->texture.mem||image->texture.L.size>(requested?(64u<<20):(1u<<20))||(image->aspect&VK_IMAGE_ASPECT_DEPTH_BIT))continue;
         uint8_t *storage=malloc(image->texture.L.size),*linear=malloc((size_t)read->w*read->h*read->bpb);
@@ -397,11 +394,13 @@ static void graphics_probe_capture(uint64_t frame) {
 static unsigned probe_live_count;
 static void graphics_probe_poll(void) {
     static uint64_t next;uint64_t now=dm_android_clock_ns(CLOCK_MONOTONIC);if(now<next)return;next=now+300000000ull;
-    graphics_probe_configure();if(probe_frame&&!probe_done)return;   /* one at a time */
+    /* one at a time */
+    graphics_probe_configure();if(probe_frame&&!probe_done)return;
     const char *files=getenv("TOTK_FILES_DIR");if(!files)return;char path[1200];snprintf(path,sizeof path,"%s/probe.trigger",files);
     FILE *f=fopen(path,"r");if(!f)return;char line[4096]={0};if(!fgets(line,sizeof line,f))line[0]=0;fclose(f);unlink(path);line[strcspn(line,"\r\n")]=0;
     probe_px_x=probe_px_y=-1;
-    probe_img_count=0;   /* "img:<serial>:<mip>:<layer>[ ...] [keys]": those image levels and layers dumped whole (up to 4096 wide) */
+    /* "img:<serial>:<mip>:<layer>[ ...] [keys]": those image levels and layers dumped whole (up to 4096 wide) */
+    probe_img_count=0;
     while(!strncmp(line,"img:",4)&&probe_img_count<4){unsigned long long serial=0;unsigned mip=0,layer=0;int used=0;
         if(sscanf(line+4,"%llu:%u:%u%n",&serial,&mip,&layer,&used)<3)break;probe_img[probe_img_count++]=(probe_image){.serial=serial,.mip=mip,.layer=layer};
         char *rest=line+4+used;while(*rest==' ')rest++;memmove(line,rest,strlen(rest)+1);}

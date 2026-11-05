@@ -1,4 +1,3 @@
-/* rewritten_files.h */
 #include "rewritten_files.h"
 #include <inttypes.h>
 #include <stdio.h>

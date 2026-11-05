@@ -3,24 +3,27 @@
 // differs from its scene, the UI drew there (with a one-pixel margin for the faint edges of anti-aliased UI).
 // The canvas holds linear values; the game's last pass writes them sRGB-encoded into the presented RGBA8 picture, so
 // outside the UI the two differ by the 8-bit rounding of the encoding only.
-// Translucent UI (2026-10-27): the scope's top and bottom bands are a dark see-through tint with the scene under it.
-// Taken whole from the finished picture, the scene under them stayed the real frame's while the rest moved on: the
-// bands jumped and tore at their edges while panning. A UI pixel is F = S (1 - a) + C a (blended in linear values);
+// Translucent UI: the scope's top and bottom bands are a dark see-through tint with the scene under it.
+// Taken whole from the finished picture, the scene under them would stay the real frame's while the rest moves on: the
+// bands jump and tear at their edges while panning. A UI pixel is F = S (1 - a) + C a (blended in linear values);
 // with the previous frame's finished picture and scene under the same UI, F - Fp = (S - Sp)(1 - a), so the see-through
 // share t = 1 - a comes from how the picture changed against the scene, and the pixel becomes F + (G - S) t: the
 // generated scene G under the same UI. Opaque UI (t = 0), UI that changed between the frames (the change is not the
-// scene's, scaled) or a scene that did not change keep the finished picture's pixel as before.
+// scene's, scaled) or a scene that did not change keep the finished picture's pixel.
 // mode 1: no compositing, the scene sRGB-encoded into dst (LSFG's input, nvn_vulkan_lsfg.inc).
 // Whether a pixel differs (two fetches and an sRGB encode) is worked out once per pixel of the group's tile and its
 // one-pixel border, in shared memory, and the 3x3 neighbourhood read from there: 100 evaluations a group instead of
-// 576 (it was 0.57 ms of GPU time per generated picture at 1920x1080, 2026-10-27 review P2).
+// 576 (0.57 ms of GPU time per generated picture at 1920x1080).
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
-    ivec2 size;        // the picture (top-left of both textures)
-    float threshold;   // largest per-channel difference that is still the same pixel
+    // the picture (top-left of both textures)
+    ivec2 size;
+    // largest per-channel difference that is still the same pixel
+    float threshold;
     int mode;
-    int has_prev;      // scene_prev / final_prev are the previous frame's (else stand-ins, unused)
+    // scene_prev / final_prev are the previous frame's (else stand-ins, unused)
+    int has_prev;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D final_pic;
 layout(set = 0, binding = 1) uniform sampler2D scene;
@@ -36,17 +39,20 @@ vec3 linear(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 }
 
-shared uint differs[10][10];   // the 8 x 8 tile and its border: 1 where the finished picture differs from the scene
+// the 8 x 8 tile and its border: 1 where the finished picture differs from the scene
+shared uint differs[10][10];
 
 void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
-    if (p.mode == 1) {   // uniform across the group: no barrier below is skipped by part of it
+    // uniform across the group: no barrier below is skipped by part of it
+    if (p.mode == 1) {
         if (o.x < p.size.x && o.y < p.size.y) imageStore(dst, o, vec4(srgb(texelFetch(scene, o, 0).rgb), 1.0));
         return;
     }
     ivec2 corner = ivec2(gl_WorkGroupID.xy) * 8 - 1;
     for (uint i = gl_LocalInvocationIndex; i < 100u; i += 64u) {
-        ivec2 t = ivec2(int(i % 10u), int(i / 10u)), q = clamp(corner + t, ivec2(0), p.size - 1);   // clamped as the picture's edge
+        // clamped as the picture's edge
+        ivec2 t = ivec2(int(i % 10u), int(i / 10u)), q = clamp(corner + t, ivec2(0), p.size - 1);
         vec3 d = abs(texelFetch(final_pic, q, 0).rgb - srgb(texelFetch(scene, q, 0).rgb));
         differs[t.y][t.x] = max(d.r, max(d.g, d.b)) > p.threshold ? 1u : 0u;
     }
@@ -64,7 +70,8 @@ void main() {
         float ss = dot(ds, ds);
         if (ss > 1e-4) {
             t = clamp(dot(df, ds) / ss, 0.0, 1.0);
-            vec3 r = df - ds * t;   // what the scene's change does not explain: the UI itself changed
+            // what the scene's change does not explain: the UI itself changed
+            vec3 r = df - ds * t;
             if (dot(r, r) > 0.1 * ss + 1e-4) t = 0.0;
         }
         if (t > 0.0) {

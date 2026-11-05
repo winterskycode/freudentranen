@@ -41,7 +41,8 @@ echo "scratch: $SCRATCH"
 result() { if [ "$1" = 0 ]; then echo "PASS $2"; else echo "FAIL $2"; FAILS=$((FAILS + 1)); fi; }
 
 export CC=clang
-build() {   # <name> <cmake options...>
+# <name> <cmake options...>
+build() {
   local dir=$SCRATCH/$1; shift
   cmake -G Ninja -S "$HERE" -B "$dir" "$@" > "$dir.log" 2>&1 && cmake --build "$dir" -j "$J" >> "$dir.log" 2>&1 ||
     { echo "the build failed: $dir.log" >&2; exit 2; }

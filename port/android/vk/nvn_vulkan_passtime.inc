@@ -5,14 +5,19 @@
    recording it, its GPU time, draws, size and first fragment shader: which passes the GPU eats faster than they are
    translated. */
 #define PASSTIME_CAPACITY 2048
-typedef struct { uint32_t width, height, attachments, format, draws; const char *fs; uint32_t written; } passtime_key;   /* fs: the first draw's fragment shader */
+/* fs: the first draw's fragment shader */
+typedef struct { uint32_t width, height, attachments, format, draws; const char *fs; uint32_t written; } passtime_key;
 static struct { VkQueryPool pool; passtime_key keys[PASSTIME_CAPACITY / 2]; uint32_t used; } passtime_slots[DM_VK_BATCH_SLOTS];
 static int passtime_state = -1;
 static int passtime_on(void) { if (passtime_state < 0) { const char *e = getenv("TOTK_VK_PASSTIME"); passtime_state = e && atoi(e) > 0 ? atoi(e) : 0; } return passtime_state; }
-static uint32_t passtime_draws; static const char *passtime_fs; static uint32_t passtime_written;   /* draws in the pass being recorded */
-static int passtime_open = -1;   /* query pair index of the pass being recorded, -1 none */
-static struct { uint64_t t0, t1, frame; } passtime_cpu[DM_VK_BATCH_SLOTS][PASSTIME_CAPACITY / 2];   /* TOTK_VK_PASSTIME=2 */
-static uint64_t passseq_frame, passseq_t0;   /* the frame being dumped, the CPU time of its first pass */
+/* draws in the pass being recorded */
+static uint32_t passtime_draws; static const char *passtime_fs; static uint32_t passtime_written;
+/* query pair index of the pass being recorded, -1 none */
+static int passtime_open = -1;
+/* TOTK_VK_PASSTIME=2 */
+static struct { uint64_t t0, t1, frame; } passtime_cpu[DM_VK_BATCH_SLOTS][PASSTIME_CAPACITY / 2];
+/* the frame being dumped, the CPU time of its first pass */
+static uint64_t passseq_frame, passseq_t0;
 static void passtime_batch_begin(unsigned slot, VkCommandBuffer cb) {
     if (!passtime_on()) return;
     if (!passtime_slots[slot].pool) { VkQueryPoolCreateInfo info = {.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = PASSTIME_CAPACITY};
@@ -45,15 +50,18 @@ static void passtime_batch_done(unsigned slot) {
         { const passtime_key *pk = &passtime_slots[slot].keys[i]; uint32_t w = pk->width, h = pk->height, d = pk->draws;
           int sc = !w && !h ? 6 : w == h && w >= 256 ? 3 : w >= 1200 ? 0 : w >= 600 ? 1 : w >= 300 ? 2 : pk->attachments == 0 ? 5 : 4;
           int db = d <= 1 ? 0 : d <= 4 ? 1 : d <= 16 ? 2 : d <= 64 ? 3 : 4; kind_ms[sc][db] += ms; kind_n[sc][db]++; }
-        passtime_key k = passtime_slots[slot].keys[i]; k.draws = k.draws > 64 ? 64 : k.draws > 16 ? 16 : k.draws > 4 ? 4 : k.draws;   /* draw-count bucket */
+        /* draw-count bucket */
+        passtime_key k = passtime_slots[slot].keys[i]; k.draws = k.draws > 64 ? 64 : k.draws > 16 ? 16 : k.draws > 4 ? 4 : k.draws;
         unsigned j = 0; while (j < n && memcmp(&table[j].key, &k, sizeof k)) j++;
         if (j == n) { if (n == 4096) { untabled += ms; continue; } table[n].key = k; table[n].ms = 0; table[n].count = 0; n++; }
         table[j].ms += ms; table[j].count++;
-        { static const char *only = (const char *)-1; if (only == (const char *)-1) only = getenv("TOTK_PASSSEQ_FS");   /* TOTK_PASSSEQ_FS=<fs key>: every such pass's recording window, every frame (to match CPU samples to it) */
+        /* TOTK_PASSSEQ_FS=<fs key>: every such pass's recording window, every frame (to match CPU samples to it) */
+        { static const char *only = (const char *)-1; if (only == (const char *)-1) only = getenv("TOTK_PASSSEQ_FS");
           const passtime_key *pk = &passtime_slots[slot].keys[i];
           if (only && passtime_state > 1 && pk->fs && !strncmp(pk->fs, only, strlen(only)) && passtime_cpu[slot][i].t0)
               LOG("[passwin] %llu %llu", (unsigned long long)passtime_cpu[slot][i].t0, (unsigned long long)passtime_cpu[slot][i].t1); }
-        if (passtime_state > 1) {   /* the pass sequence of one frame in 600 */
+        /* the pass sequence of one frame in 600 */
+        if (passtime_state > 1) {
             uint64_t f = passtime_cpu[slot][i].frame, t0 = passtime_cpu[slot][i].t0, t1 = passtime_cpu[slot][i].t1;
             if (!passseq_frame && f >= 600 && f % 600 == 0) { passseq_frame = f; passseq_t0 = t0; }
             if (passseq_frame && f == passseq_frame && t0) {

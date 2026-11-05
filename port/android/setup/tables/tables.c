@@ -9,7 +9,8 @@
 
 #define HEADER 64u
 #define RECORD 208u
-#define ENTRY 24u   /* a symbol, relocation or gate in the file; also an ELF symbol and RELA entry */
+/* a symbol, relocation or gate in the file; also an ELF symbol and RELA entry */
+#define ENTRY 24u
 #define MAX_TAG 37
 #define DYNAMIC_MAX 4096u
 
@@ -43,16 +44,20 @@ typedef struct { uint8_t *p; size_t n, cap; } Pool;
 
 /* What the steps share: the output, and the module at hand. */
 typedef struct {
-    Pool out;       /* header, records, arrays; the names follow when all is done */
+    /* header, records, arrays; the names follow when all is done */
+    Pool out;
     Pool names;
     const char *mod;
     const uint8_t *img;
     uint64_t size;
     const tokp_layout *l;
-    uint64_t tag[MAX_TAG + 1], have;   /* have: a bit per tag */
+    /* have: a bit per tag */
+    uint64_t tag[MAX_TAG + 1], have;
     uint32_t nsym;
-    size_t symbols;   /* where this module's symbols start in out */
-    uint8_t *seen;    /* a bit per byte offset from data_off: the addresses relocated so far */
+    /* where this module's symbols start in out */
+    size_t symbols;
+    /* a bit per byte offset from data_off: the addresses relocated so far */
+    uint8_t *seen;
     int want_probe, found_probe;
     uint64_t probe_slot;
     char *err; size_t errlen;
@@ -156,11 +161,12 @@ static int emit_symbols(Ctx *c) {
         if (!valid_utf8(c->img + from, len)) return BAD(c, "%s: symbol %u: name is not UTF-8", c->mod, i);
         if ((rc = room(c, &c->names, len + 1))) return rc;
         uint8_t *o = c->out.p + c->out.n;
-        wr64(o, rd64(s + 8));                    /* value */
-        wr64(o + 8, rd64(s + 16));               /* size */
-        wr32(o + 16, (uint32_t)c->names.n);      /* name */
-        o[20] = s[6] || s[7];                    /* defined: a section index */
-        o[21] = s[4] >> 4; o[22] = s[4] & 15;    /* binding, type */
+        /* the file's symbol: value, size, name, defined (a section index), binding, type */
+        wr64(o, rd64(s + 8));
+        wr64(o + 8, rd64(s + 16));
+        wr32(o + 16, (uint32_t)c->names.n);
+        o[20] = s[6] || s[7];
+        o[21] = s[4] >> 4; o[22] = s[4] & 15;
         o[23] = 0;
         memcpy(c->names.p + c->names.n, c->img + from, len + 1);
         c->names.n += len + 1;

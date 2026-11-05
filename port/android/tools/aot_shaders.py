@@ -24,9 +24,11 @@ sys.path.insert(0, str(SCRIPTS))
 import prepare_shader_seed as seed   # noqa: E402
 from shader_list import ShaderList   # noqa: E402
 
-CHAIN = 'android-vk1'   # the device's --chain (totk_service_start)
+# the device's --chain (totk_service_start)
+CHAIN = 'android-vk1'
 VERSION = 'v143'
-DEFAULT = dict(tex='2d', attr='float', fout='float')   # an unbound slot's answer (totk_deps_match)
+# an unbound slot's answer (totk_deps_match)
+DEFAULT = dict(tex='2d', attr='float', fout='float')
 
 
 def answers_text(answers):
@@ -148,7 +150,8 @@ def main():
                 if key is None:
                     return
                 stage, control, code, _ = shaders[key]
-                made = []   # (variant, deps) of this shader, in job order
+                # (variant, deps) of this shader, in job order
+                made = []
                 for answers, why in by_shader[key]:
                     if any(serves(deps, answers) for _, deps in made):
                         with lock: tally['served'] += 1
@@ -159,7 +162,8 @@ def main():
                     if not (v_json.exists() and (out/f'{variant}.spv').exists() and (out/f'{variant}.deps').exists()):
                         code_path = out/f'{variant}.code'
                         request = seed.translation_request(variant, stage, control, code, answers, code_path)
-                        request.pop('early_fragment_tests', None)   # the device adds the mode itself (spirv_add_early_tests)
+                        # the device adds the mode itself (spirv_add_early_tests)
+                        request.pop('early_fragment_tests', None)
                         request.update(profile[stage])
                         if service is None:
                             service = Translator(args.translator, out)
@@ -173,7 +177,8 @@ def main():
                     else:
                         with lock: tally['reused'] += 1
                     deps = json.loads(v_json.read_text())['deps']
-                    if any(deps == d for _, d in made):   # the translator's deps show it is a variant this shader has
+                    # the translator's deps show it is a variant this shader has
+                    if any(deps == d for _, d in made):
                         for suffix in ('.spv', '.meta', '.deps', '.res.json', '_v.json', '.aot'):
                             (out/f'{variant}{suffix}').unlink(missing_ok=True)
                         with lock: tally['same_deps'] += 1

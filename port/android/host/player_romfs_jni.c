@@ -11,7 +11,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define MAX_READ ((uint64_t)1 << 30)   /* a Java array holds at most 2 GiB - 1; the merge reads nothing near this */
+/* a Java array holds at most 2 GiB - 1; the merge reads nothing near this */
+#define MAX_READ ((uint64_t)1 << 30)
 static tokc_game *game;
 static uint8_t *index_bytes;
 static uint64_t file_count, strings;
@@ -98,7 +99,7 @@ JNIEXPORT jstring JNICALL Java_dev_tok_totk_PlayerRomfs_sha(JNIEnv *env, jclass 
     for (int i = 0; i < 32; i++) snprintf(hex + 2 * i, 3, "%02x", digest[i]);
     return (*env)->NewStringUTF(env, hex);
 }
-/* mod-base.bin at out: written beside it first, so that a file there is whole. On a PC 1.3 s on 16 threads, 464 MB read. */
+/* mod-base.bin at out: written beside it first, so that a file there is whole. */
 JNIEXPORT void JNICALL Java_dev_tok_totk_PlayerRomfs_makeModBase(JNIEnv *env, jclass cls, jstring out) {
     (void)cls;
     if (!game) { fail(env, "the game files are not open"); return; }

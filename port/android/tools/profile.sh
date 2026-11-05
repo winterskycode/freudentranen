@@ -23,13 +23,12 @@ echo "thermal before: $(thermal)"
 fan() { adb shell 'f=/sys/class/gpio5_pwm2; echo "fan $(cat $f/state) $(( $(cat $f/duty) * 100 / $(cat $f/period) ))% $(cat $f/speed)rpm mode $(settings get system fan_mode) perf $(settings get system performance_mode)"' | tr -d '\r'; }
 fan > "$OUT/device.txt"
 case "$(cat "$OUT/device.txt")" in "fan 0"*) echo "WARNING: the fan is off ($(cat "$OUT/device.txt")): frame times will not compare" >&2;; esac
-# the benchmark fan mode (settings fan_mode; 4 = the mode the 2026-10 baselines ran in): another mode, set on the device
-# or by its own UI, makes frame times and thermals incomparable (a run in mode 1 ended at thermal 5 with the fan at 10%)
+# the benchmark fan mode (settings fan_mode; 4 is the baseline): another mode, set on the device or by its own UI, makes
+# frame times and thermals incomparable
 case "$(cat "$OUT/device.txt")" in *"mode ${BENCH_FAN_MODE:-4} "*) ;; *) echo "WARNING: fan mode is not ${BENCH_FAN_MODE:-4} ($(cat "$OUT/device.txt")): frame times will not compare (BENCH_FAN_MODE=<n> to accept another)" >&2;; esac
-# The benchmark save: files/bench-save.orig (a copy of the profile whose newest slot is the still-scene save, made
-# 2026-10-23 from slot_03 when the user's own play added a newer save) is restored to files/bench-profile before every
-# run and used through TOTK_PROFILE_DIR, so "Continue" always loads the same spot and the user's saves are not touched.
-# BENCH_PROFILE=0: the user's profile (the latest save) instead.
+# The benchmark save: files/bench-save.orig (a copy of the profile whose newest slot is the still-scene save) is
+# restored to files/bench-profile before every run and used through TOTK_PROFILE_DIR, so "Continue" always loads the
+# same spot and the user's saves are not touched. BENCH_PROFILE=0: the user's profile (the latest save) instead.
 BENCH=""
 if [ "${BENCH_PROFILE:-1}" != 0 ] && adb shell run-as dev.tok.totk test -d files/bench-save.orig; then
     # copied over in place (no recursive delete); if a run left files the original lacks (other than the game's
@@ -67,7 +66,8 @@ while [ "$(date +%s)" -lt "$end" ]; do
 done
 wait $REC || true
 phase "collecting results" 10
-fan >> "$OUT/device.txt"   # and at the end of the recording
+# and at the end of the recording
+fan >> "$OUT/device.txt"
 threads > "$OUT/threads-end.txt"
 adb shell run-as dev.tok.totk cat files/profile/totk.log > "$OUT/totk.log"
 tail -n +"$START" "$OUT/totk.log" > "$OUT/run.log"

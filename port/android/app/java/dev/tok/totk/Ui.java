@@ -8,9 +8,8 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.util.DisplayMetrics;
 
-/** The look of the startup screen (design: the "TotK Android settings overlay" canvas; vk/overlay.cpp draws the same in
-    game): colours, the two typefaces (assets/fonts, SIL OFL) and the ornaments. Sizes are design units of the canvas's
-    1280 x 720 frame, times U. */
+/** The look of the startup screen (vk/overlay.cpp draws the same in game): colours, the two typefaces (assets/fonts, SIL
+    OFL) and the ornaments. Sizes are design units of a 1280 x 720 frame, times U. */
 final class Ui {
     static final int INK = 0xFF0A1114, CREAM = 0xFFEEE8D8, MUTED = 0xFFA7AEA2, SOFT = 0xFFCFC9B8, HELP = 0xFFD6D0C0;
     static final int GOLD = 0xFFD8B45C, GOLD_TEXT = 0xFFEBCB7C, GOLD_FRAME = 0xB2D8B45C, GOLD_FILL = 0x1AD8B45C;

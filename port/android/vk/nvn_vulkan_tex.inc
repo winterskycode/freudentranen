@@ -1,39 +1,53 @@
-// 贴图创建、Tegra 解排布、上传与渲染目标清除。| Texture creation, Tegra deswizzling, uploads and render-target clears.
+// Texture creation, Tegra deswizzling, uploads and render-target clears.
 #include "nvn_vulkan_image_pool.inc"
 /* frame profile (TOTK_VK_FRAMEPROF): where a new image goes, on the translation thread */
 static uint64_t arrival_alloc_ns,arrival_alloc_bytes,arrival_view_ns,arrival_views,arrival_fb_ns,arrival_fbs;
-typedef struct cached_image_view { VkImageViewType type; VkImageSubresourceRange range; VkComponentMapping components; VkFormat format; VkImageView view; VkFramebuffer clear_fb[2]; struct cached_image_view *next; uint32_t bl_slot[13]; } cached_image_view;   /* bl_slot: slot + 1 in each global array (nvn_vulkan_bindless.inc) */
+/* bl_slot: slot + 1 in each global array (nvn_vulkan_bindless.inc) */
+typedef struct cached_image_view { VkImageViewType type; VkImageSubresourceRange range; VkComponentMapping components; VkFormat format; VkImageView view; VkFramebuffer clear_fb[2]; struct cached_image_view *next; uint32_t bl_slot[13]; } cached_image_view;
 static void bindless_view_forget(cached_image_view *v);
 typedef struct image_entry {
     uint64_t serial; tex_t texture; VkImage image; VkImageView view; image_memory memory;
     VkFormat format; VkImageAspectFlags aspect; uint64_t stamp; int populated;
     uint64_t source_stamp,source_hash,source_seen;int source_valid,source_tracked;
     VkPipelineStageFlags last_stage;VkAccessFlags last_access;int gpu_written;
-    uint64_t touched_chunk;   /* chunk_epoch of its last GPU access (upload census: an upload into an image untouched in the chunk could precede the chunk) */
-    uint64_t write_epoch;   /* game_sync_epoch when the game last wrote it (attachment / storage write): TOTK_VK_SYNCCHECK */
-    const char *write_shader; VkPipelineStageFlags write_stage;   /* the writer (census detail) */
-    int write_piece; uint64_t write_frame;   /* census: the piece and submission of the last game write */
-    int fb_dirty;   /* written as an attachment since its last feedback barrier (draw_graphics_inner, feedback loops) */
-    uint64_t gpu_write_frame; unsigned writebacks; int writeback_due;   /* write-back to guest memory (image_writeback_sweep) */
-    unsigned write_streak;   /* frames in a row it was written by the GPU, up to gpu_write_frame (draw_graphics_inner: skippable draws) */
-    int pclear; VkClearValue pclear_value; VkImageSubresourceRange pclear_range; VkFormat pclear_format;   /* a deferred clear (image_clear_defer), its value in that format */
+    /* chunk_epoch of its last GPU access (upload census: an upload into an image untouched in the chunk could
+       precede the chunk) */
+    uint64_t touched_chunk;
+    /* game_sync_epoch when the game last wrote it (attachment / storage write): TOTK_VK_SYNCCHECK */
+    uint64_t write_epoch;
+    /* the writer (census detail) */
+    const char *write_shader; VkPipelineStageFlags write_stage;
+    /* census: the piece and submission of the last game write */
+    int write_piece; uint64_t write_frame;
+    /* written as an attachment since its last feedback barrier (draw_graphics_inner, feedback loops) */
+    int fb_dirty;
+    /* write-back to guest memory (image_writeback_sweep) */
+    uint64_t gpu_write_frame; unsigned writebacks; int writeback_due;
+    /* frames in a row it was written by the GPU, up to gpu_write_frame (draw_graphics_inner: skippable draws) */
+    unsigned write_streak;
+    /* a deferred clear (image_clear_defer), its value in that format */
+    int pclear; VkClearValue pclear_value; VkImageSubresourceRange pclear_range; VkFormat pclear_format;
     cached_image_view *views;
+    /* TOTK: block-sized render target standing in for this compressed image */
     struct image_entry *block_aux;
-    struct image_key { VkImageType type; VkFormat format; VkExtent3D extent; uint32_t levels, layers; VkImageCreateFlags flags; VkImageUsageFlags usage; } key;   /* TOTK: block-sized render target standing in for this compressed image */
-    /* TOTK storage sharing: serials holding this image (the creator and its aliases), idle since (frame) when none */
-    uint64_t overlap_noted, overlap_written;   /* TOTK_VK_OVERLAP: the pass its range was last marked in; the draw of its last GPU write */
-    unsigned holders; uint64_t idle_since; int storage_keyed, mutable_format; VkFormat view_formats[16]; uint32_t view_format_count;   /* mutable: its format list */ struct storage_key { uint64_t mem, size; uint32_t w, h, d, levels, target, format_class; } storage;
+    struct image_key { VkImageType type; VkFormat format; VkExtent3D extent; uint32_t levels, layers; VkImageCreateFlags flags; VkImageUsageFlags usage; } key;
+    /* TOTK_VK_OVERLAP: the pass its range was last marked in; the draw of its last GPU write */
+    uint64_t overlap_noted, overlap_written;
+    /* TOTK storage sharing: serials holding this image (the creator and its aliases), idle since (frame) when none.
+       view_formats: the format list of a mutable image. */
+    unsigned holders; uint64_t idle_since; int storage_keyed, mutable_format; VkFormat view_formats[16]; uint32_t view_format_count; struct storage_key { uint64_t mem, size; uint32_t w, h, d, levels, target, format_class; } storage;
     struct image_entry *next,*hash_next,*storage_next;
 } image_entry;
 typedef struct { int valid; tex_t texture; view_t view; } texture_descriptor;
 typedef struct { int valid; samp_par parameters; VkSampler sampler; } sampler_descriptor;
 static image_entry *image_list,*image_index[4096];
-/* TOTK: several live texture objects describe the same pool memory with the same layout -- the game registers a sampling
-   object in the texture pool and re-initialises the render-target object at that storage every frame. On hardware both
-   read the same bytes; one VkImage per serial made what was rendered through one invisible through the other (the
-   deferred lighting read black G-buffers). Textures are keyed by storage and layout (as the Metal backend does): a later
-   serial with the same key and format becomes an alias of the existing image. An image nobody holds stays for
-   STORAGE_IDLE_FRAMES so a re-initialised object finds last frame's contents. Block-compressed formats are not shared. */
+/* TOTK: several live texture objects describe the same pool memory with the same layout -- the game registers a
+   sampling object in the texture pool and re-initialises the render-target object at that storage every frame. On
+   hardware both read the same bytes; with one VkImage per serial, what is rendered through one is invisible through
+   the other (the deferred lighting reads black G-buffers). Textures are keyed by storage and layout (as the Metal
+   backend does): a later serial with the same key and format becomes an alias of the existing image. An image nobody
+   holds stays for STORAGE_IDLE_FRAMES so a re-initialised object finds last frame's contents. Block-compressed
+   formats are not shared. */
 typedef struct image_alias { uint64_t serial; image_entry *e; struct image_alias *next; } image_alias;
 static image_alias *image_aliases[4096];
 static image_entry *storage_index[4096];
@@ -53,9 +67,9 @@ static image_entry *image_lookup(uint64_t serial) {
     for(image_alias *a=image_aliases[serial&4095];a;a=a->next)if(a->serial==serial)return a->e;
     return NULL;
 }
-/* TOTK re-initialises texture objects for its per-frame render targets, and each new object meant a new VkImage and
-   vkAllocateMemory (27% of the render thread on the title screen). Released images keep their image and memory in a
-   free list keyed by every creation parameter and are reused for the next texture that matches. */
+/* TOTK re-initialises texture objects for its per-frame render targets; a new VkImage and vkAllocateMemory for each
+   would be 27% of the render thread on the title screen. Released images keep their image and memory in a free list
+   keyed by every creation parameter and are reused for the next texture that matches. */
 typedef struct free_image { struct image_key key; VkImage image; image_memory memory; VkDeviceSize size; struct free_image *next; } free_image;
 static free_image *free_images; static VkDeviceSize free_image_bytes; static uint64_t image_reuses, image_creations;
 #define FREE_IMAGE_BUDGET (512ull << 20)
@@ -68,9 +82,10 @@ static texture_descriptor *texture_descriptors;
 static sampler_descriptor *sampler_descriptors;
 static int texture_capacity, sampler_capacity;
 /* The resolved sampler of each id the shaders can bind (12 bits), read without the descriptor lock on every texture
-   binding (the lock pair per binding was the translation thread's most frequent lock). Set with descriptor->sampler under
-   the lock, cleared when the id is registered again or the sampler settings change (nvn_vulkan_sampler.inc). Samplers
-   are never destroyed, so a lookup racing a re-registration gets the previous, still valid sampler, as the lock gave. */
+   binding (a lock pair per binding would be the translation thread's most frequent lock). Set with
+   descriptor->sampler under the lock, cleared when the id is registered again or the sampler settings change
+   (nvn_vulkan_sampler.inc). Samplers are never destroyed, so a lookup racing a re-registration gets the previous,
+   still valid sampler, as the lock gave. */
 static _Atomic uintptr_t sampler_fast[4096];
 static pthread_mutex_t descriptor_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t texture_uploads, render_passes, draw_count;
@@ -88,7 +103,8 @@ static cached_image_view *image_view_formatted(image_entry *e,VkImageViewType ty
     for(cached_image_view *v=e->views;v;v=v->next)if(v->type==type&&v->format==format&&!memcmp(&v->range,&range,sizeof range)&&!memcmp(&v->components,&components,sizeof components))return v;
     if(format!=e->format){int listed=0;for(uint32_t k=0;k<e->view_format_count;k++)listed|=e->view_formats[k]==format;
         if(!listed){static unsigned said;if(said++<20)LOG("[vulkan-view-format] image format %d viewed as %d, outside its format list (%ux%u)",e->format,format,e->texture.d.width,e->texture.d.height);}
-        static struct { VkFormat i,v; } seen[64];static unsigned n;unsigned k=0;while(k<n&&(seen[k].i!=e->format||seen[k].v!=format))k++;   /* which reinterpretations the game uses */
+        /* which reinterpretations the game uses */
+        static struct { VkFormat i,v; } seen[64];static unsigned n;unsigned k=0;while(k<n&&(seen[k].i!=e->format||seen[k].v!=format))k++;
         if(k==n&&n<64){seen[n].i=e->format;seen[n].v=format;n++;LOG("[vulkan-view-format] image format %d viewed as %d (%ux%u)",e->format,format,e->texture.d.width,e->texture.d.height);}}
     cached_image_view *v=calloc(1,sizeof *v);if(!v)die("Vulkan image view cache allocation");v->type=type;v->range=range;v->components=components;v->format=format;
     VkImageViewCreateInfo ci={.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,.image=e->image,.viewType=type,.format=format,.components=components,.subresourceRange=range};
@@ -105,7 +121,8 @@ static VkComponentMapping texture_components(const tex_t *t,const view_t *v) {
     VkComponentSwizzle c[4];
     for(int i=0;i<4;i++){
         if(!sel[0]&&!sel[1]&&!sel[2]&&!sel[3]){c[i]=VK_COMPONENT_SWIZZLE_IDENTITY;continue;}
-        unsigned s=sel[i];if(s==5&&format>=0x6d&&format<=0x78)s=1;   /* RGBX: no alpha */
+        /* RGBX: no alpha */
+        unsigned s=sel[i];if(s==5&&format>=0x6d&&format<=0x78)s=1;
         c[i]=s==0?VK_COMPONENT_SWIZZLE_ZERO:s==1?VK_COMPONENT_SWIZZLE_ONE:s<=5?(VkComponentSwizzle)(VK_COMPONENT_SWIZZLE_R+s-2):VK_COMPONENT_SWIZZLE_IDENTITY;
         if(c[i]==(VkComponentSwizzle)(VK_COMPONENT_SWIZZLE_R+i))c[i]=VK_COMPONENT_SWIZZLE_IDENTITY;
     }
@@ -127,7 +144,8 @@ static inline int passlog_on(void) { return passlog_frame < 0 && presents == pas
 static int passlog_on_slow(void) {
     long *framep = &passlog_frame; long frame = *framep; if (frame == -2) { const char *e = getenv("TOTK_VK_PASSLOG"); frame = *framep = e ? atol(e) : -1; }
     uint64_t *checkedp = &passlog_checked; uint64_t checked = *checkedp;
-    if (frame < 0 && presents % 30) { *checkedp = presents; return 0; }   /* not a trigger-check frame: remembered for the hot path */
+    /* not a trigger-check frame: remembered for the hot path */
+    if (frame < 0 && presents % 30) { *checkedp = presents; return 0; }
     if (presents != checked && !(presents % 30)) { checked = presents; *checkedp = checked;
         const char *dir = getenv("DM_VK_SHADERS"); char path[1024];
         if (dir && snprintf(path, sizeof path, "%s/../passlog.trigger", dir) < (int)sizeof path && !access(path, F_OK)) { unlink(path); frame = *framep = (long)presents + 1; LOG("[vulkan-passlog] triggered: logging frames %ld and %ld", frame, frame + 1); } }
@@ -156,7 +174,8 @@ static VkFormat vk_format(int format) {
         [0x2e]=VK_FORMAT_R32G32B32A32_SFLOAT, [0x2f]=VK_FORMAT_R32G32B32A32_UINT, [0x30]=VK_FORMAT_R32G32B32A32_SINT,
         [0x31]=VK_FORMAT_S8_UINT, [0x32]=VK_FORMAT_D16_UNORM, [0x33]=VK_FORMAT_X8_D24_UNORM_PACK32, [0x34]=VK_FORMAT_D32_SFLOAT, [0x35]=VK_FORMAT_D24_UNORM_S8_UINT, [0x36]=VK_FORMAT_D32_SFLOAT_S8_UINT,
         [0x37]=VK_FORMAT_R8G8B8A8_SRGB, [0x38]=VK_FORMAT_R8G8B8A8_SRGB,
-        [0x39]=VK_FORMAT_R4G4B4A4_UNORM_PACK16, [0x3a]=VK_FORMAT_A1R5G5B5_UNORM_PACK16, [0x3b]=VK_FORMAT_A1R5G5B5_UNORM_PACK16, [0x3c]=VK_FORMAT_R5G6B5_UNORM_PACK16,   /* red in the low bits: texture_components swaps r and b */
+        /* red in the low bits: texture_components swaps r and b */
+        [0x39]=VK_FORMAT_R4G4B4A4_UNORM_PACK16, [0x3a]=VK_FORMAT_A1R5G5B5_UNORM_PACK16, [0x3b]=VK_FORMAT_A1R5G5B5_UNORM_PACK16, [0x3c]=VK_FORMAT_R5G6B5_UNORM_PACK16,
         [0x3d]=VK_FORMAT_A2B10G10R10_UNORM_PACK32, [0x3e]=VK_FORMAT_A2B10G10R10_UINT_PACK32, [0x3f]=VK_FORMAT_B10G11R11_UFLOAT_PACK32, [0x40]=VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,
         [0x41]=VK_FORMAT_BC1_RGB_UNORM_BLOCK, [0x42]=VK_FORMAT_BC1_RGBA_UNORM_BLOCK, [0x43]=VK_FORMAT_BC2_UNORM_BLOCK, [0x44]=VK_FORMAT_BC3_UNORM_BLOCK,
         [0x45]=VK_FORMAT_BC1_RGB_SRGB_BLOCK, [0x46]=VK_FORMAT_BC1_RGBA_SRGB_BLOCK, [0x47]=VK_FORMAT_BC2_SRGB_BLOCK, [0x48]=VK_FORMAT_BC3_SRGB_BLOCK,
@@ -171,7 +190,8 @@ static VkFormat vk_format(int format) {
     if (format >= 0x51 && format <= 0x68) {
         static const VkFormat uints[4][3] = {{VK_FORMAT_R8_UINT, VK_FORMAT_R16_UINT, VK_FORMAT_R32_UINT}, {VK_FORMAT_R8G8_UINT, VK_FORMAT_R16G16_UINT, VK_FORMAT_R32G32_UINT},
             {VK_FORMAT_R8G8B8_UINT, VK_FORMAT_R16G16B16_UINT, VK_FORMAT_R32G32B32_UINT}, {VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R16G16B16A16_UINT, VK_FORMAT_R32G32B32A32_UINT}};
-        int i = format - 0x51; return uints[i / 6][i / 2 % 3] + (i & 1);   /* each *_SINT follows its *_UINT */
+        /* each *_SINT follows its *_UINT */
+        int i = format - 0x51; return uints[i / 6][i / 2 % 3] + (i & 1);
     }
     switch (format) {
     case 0x69: return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
@@ -181,22 +201,26 @@ static VkFormat vk_format(int format) {
     if (format >= 0x79 && format <= 0x94) return VK_FORMAT_ASTC_4x4_UNORM_BLOCK + (format - 0x79) % 14 * 2 + (format >= 0x87);
     return format > 0 && format < sizeof formats / sizeof *formats ? formats[format] : VK_FORMAT_UNDEFINED;
 }
-// 按真正的读写风险同步；连续只读与通道内同附件写入不加全局屏障。
 // Synchronize actual read/write hazards; avoid global barriers for consecutive reads or same-pass attachment writes.
 static void image_clear_flush(image_entry *e);
-/* TOTK_VK_SYNCCHECK=1: whether the game's own barriers (nvnCommandBufferBarrier, game_sync_epoch) cover the image hazards
-   we synchronize ourselves: at each read after a game write, was there a game barrier since that write? A layer that
-   derives synchronization from the recording alone (step 4b) can only use the game's barriers. */
+/* TOTK_VK_SYNCCHECK=1: whether the game's own barriers (nvnCommandBufferBarrier, game_sync_epoch) cover the image
+   hazards we synchronize ourselves: at each read after a game write, was there a game barrier since that write? A
+   layer that derives synchronization from the recording alone can only use the game's barriers. */
 /* game_sync_epoch (nvn_vulkan.c): advances at every game barrier and submission */
 static int synccheck_state = -1;
 static inline int synccheck_on(void) { if (synccheck_state < 0) { const char *e = getenv("TOTK_VK_SYNCCHECK"); synccheck_state = e && atoi(e) > 0; } return synccheck_state; }
-static struct { uint64_t synced[3], unsynced[3], fb_synced, fb_unsynced, barriers; } sc;   /* [0] colour attachment, [1] depth attachment, [2] storage image */
+/* [0] colour attachment, [1] depth attachment, [2] storage image */
+static struct { uint64_t synced[3], unsynced[3], fb_synced, fb_unsynced, barriers; } sc;
+/* the attachment access being recorded can write (depth writes on / colour mask nonzero): only then is it a game
+   write for the census */
 static int attachment_write_real = 1;
-static const char *synccheck_writer, *synccheck_reader;   /* the shaders of the write and of the read (census detail): a draw's fragment shader or a dispatch's compute shader */   /* the attachment access being recorded can write (depth writes on / colour mask nonzero): only then is it a game write for the census */
+/* the shaders of the write and of the read (census detail): a draw's fragment shader or a dispatch's compute shader */
+static const char *synccheck_writer, *synccheck_reader;
 static void synccheck_read(image_entry *e, int feedback) {
     if (!synccheck_on()) return;
     VkAccessFlags w = e->last_access; int kind = w & VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT ? 0 : w & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT ? 1 : w & VK_ACCESS_SHADER_WRITE_BIT ? 2 : -1;
-    if (kind < 0) return;   /* our own transfer / host writes: not the game's to synchronize */
+    /* our own transfer / host writes: not the game's to synchronize */
+    if (kind < 0) return;
     int synced = e->write_epoch != game_sync_epoch;
     if (feedback) { if (synced) sc.fb_synced++; else sc.fb_unsynced++; } else if (synced) sc.synced[kind]++; else sc.unsynced[kind]++;
     if (stateleak_state > 0 && !feedback) { if (e->write_frame != sl.submission) sl.img_older++; else if (e->write_piece != sl.piece) sl.img_cross++; else sl.img_same++; }
@@ -208,19 +232,23 @@ static void synccheck_read(image_entry *e, int feedback) {
         memset(&sc, 0, sizeof sc); }
 }
 static void image_access(image_entry *e,VkPipelineStageFlags stage,VkAccessFlags access) {
-    if(e->pclear)image_clear_flush(e);   /* any other use first gets the deferred clear done */
+    /* any other use first gets the deferred clear done */
+    if(e->pclear)image_clear_flush(e);
     e->touched_chunk=chunk_epoch;
     VkAccessFlags writes=VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT|VK_ACCESS_HOST_WRITE_BIT|VK_ACCESS_MEMORY_WRITE_BIT;
     if(graphics_image_is_attachment(e)&&stage==e->last_stage&&access==e->last_access&&(access&(VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)))return;
-    { static int skip=-1;if(skip<0)skip=exp_env("nofeedbackbarrier");   /* measurement only: what feedback-loop pass breaks cost (unsynchronized) */
+    /* measurement only: what feedback-loop pass breaks cost (unsynchronized) */
+    { static int skip=-1;if(skip<0)skip=exp_env("nofeedbackbarrier");
       if(skip&&!(access&(VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT))&&graphics_image_is_attachment(e)){e->last_stage|=stage;e->last_access|=access;return;} }
     if(e->last_access&&((e->last_access|access)&writes)){
         if(!(access&writes))synccheck_read(e,0);
-        { static int diag=-1;if(diag<0){const char *x=getenv("TOTK_VK_PASSEND");diag=x&&atoi(x);}   /* why image hazards end passes */
+        /* why image hazards end passes */
+        { static int diag=-1;if(diag<0){const char *x=getenv("TOTK_VK_PASSEND");diag=x&&atoi(x);}
           if(diag&&graphics_pass_open()&&!prelude_recording){static uint64_t n[2][2][2],last;int att=graphics_image_is_attachment(e),depth=!!(e->aspect&VK_IMAGE_ASPECT_DEPTH_BIT),
               rd=!(access&writes);n[att][depth][rd]++;
               if(presents>=last+300){last=presents;for(int i=0;i<8;i++)if(n[i>>2][(i>>1)&1][i&1])LOG("[vulkan-passend-image] %s %s, then %s: %llu",i>>2?"attachment of the pass":"other image",(i>>1)&1?"depth":"color",i&1?"read":"written",(unsigned long long)n[i>>2][(i>>1)&1][i&1]);memset(n,0,sizeof n);}} }
-        if(!prelude_recording)graphics_pass_end();   /* the prelude's barrier goes ahead of the chunk, outside its pass */
+        /* the prelude's barrier goes ahead of the chunk, outside its pass */
+        if(!prelude_recording)graphics_pass_end();
         VkImageMemoryBarrier b={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,.srcAccessMask=e->last_access,.dstAccessMask=access,.oldLayout=VK_IMAGE_LAYOUT_GENERAL,.newLayout=VK_IMAGE_LAYOUT_GENERAL,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.image=e->image,.subresourceRange={e->aspect,0,e->texture.d.levels,0,e->texture.L.layers}};
         vkCmdPipelineBarrier(command,e->last_stage,stage,0,0,NULL,0,NULL,1,&b);image_barriers++;
         e->last_stage=stage;e->last_access=access;
@@ -241,7 +269,8 @@ static image_entry *image_get(const tex_t *t) {
             static unsigned said;if(said++<16)LOG("[vulkan] 【红】storage %p: serial %llu %ux%ux%u lv%u target %u class %#x size %llu differs from serial %llu %ux%ux%u lv%u target %u class %#x size %llu (not shared)",
                 t->mem,(unsigned long long)t->serial,sk.w,sk.h,sk.d,sk.levels,sk.target,sk.format_class,(unsigned long long)sk.size,(unsigned long long)s->serial,s->storage.w,s->storage.h,s->storage.d,s->storage.levels,s->storage.target,s->storage.format_class,(unsigned long long)s->storage.size);break;}
     }
-    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_ALIAS_LOG");on=x&&atoi(x);}   /* live images over the same memory that are not shared */
+    /* live images over the same memory that are not shared */
+    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_ALIAS_LOG");on=x&&atoi(x);}
       if(on&&t->mem&&t->L.size){static unsigned said;uint64_t a0=(uint64_t)(uintptr_t)t->mem,a1=a0+t->L.size;
         for(image_entry *o=image_list;o&&said<4000;o=o->next){uint64_t b0=(uint64_t)(uintptr_t)o->texture.mem,b1=b0+o->texture.L.size;if(!b0||b1<=a0||b0>=a1)continue;said++;
             LOG("[vulkan-alias] new serial %llu fmt %#x %ux%ux%u lv%u mem %#llx+%llu flags %#x overlaps serial %llu fmt %#x %ux%ux%u lv%u mem %#llx+%llu flags %#x holders %u gpu_written %d",
@@ -260,12 +289,13 @@ static image_entry *image_get(const tex_t *t) {
     int is3d=t->d.target==NVN_TEXTURE_TARGET_3D,is1d=t->d.target==NVN_TEXTURE_TARGET_1D||t->d.target==NVN_TEXTURE_TARGET_1D_ARRAY;
     VkImageCreateInfo ci={.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,.imageType=is3d?VK_IMAGE_TYPE_3D:is1d?VK_IMAGE_TYPE_1D:VK_IMAGE_TYPE_2D,.format=e->format,.extent={t->d.width,is1d?1:t->d.height,is3d?t->d.depth:1},.mipLevels=t->d.levels,.arrayLayers=t->L.layers,.samples=VK_SAMPLE_COUNT_1_BIT,.tiling=VK_IMAGE_TILING_OPTIMAL,.usage=usage,.sharingMode=VK_SHARING_MODE_EXCLUSIVE};
     if(t->d.target==NVN_TEXTURE_TARGET_CUBEMAP||t->d.target==NVN_TEXTURE_TARGET_CUBEMAP_ARRAY)ci.flags=VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    /* TOTK renders 3D textures one depth slice at a time (2D views of a slice) */
     if(is3d)ci.flags|=VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
     /* storage-keyed colour images may be viewed as any format of their texel size (another texture object at the same
        storage): mutable, with the usages any format of that size supports */
-    /* the formats a mutable image may be viewed as: without this list Turnip turns UBWC off (all colour render targets
-       were uncompressed; compressing them was 1.8 ms of GPU time a frame in the open world). Every listed format can be
-       compressed; a view outside the list is logged ([vulkan-view-format]). */
+    /* the formats a mutable image may be viewed as: without this list Turnip turns UBWC off (leaving all colour
+       render targets uncompressed; compressing them saves 1.8 ms of GPU time a frame in the open world). Every
+       listed format can be compressed; a view outside the list is logged ([vulkan-view-format]). */
     VkFormat view_formats[16];VkImageFormatListCreateInfo format_list={.sType=VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO,.pViewFormats=view_formats};
     if(keyed&&e->aspect==VK_IMAGE_ASPECT_COLOR_BIT){
         static const VkFormat class4[]={VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R32_SFLOAT,VK_FORMAT_R32_UINT,VK_FORMAT_R16G16_SFLOAT,VK_FORMAT_B10G11R11_UFLOAT_PACK32,VK_FORMAT_A2B10G10R10_UNORM_PACK32,0},
@@ -279,7 +309,7 @@ static image_entry *image_get(const tex_t *t) {
             for(const VkFormat *f=cls;*f;f++){VkFormatProperties p;vkGetPhysicalDeviceFormatProperties(physical,*f,&p);
                 if(p.optimalTilingFeatures&VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)ci.usage|=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
                 if(p.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)ci.usage|=VK_IMAGE_USAGE_STORAGE_BIT;}}
-    }   /* TOTK renders 3D textures one depth slice at a time (2D views of a slice) */
+    }
     e->key=(struct image_key){ci.imageType,ci.format,ci.extent,ci.mipLevels,ci.arrayLayers,ci.flags,ci.usage};
     image_reap_locked();
     free_image **reuse=&free_images;while(*reuse&&memcmp(&(*reuse)->key,&e->key,sizeof e->key))reuse=&(*reuse)->next;
@@ -371,7 +401,6 @@ static void passlog_print(void) {
         LOG("[vulkan-passlog] sample %u: serial %llu fmt %#x centre texel %s",i/9,(unsigned long long)passlog_sampled[i].serial,passlog_sampled[i].format,hex);}
     passlog_samples=0;
 }
-// GPU 内容与 packaged CPU 源是两条独立版本；GPU 写不能把后来的 CPU 脏写永久屏蔽。
 // Track GPU contents separately from packaged CPU sources; GPU writes must not suppress subsequent real CPU changes.
 static uint64_t image_source_hash(const uint8_t *source,uint64_t size) {
     uint64_t hash=14695981039346656037ull;for(uint64_t i=0;i<size;i++)hash=(hash^source[i])*1099511628211ull;return hash;
@@ -379,26 +408,26 @@ static uint64_t image_source_hash(const uint8_t *source,uint64_t size) {
 static void image_source_baseline(image_entry *e,const uint8_t *source,uint64_t stamp) {
     const tex_t *t=&e->texture;if(!t->has_layout||!t->mem)return;
     e->source_stamp=stamp;e->source_seen=stamp;e->source_tracked=nvn_dirty_tracked(t->mem,t->L.size);e->source_valid=1;
-    // 未跟踪来源没有可靠代数，用内容变化辨别后来 CPU 写，仍保留未改源时的 GPU 拷贝。
     // Untracked sources have no reliable generation; compare their bytes while retaining GPU copies if the source is unchanged.
     if(!e->source_tracked)e->source_hash=image_source_hash(source,t->L.size);
 }
 /* TOTK_VK_WATCH_MEM=<hex address>: every GPU write to an image whose storage holds it is logged, with the writer (the
    draw's shaders, or the calling site as libtotk.so offset for addr2line). */
-static const char *gpu_write_shaders;   /* set by the draw path around its image_gpu_written calls */
+/* set by the draw path around its image_gpu_written calls */
+static const char *gpu_write_shaders;
 static uintptr_t gpu_watch_address(void) { static int read;static uintptr_t a;if(!read){read=1;const char *x=getenv("TOTK_VK_WATCH_MEM");if(x)a=(uintptr_t)strtoull(x,NULL,16);}return a; }
-/* The watched window: the 0x200 bytes from the watched address rounded down to 0x100 (a record and its neighbours: the
-   Ultrahand pick ring alternated two 0x40-byte records). Whether [a, a + size) touches it. */
+/* The watched window: the 0x200 bytes from the watched address rounded down to 0x100 (a record and its neighbours:
+   the Ultrahand pick ring alternates two 0x40-byte records). Whether [a, a + size) touches it. */
 static int gpu_watch_hit(uintptr_t a, uint64_t size) {
     uintptr_t w=gpu_watch_address();if(!w)return 0;
     uintptr_t w0=w&~(uintptr_t)0xff;return a<w0+0x200&&a+size>w0;
 }
-/* TOTK_VK_OVERLAP=1 (diagnostic, review 2026-10-27 S2): images over the same memory with another layout are separate
-   images. Which 64 KiB blocks each GPU-written image covers is recorded (the last writer per block and the draw it
-   wrote at, once per render pass per image); a sampled image whose range a different image wrote later than its own
-   last GPU write, in this or the last frame, is counted by writer and reader, the most frequent logged every 600
-   frames: how often a sample would miss what another image rendered there. A block shared by neighbouring images keeps
-   only the last writer, so it undercounts. */
+/* TOTK_VK_OVERLAP=1 (diagnostic): images over the same memory with another layout are separate images. Which 64 KiB
+   blocks each GPU-written image covers is recorded (the last writer per block and the draw it wrote at, once per
+   render pass per image); a sampled image whose range a different image wrote later than its own last GPU write, in
+   this or the last frame, is counted by writer and reader, the most frequent logged every 600 frames: how often a
+   sample would miss what another image rendered there. A block shared by neighbouring images keeps only the last
+   writer, so it undercounts. */
 typedef struct { uintptr_t block, a, b; uint64_t serial, frame, draw; uint32_t fmt, w, h; } overlap_mark;
 #define OVERLAP_SLOTS (1u << 18)
 static overlap_mark *overlap_marks;
@@ -426,7 +455,8 @@ static int overlap_check_read(image_entry *e) {
     uintptr_t a=(uintptr_t)e->texture.mem,b=a+e->texture.L.size;
     for(uintptr_t k=a>>16;k<=(b-1)>>16;k++){overlap_mark *m=overlap_slot(k);
         if(m->block!=k||m->serial==e->serial||m->b<=a||m->a>=b||m->frame+1<presents)continue;
-        if(e->overlap_written>=m->draw)continue;   /* its own render is as new or newer */
+        /* its own render is as new or newer */
+        if(e->overlap_written>=m->draw)continue;
         events++;unsigned i=0;while(i<ntop&&(top[i].wf!=m->fmt||top[i].ww!=m->w||top[i].wh!=m->h||top[i].rf!=e->texture.d.format||top[i].rw!=e->texture.d.width||top[i].rh!=e->texture.d.height))i++;
         if(i==ntop&&ntop<64){top[ntop++]=(typeof(top[0])){m->fmt,m->w,m->h,e->texture.d.format,e->texture.d.width,e->texture.d.height,0};
             static unsigned said;if(said++<40)LOG("[vulkan-overlap] new pair: written fmt %#x %ux%u at %#llx+%#llx (serial %llu, draw %llu), sampled fmt %#x %ux%u lv%u at %#llx+%#llx (serial %llu, own write draw %llu, gpu_written %d)",
@@ -456,20 +486,19 @@ static void image_gpu_written(image_entry *e) {
         /* TOTK_VK_WATCH_FREEZE=1 (or =<shader key>): the first draw into it (by that shader) requests a freeze-frame (frz.sh) */
         static int froze;const char *fz=getenv("TOTK_VK_WATCH_FREEZE"),*dir=getenv("TOTK_FILES_DIR");
         if(!froze&&gpu_write_shaders&&fz&&*fz&&strcmp(fz,"0")&&(!strcmp(fz,"1")||strstr(gpu_write_shaders,fz))&&dir){froze=1;char path[600];snprintf(path,sizeof path,"%s/freeze",dir);FILE *f=fopen(path,"w");if(f)fclose(f);LOG("[vulkan-watch] freeze requested");}} }
-    // 已存在的基线代表真正读过的 CPU 版本，重复 GPU 标记不能吞掉尚未读的 CPU 脏写。
     // Existing baselines represent CPU versions actually read; repeated GPU marking cannot consume unread CPU changes.
     if(t->has_layout&&t->mem&&!e->source_valid){nvn_dirty_protect(t->mem,t->L.size);image_source_baseline(e,t->mem,nvn_dirty_now());}
     TRACEIMG(&e->texture,"GPU write (entry %llu) by %s",(unsigned long long)e->serial,gpu_write_shaders?gpu_write_shaders:"-");
     if(!e->gpu_written||e->gpu_write_frame!=presents)e->write_streak=e->gpu_written&&e->gpu_write_frame+1==presents?e->write_streak+1:1;
     e->populated=1;e->stamp=0;e->gpu_written=1;e->gpu_write_frame=presents;e->writeback_due=1;
 }
-/* TOTK: an image the GPU rendered and then left unchanged goes back to guest memory, in the texture's own layout, as on
-   the console, where GPU and CPU read the same bytes. The game moves its terrain tiles (the normal maps it renders once
-   per tile, 260x260 RG8 with 9 levels) with the CPU when it compacts the tile pool; a moved tile read the zeros our guest
-   memory held, and the grass placement that reads it dropped every blade some 20 s after loading (2026-10-23). An image
-   goes back once it has gone two frames without a GPU write; one rewritten after two write-backs (a periodic target) is
-   left alone, and so are per-frame targets, which never go two frames unwritten. If the CPU wrote the range between the
-   copy and its completion (the game reused the memory) nothing is written. */
+/* TOTK: an image the GPU rendered and then left unchanged goes back to guest memory, in the texture's own layout, as
+   on the console, where GPU and CPU read the same bytes. The game moves its terrain tiles (the normal maps it
+   renders once per tile, 260x260 RG8 with 9 levels) with the CPU when it compacts the tile pool; without this a
+   moved tile reads zeros from our guest memory, and the grass placement that reads it drops every blade some 20 s
+   after loading. An image goes back once it has gone two frames without a GPU write; one rewritten after two
+   write-backs (a periodic target) is left alone, and so are per-frame targets, which never go two frames unwritten.
+   If the CPU wrote the range between the copy and its completion (the game reused the memory) nothing is written. */
 typedef struct image_writeback { nvn_texdesc d; uint8_t *mem; uint64_t size, stamp; unsigned layers; int dirty; } image_writeback;
 #define WRITEBACK_MAX_IMAGE (4u << 20)
 #define WRITEBACK_MAX_FRAME (8u << 20)
@@ -482,7 +511,8 @@ static int image_writeback_wanted(const image_entry *e) {
 }
 static void image_writeback_record(image_entry *e) {
     const tex_t *t=&e->texture;int bw,bh;
-    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_WRITEBACKLOG");on=x&&atoi(x);}   /* which images the CPU reads back, and who wrote them */
+    /* which images the CPU reads back, and who wrote them */
+    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_WRITEBACKLOG");on=x&&atoi(x);}
       if(on){static struct { uint64_t serial; unsigned n; } seen[32];static unsigned ns;unsigned i=0;while(i<ns&&seen[i].serial!=e->serial)i++;
         if(i==ns&&ns<32)seen[ns++]=(typeof(seen[0])){e->serial,0};if(i<32){seen[i].n++;if(seen[i].n<=2||seen[i].n%300==0)
           LOG("[vulkan-writebacklog] frame %llu serial %llu %ux%u lv%u fmt %#x %llu KiB written back (%u times): writer %s (stage %#x, draw frame %llu)",(unsigned long long)presents,(unsigned long long)e->serial,t->d.width,t->d.height,t->d.levels,t->d.format,(unsigned long long)(t->L.size>>10),seen[i].n,e->write_shader?e->write_shader:"?",(unsigned)e->write_stage,(unsigned long long)e->write_frame);}} }unsigned bpb=nvn_fmt_bpb(t->d.format,&bw,&bh),n=t->d.levels*t->L.layers;
@@ -521,9 +551,9 @@ static void image_writeback_publish(post_op *p) {
     image_writeback *w=p->writeback;p->writeback=NULL;if(!w)return;
     if(w->dirty){writeback_dropped++;free(w);return;}
     int bw,bh;unsigned bpb=nvn_fmt_bpb(w->d.format,&bw,&bh);const uint8_t *linear=p->output.mapped;
-    /* the GPU's bytes landing in guest memory, not a CPU write: counted as one, the image's next use found its pages
-       written since its baseline and uploaded these (older) bytes over what the GPU rendered after the copy (review
-       2026-10-27 B1; the Metal backend's write-back does the same) */
+    /* the GPU's bytes landing in guest memory, not a CPU write: counted as one, the image's next use would find its
+       pages written since its baseline and upload these (older) bytes over what the GPU rendered after the copy (the
+       Metal backend's write-back does the same) */
     void *tok=nvn_dirty_tracked(w->mem,w->size)?nvn_dirty_gpu_write_begin(w->mem,w->size):NULL;
     if(!tok)dm_guest_write_prepare(w->mem,w->size);
     for(unsigned layer=0;layer<w->layers;layer++)for(unsigned level=0;level<w->d.levels;level++){uint32_t width=dimension(w->d.width,level),h=dimension(w->d.height,level);
@@ -533,14 +563,13 @@ static void image_writeback_publish(post_op *p) {
     gpu_watch_changed("image-writeback",(uintptr_t)w->mem);
     free(w);
 }
-// 只读计数：GPU 渲染过的贴图又被整张从客体内存上传回去，等于用旧字节覆盖刚渲染出来的内容。
 // Read-only counter: an image the GPU rendered is uploaded whole from guest memory again, overwriting freshly
 // rendered content with older bytes.
 static uint64_t image_gpu_overwrites;
-// 游戏绑定了句柄、端口却查不到登记的采样贴图次数（会退回 1x1 替身贴图）。
 // How often the game bound a handle whose sampled texture the port cannot resolve (falls back to the 1x1 stand-in).
 static uint64_t gpu_unregistered_textures;
-static uint64_t texture_upload_bytes,texture_upload_ns;   /* frame profile: bytes copied in and the translation thread's time in uploads (deswizzle, staging) */
+/* frame profile: bytes copied in and the translation thread's time in uploads (deswizzle, staging) */
+static uint64_t texture_upload_bytes,texture_upload_ns;
 /* upload census (TOTK_VK_UPLOADLOG=1): which images are uploaded from guest memory, how often inside a render pass (the
    upload ends it and the pass restarts), and whether the GPU had touched the image in the current command buffer
    (if not, the copy could go into a prelude command buffer ahead of the chunk instead of ending the pass). */
@@ -560,7 +589,8 @@ static void upload_census(image_entry *e) {
 }
 static void image_upload(image_entry *e) {
     const tex_t *t=&e->texture;
-    if(e->pclear)image_clear_flush(e);   /* a pending clear comes first: it defines the contents, as an immediate clear would have */
+    /* a pending clear comes first: it defines the contents, as an immediate clear would have */
+    if(e->pclear)image_clear_flush(e);
     int pending=t->mem && snapshot_pending((uintptr_t)t->mem,t->L.size);
     if(e->populated&&!pending){
         if(t->has_layout&&t->mem){
@@ -573,8 +603,8 @@ static void image_upload(image_entry *e) {
     TRACEIMG(t,"upload from guest memory (entry %llu populated %d gpu_written %d pclear %d)",(unsigned long long)e->serial,e->populated,e->gpu_written,e->pclear);
     if(!t->mem)die("Vulkan texture has no source storage");
     if((e->aspect & VK_IMAGE_ASPECT_STENCIL_BIT) && (e->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))die("Vulkan combined depth/stencil CPU upload pending");
-    // 与原后端一样先保护再取代数和读取，减少并发写入漏记的窗口。
-    // Like the original backend, protect before taking the generation/reading to avoid a window for untracked concurrent writes.
+    // Like the Metal backend, protect before taking the generation/reading to avoid a window for untracked concurrent
+    // writes.
     uint64_t up_t0=dm_android_clock_ns(CLOCK_MONOTONIC);upload_census(e);
     /* inside a pass, into an image the GPU has not touched in this chunk: the copy goes into the chunk's prelude, ahead of
        everything recorded so far, and the pass stays open (the barrier from its last use is recorded there too) */
@@ -582,14 +612,12 @@ static void image_upload(image_entry *e) {
     if(graphics_pass_open()&&e->touched_chunk!=chunk_epoch&&prelude_on()){command=prelude_begin();prelude_recording=1;prelude_uploads++;}
     else graphics_pass_end();
     nvn_dirty_protect(t->mem,t->L.size);uint64_t stamp=nvn_dirty_now();image_access(e,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);uint8_t *shadow=NULL;const uint8_t *storage=t->mem;
-    // 上传必须看到同批前面的复制，不提前发布客体内存。
     // Uploads must see preceding copies in the batch without publishing guest memory early.
-    // 未跟踪 packaged 源也冻结一份快照，不能上传旧字节后把并发改写的新字节记为已上传。
     // Freeze untracked packaged sources too; never upload old bytes and then baseline a concurrent newer write.
     if(pending||(t->has_layout&&!nvn_dirty_tracked(t->mem,t->L.size))){shadow=malloc(t->L.size);if(!shadow||snapshot_read((uintptr_t)t->mem,shadow,t->L.size))die("Vulkan texture snapshot read");storage=shadow;}
-    /* TOTK_VK_UPLOADSPLIT=1: where an upload's time goes. The first world frame after a load, 80 uploads / 273 MB (2026-11-02):
-       staging buffers 27 ms (a buffer_create per mip level), deswizzle 48 ms after nvn_deswizzle.c's per-column offsets (84 before),
-       recording 0.1 ms. A worker pool for the rows and a shared staging arena were tried and measured out (memory: 11:05). */
+    /* TOTK_VK_UPLOADSPLIT=1: where an upload's time goes. The first world frame after a load, 80 uploads / 273 MB:
+       staging buffers 27 ms (a buffer_create per mip level), deswizzle 48 ms, recording 0.1 ms. A worker pool for
+       the rows and a shared staging arena measure no gain. */
     static uint64_t up_alloc_ns,up_move_ns,up_copy_ns,up_n,up_bytes;uint64_t up_t1=up_t0;
     static int upsplit=-1;if(upsplit<0){const char *e=getenv("TOTK_VK_UPLOADSPLIT");upsplit=e&&atoi(e)>0;}
     for(unsigned layer=0;layer<t->L.layers;layer++)for(unsigned level=0;level<t->d.levels;level++){
@@ -609,13 +637,14 @@ static void image_upload(image_entry *e) {
     if(upsplit){up_n++;up_bytes+=t->L.size;if(up_n%40==0)LOG("[vulkan-uploadsplit] %llu uploads %.1f MB: staging alloc %.1f ms, deswizzle/memcpy %.1f ms, copy record %.1f ms (cumulative)",(unsigned long long)up_n,up_bytes/1048576.0,up_alloc_ns/1e6,up_move_ns/1e6,up_copy_ns/1e6);}
     if(e->gpu_written){image_gpu_overwrites++;if(image_gpu_overwrites<=6||!(image_gpu_overwrites%64))LOG("[vulkan-upload] 覆盖 GPU 已渲染内容 serial=%llu %ux%u format=%#x bytes=%llu 第 %llu 次（客体内存里没有 GPU 那次渲染的结果）",(unsigned long long)t->serial,t->d.width,t->d.height,t->d.format,(unsigned long long)t->L.size,(unsigned long long)image_gpu_overwrites);}
     /* the read-after-upload barrier goes into the prelude as well: the draw that binds the image then finds a read
-       after a read and keeps its pass (otherwise that barrier ended the pass just as the upload had) */
+       after a read and keeps its pass (otherwise that barrier would end the pass just as the upload would) */
     if(prelude_recording){image_access(e,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT|VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_READ_BIT);command=chunk_command;prelude_recording=0;}
     image_source_baseline(e,storage,stamp);free(shadow);e->populated=1;e->stamp=stamp;texture_uploads++;texture_upload_bytes+=t->L.size;texture_upload_ns+=dm_android_clock_ns(CLOCK_MONOTONIC)-up_t0;
 }
 static VkImageSubresourceRange texture_range(image_entry *e,const view_t *v) {
     VkImageSubresourceRange r={e->aspect,v&&v->set_levels?v->base_level:0,1,v&&v->set_layers?v->min_layer:0,1};
-    uint32_t layers=e->texture.d.target==NVN_TEXTURE_TARGET_3D?dimension(e->texture.d.depth,r.baseMipLevel):e->texture.L.layers;   /* 3D: depth slices */
+    /* 3D: depth slices */
+    uint32_t layers=e->texture.d.target==NVN_TEXTURE_TARGET_3D?dimension(e->texture.d.depth,r.baseMipLevel):e->texture.L.layers;
     if(r.baseMipLevel>=e->texture.d.levels||r.baseArrayLayer>=layers)
         die("Vulkan texture view bounds: base level %u of %u, layer %u of %u (texture %ux%ux%u target %u format %#x serial %llu; view set_levels %u set_layers %u)",
             r.baseMipLevel,e->texture.d.levels,r.baseArrayLayer,layers,e->texture.d.width,e->texture.d.height,e->texture.d.depth,e->texture.d.target,e->texture.d.format,
@@ -642,7 +671,8 @@ static void clear_color_pass(image_entry *e,VkImageSubresourceRange r,const floa
         VkRenderPassCreateInfo ci={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,.attachmentCount=1,.pAttachments=&a,.subpassCount=1,.pSubpasses=&sub};
         VK_CHECK(vkCreateRenderPass(device,&ci,NULL,&pass));if(npasses<32)passes[npasses++]=(typeof(passes[0])){format,load,pass};else die("Vulkan clear render passes");
     }
-    r.layerCount=1;r.levelCount=1;cached_image_view *cv=image_view_formatted(e,VK_IMAGE_VIEW_TYPE_2D,r,(VkComponentMapping){0},format);VkFramebuffer fb=cv->clear_fb[whole];   /* destroyed with the view */
+    /* destroyed with the view */
+    r.layerCount=1;r.levelCount=1;cached_image_view *cv=image_view_formatted(e,VK_IMAGE_VIEW_TYPE_2D,r,(VkComponentMapping){0},format);VkFramebuffer fb=cv->clear_fb[whole];
     if(!fb){VkFramebufferCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,.renderPass=pass,.attachmentCount=1,.pAttachments=&cv->view,.width=w,.height=h,.layers=1};
         VK_CHECK(vkCreateFramebuffer(device,&fi,NULL,&fb));cv->clear_fb[whole]=fb;}
     graphics_pass_end();image_access(e,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
@@ -662,16 +692,19 @@ static image_entry *pclear_list[64]; static unsigned pclear_count; static uint64
    image may be another than the image's own (clear_color) */
 static int image_clear_defer(image_entry *e,VkImageSubresourceRange r,VkClearValue v,VkFormat format) {
     if(graphics_image_is_attachment(e)||r.levelCount!=1||r.layerCount!=1)return 0;
-    if(e->pclear&&memcmp(&e->pclear_range,&r,sizeof r))image_clear_flush(e);   /* another subresource pending: that one first */
+    /* another subresource pending: that one first */
+    if(e->pclear&&memcmp(&e->pclear_range,&r,sizeof r))image_clear_flush(e);
     if(!e->pclear){if(pclear_count==64)return 0;pclear_list[pclear_count++]=e;}
     e->pclear=1;e->pclear_value=v;e->pclear_range=r;e->pclear_format=format;pclear_deferred++;pclear_viewformat+=format!=e->format;return 1;
 }
 static void pclear_forget(image_entry *e) {
     e->pclear=0;for(unsigned i=0;i<pclear_count;i++)if(pclear_list[i]==e){pclear_list[i]=pclear_list[--pclear_count];break;}
 }
-static void image_clear_flush(image_entry *e) {   /* do a deferred clear now, as a transfer outside any pass */
+/* a deferred clear at once, as a transfer outside any pass */
+static void image_clear_flush(image_entry *e) {
     if(!e->pclear)return;pclear_forget(e);pclear_flushed++;TRACEIMG(&e->texture,"deferred clear done");
-    if(e->pclear_format!=e->format){   /* encoded in a view format: cleared through a view of it (clear_color_pass) */
+    /* encoded in a view format: cleared through a view of it (clear_color_pass) */
+    if(e->pclear_format!=e->format){
         uint32_t w=dimension(e->texture.d.width,e->pclear_range.baseMipLevel),h=dimension(e->texture.d.height,e->pclear_range.baseMipLevel);
         clear_color_pass(e,e->pclear_range,e->pclear_value.color.float32,(VkRect2D){{0,0},{w,h}},e->pclear_format);return;
     }
@@ -693,7 +726,7 @@ static void pclear_attach(image_entry *e,VkImageSubresourceRange range,VkAttachm
     else{if(p->aspectMask&VK_IMAGE_ASPECT_DEPTH_BIT)a->loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;if(p->aspectMask&VK_IMAGE_ASPECT_STENCIL_BIT)a->stencilLoadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;}
     graphics_clear_values[index]=e->pclear_value;pclear_attach_i[pclear_attach_n]=index;pclear_attach_e[pclear_attach_n++]=e;
 }
-static VkFormat attachment_format(image_entry *e,const tex_t *t,const view_t *v);   /* nvn_vulkan_draw.inc */
+static VkFormat attachment_format(image_entry *e,const tex_t *t,const view_t *v);
 static void clear_color(const p_clear_color *c) {
     PASSLOG("clear colour %d of %d: serial %llu rgba %g,%g,%g,%g mask %#x",c->index,state.rt.n,c->index>=0&&c->index<state.rt.n&&state.rt.color[c->index]?(unsigned long long)state.rt.color[c->index]->serial:0ull,c->rgba[0],c->rgba[1],c->rgba[2],c->rgba[3],c->mask);
     if(c->index<0||c->index>=state.rt.n||!state.rt.color[c->index])return;
@@ -701,11 +734,10 @@ static void clear_color(const p_clear_color *c) {
     const view_t *view=state.rt.has_cview[c->index]?&state.rt.cview[c->index]:NULL;
     image_entry *e=image_get(state.rt.color[c->index]);VkImageSubresourceRange r=texture_range(e,view);
     /* the clear value is encoded in the format the game renders with: a mutable image first made in another format
-       (an R32F image cleared as an RGBA8 target to 1,1,1,1 must read ff ff ff ff, not the float 1.0; that turned the
-       shrine doors' portal mask off and drew a green square over them) clears through a view of that format */
+       (an R32F image cleared as an RGBA8 target to 1,1,1,1 must read ff ff ff ff, not the float 1.0, or the shrine
+       doors' portal mask goes off and a green square is drawn over them) clears through a view of that format */
     VkFormat af=attachment_format(e,state.rt.color[c->index],view);
     if(e->format>=VK_FORMAT_BC1_RGB_UNORM_BLOCK&&e->format<=VK_FORMAT_ASTC_12x12_SRGB_BLOCK)die("Vulkan clear of compressed render target %#x",e->texture.d.format);
-    // 非完整剪裁必须保留未覆盖像素；不能用整张清除替代。
     // A partial scissor must preserve uncovered pixels; never substitute a whole-image clear.
     int w=dimension(e->texture.d.width,r.baseMipLevel),h=dimension(e->texture.d.height,r.baseMipLevel);
     if(state.scissor.w>0&&(state.scissor.x||state.scissor.y||state.scissor.w<w||state.scissor.h<h)){
@@ -715,7 +747,8 @@ static void clear_color(const p_clear_color *c) {
     }
     if(e->texture.d.target==NVN_TEXTURE_TARGET_3D){clear_color_pass(e,r,c->rgba,(VkRect2D){{0,0},{(uint32_t)w,(uint32_t)h}},af);return;}
     TRACEIMG(&e->texture,"clear colour %g,%g,%g,%g (entry %llu) via %s",c->rgba[0],c->rgba[1],c->rgba[2],c->rgba[3],(unsigned long long)e->serial,state.rt.color[c->index]->serial==e->serial?"own":"alias");
-    { VkClearValue v;memcpy(v.color.float32,c->rgba,sizeof c->rgba);if(image_clear_defer(e,r,v,af))return; }   /* deferred in the view's format */
+    /* deferred in the view's format */
+    { VkClearValue v;memcpy(v.color.float32,c->rgba,sizeof c->rgba);if(image_clear_defer(e,r,v,af))return; }
     if(af!=e->format){clear_color_pass(e,r,c->rgba,(VkRect2D){{0,0},{(uint32_t)w,(uint32_t)h}},af);return;}
     graphics_pass_end();VkClearColorValue color;memcpy(color.float32,c->rgba,sizeof c->rgba);image_access(e,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);vkCmdClearColorImage(command,e->image,VK_IMAGE_LAYOUT_GENERAL,&color,1,&r);image_gpu_written(e);
 }
@@ -772,10 +805,10 @@ static texture_clear_format texture_clear_format_get(int format) {
     if(format>=0x6d&&format<=0x78)format-=0x48;
     if(format>=1&&format<=0x30){unsigned index=(format-1)%12;static const uint8_t kinds[]={TEXTURE_CLEAR_UNORM,TEXTURE_CLEAR_SNORM,TEXTURE_CLEAR_UINT,TEXTURE_CLEAR_SINT,TEXTURE_CLEAR_FLOAT,TEXTURE_CLEAR_UNORM,TEXTURE_CLEAR_SNORM,TEXTURE_CLEAR_UINT,TEXTURE_CLEAR_SINT,TEXTURE_CLEAR_FLOAT,TEXTURE_CLEAR_UINT,TEXTURE_CLEAR_SINT};return (texture_clear_format){(format-1)/12+1,index<4?8:index<9?16:32,kinds[index]};}
     if(format==NVN_FORMAT_RGB10A2UI)return (texture_clear_format){4,0,TEXTURE_CLEAR_UINT};
-    if(format==NVN_FORMAT_RGB10A2)return (texture_clear_format){4,0,TEXTURE_CLEAR_UNORM};   // bits 0: packed 10/10/10/2 (BotW clears its RGB10A2 targets by region)
+    // bits 0: packed 10/10/10/2 (BotW clears its RGB10A2 targets by region)
+    if(format==NVN_FORMAT_RGB10A2)return (texture_clear_format){4,0,TEXTURE_CLEAR_UNORM};
     return (texture_clear_format){0};
 }
-// float16 位模式按最近偶数舍入，避免以底层 UNORM 的数值清除代替浮点视图的字节。
 // Round float16 bits to nearest even; never substitute a base UNORM numeric clear for a float view's bytes.
 static uint16_t texture_clear_half(float value) {
     uint32_t bits;memcpy(&bits,&value,4);unsigned sign=(bits>>16)&0x8000,fraction=bits&0x7fffff,exponent=(bits>>23)&255;
@@ -804,7 +837,6 @@ static unsigned texture_clear_pattern(const p_clear_tex *c,int format,uint8_t pa
 static void clear_texture(const p_clear_tex *c) {
     if(c->r.width<=0||c->r.height<=0||c->r.depth<=0||!(c->mask&15))return;
     const view_t *v=c->has_view?&c->view:NULL;int format=v&&v->set_format?v->format:c->tex->d.format;
-    // 初始化只记录前五次真实清除，不给每帧绘制增加日志或同步。
     // Log only the first five actual initialization clears, without adding per-frame draw logging or synchronization.
     static unsigned diagnostics;if(diagnostics++<5)LOG("[vulkan] typed texture clear serial=%llu base=%#x view=%#x ui=%u raw=%08x,%08x,%08x,%08x mip=%d layer=%d+%d region=%d,%d,%d %dx%dx%d mask=%#x",(unsigned long long)c->tex->serial,c->tex->d.format,format,c->is_uint,c->c.u[0],c->c.u[1],c->c.u[2],c->c.u[3],v&&v->set_levels?v->base_level:0,v&&v->set_layers?v->min_layer:0,v&&v->set_layers?v->nlayers:c->tex->L.layers,c->r.xoffset,c->r.yoffset,c->r.zoffset,c->r.width,c->r.height,c->r.depth,c->mask);
     if(c->tex->has_layout&&c->tex->mem)dependencies_prepare_texture(c->tex);
@@ -817,7 +849,6 @@ static void clear_texture(const p_clear_tex *c) {
     if((c->mask&channel_mask)!=channel_mask)die("Vulkan masked texture clear pending: mask=%#x format=%#x",c->mask,format);
     int bw,bh,vbw,vbh;unsigned bytes=nvn_fmt_bpb(c->tex->d.format,&bw,&bh),view_bytes=nvn_fmt_bpb(format,&vbw,&vbh);
     if(e->aspect!=VK_IMAGE_ASPECT_COLOR_BIT||!bytes||bytes!=view_bytes||bw!=1||bh!=1||vbw!=1||vbh!=1||vk_format(format)==VK_FORMAT_UNDEFINED||(format>=0x31&&format<=0x36))die("Vulkan incompatible typed texture clear base=%#x view=%#x",c->tex->d.format,format);
-    // 与 Metal tex_mtl 一样先保留 packaged 源：区域外、其余 mip 和层不能被清除值覆盖。
     // Like Metal tex_mtl, preserve packaged sources first; the region exterior, other mips and layers must retain their contents.
     if(c->tex->has_layout&&c->tex->mem)image_upload(e);
     image_access(e,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -825,7 +856,6 @@ static void clear_texture(const p_clear_tex *c) {
     if(!is3d&&whole_xy&&vk_format(format)==e->format&&((c->is_uint&&f.channels&&f.kind==TEXTURE_CLEAR_UINT)||(!c->is_uint&&(!f.channels||f.kind==TEXTURE_CLEAR_UNORM||f.kind==TEXTURE_CLEAR_SNORM||f.kind==TEXTURE_CLEAR_FLOAT)))){
         range.baseArrayLayer+=c->r.zoffset;range.layerCount=c->r.depth;VkClearColorValue value;memcpy(&value,&c->c,sizeof value);vkCmdClearColorImage(command,e->image,VK_IMAGE_LAYOUT_GENERAL,&value,1,&range);
     }else{
-        // VkClearColorImage 只接受 image，不接受 typed view；编码视图像素后原位 GPU 复制，避免非法格式别名。
         // VkClearColorImage accepts an image, not a typed view; encode view pixels and copy raw GPU bytes in place, avoiding illegal format aliases.
         uint8_t pattern[16]={0};if(texture_clear_pattern(c,format,pattern)!=bytes)die("Vulkan typed texture clear pixel size");
         uint64_t count=(uint64_t)c->r.width*c->r.height;if(count>((1ull<<32)-3)/bytes/(unsigned)c->r.depth)die("Vulkan texture clear staging size");uint64_t size=count*c->r.depth*bytes,padded=(size+3)&~3ull;
@@ -843,7 +873,6 @@ static void copy_texture_texture(const p_copy_t2t *c) {
     dependencies_prepare_texture(c->src);
     if(c->dst->has_layout&&c->dst->mem)dependencies_prepare_texture(c->dst);
     graphics_pass_end();image_entry *src=image_get(c->src),*dst=image_get(c->dst);image_upload(src);
-    // 原 Metal 的目标也经 tex_mtl：packaged 目标未被覆盖的块和 mip 必须先有真实源内容。
     // Metal also resolves destinations through tex_mtl; preserve untouched blocks/mips of packaged destinations from their real source.
     if(dst->texture.has_layout&&dst->texture.mem)image_upload(dst);
     image_access(src,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_READ_BIT);image_access(dst,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -856,10 +885,10 @@ static void copy_texture_texture(const p_copy_t2t *c) {
     }
     image_gpu_written(dst);
 }
-/* The texture descriptor table is reserved once at its largest size (address space only; untouched pages cost nothing)
-   so it never moves, and every entry has a sequence number (odd while being written): descriptor_texture() reads an
-   entry without the descriptor lock, retrying a copy that raced a write. It ran for every texture binding of every draw
-   (~60,000 lock pairs a frame in the open world). */
+/* The texture descriptor table is reserved once at its largest size (address space only; untouched pages cost
+   nothing) so it never moves, and every entry has a sequence number (odd while being written): descriptor_texture()
+   reads an entry without the descriptor lock, retrying a copy that raced a write. It runs for every texture binding
+   of every draw (~60,000 lock pairs a frame in the open world if it locked). */
 static _Atomic uint32_t texture_seq[1u << 20];
 void mtl_set_tex_pool_n(int n) {
     if(n<0||n>1048576)die("Vulkan texture descriptor capacity %d",n);pthread_mutex_lock(&descriptor_lock);
@@ -867,7 +896,8 @@ void mtl_set_tex_pool_n(int n) {
         if(m==MAP_FAILED)die("Vulkan descriptor reservation");texture_descriptors=m;}
     if(n>texture_capacity)texture_capacity=n;pthread_mutex_unlock(&descriptor_lock);
 }
-static _Atomic uint64_t descriptor_generation;   /* TOTK: changes whenever a texture id is (re)registered */
+/* TOTK: changes whenever a texture id is (re)registered */
+static _Atomic uint64_t descriptor_generation;
 /* TOTK: per texture id what a shader variant depends on (nvn_vulkan_totk_shader.inc totk_state_sig): 1 | target << 1 |
    format << 8 of the view (else the texture), 0 for none. A fixed array (4 MB of zero pages until used): read without
    the descriptor lock on every draw. */
@@ -881,12 +911,13 @@ void mtl_reg_samp(int id,const samp_par *p) {
     if(id>=sampler_capacity){int n=(id+64)&~63;sampler_descriptor *next=realloc(sampler_descriptors,n*sizeof *next);if(!next)die("Vulkan sampler allocation");memset(next+sampler_capacity,0,(n-sampler_capacity)*sizeof *next);sampler_descriptors=next;sampler_capacity=n;}
     sampler_descriptors[id].valid=1;sampler_descriptors[id].parameters=*p;sampler_descriptors[id].sampler=VK_NULL_HANDLE;if(id<4096)atomic_store_explicit(&sampler_fast[id],0,memory_order_release);pthread_mutex_unlock(&descriptor_lock);
 }
-/* Released textures are unlinked at once (a later texture with the same serial gets a new image) and torn down once the
-   GPU has finished the last submission made before the release: framebuffers and views destroyed, image and memory
-   into the free list. This replaced an mtl_finish (a full GPU wait) per release, ~26 per frame on the title screen. */
+/* Released textures are unlinked at once (a later texture with the same serial gets a new image) and torn down once
+   the GPU has finished the last submission made before the release: framebuffers and views destroyed, image and
+   memory into the free list. A full GPU wait per release would be ~26 per frame on the title screen. */
 typedef struct retired_image { image_entry *e; uint64_t fence; struct retired_image *next; } retired_image;
 static retired_image *retired_images;
-static uint64_t image_generation;   /* advances when any image entry is destroyed: cached entry pointers (bind_shader's texture memo) are stale */
+/* advances when any image entry is destroyed: cached entry pointers (bind_shader's texture memo) are stale */
+static uint64_t image_generation;
 static void image_destroy_locked(image_entry *e) {
     image_generation++;
     graphics_cache_forget_image(e);
@@ -901,7 +932,7 @@ static void image_reap_locked(void) {
     for(retired_image **link=&retired_images;*link;){retired_image *r=*link;
         if(mtl_wait(r->fence,0)){*link=r->next;image_destroy_locked(r->e);free(r);}else link=&r->next;}
 }
-static void frz_forget_image(const image_entry *e);   /* nvn_vulkan_freeze.inc */
+static void frz_forget_image(const image_entry *e);
 /* Unlink an image entry (from the list, the serial index and the storage index) and retire it. */
 static void image_retire_locked(image_entry *e) {
     TRACEIMG(&e->texture,"retired");
@@ -919,7 +950,8 @@ static void image_release_locked(uint64_t serial) {
     if(!e||!e->holders)return;
     TRACEIMG(&e->texture,"release serial %llu (holders %u)",(unsigned long long)serial,e->holders);
     if(--e->holders)return;
-    if(e->storage_keyed){e->idle_since=presents+1;return;}   /* kept for a re-initialised object at the same storage */
+    /* kept for a re-initialised object at the same storage */
+    if(e->storage_keyed){e->idle_since=presents+1;return;}
     image_retire_locked(e);
 }
 /* Storage-keyed images nobody has held for STORAGE_IDLE_FRAMES frames. */
@@ -987,7 +1019,8 @@ void mtl_write_texels(const tex_t *t,unsigned level,unsigned layer0,const NVNcop
         }
         free(lin);
         if(!ok){static int said;if(!said++)LOG("[vulkan] WriteTexels: texture layout %#x not swizzlable; guest bytes not updated",t->d.flags);}
-        nvn_dirty_protect(t->mem,t->L.size);uint64_t now=nvn_dirty_now();image_source_baseline(e,t->mem,now);if(!t->has_layout)e->stamp=now;   /* our own write is not a change to upload */
+        /* our own write is not a change to upload */
+        nvn_dirty_protect(t->mem,t->L.size);uint64_t now=nvn_dirty_now();image_source_baseline(e,t->mem,now);if(!t->has_layout)e->stamp=now;
     }
     mtl_sub_commit();
 }

@@ -18,7 +18,8 @@ static int lz4_block(const uint8_t *s, size_t sn, uint8_t *d, size_t dn) {
         if (lit <= 16 && iend - ip >= 16 && oend - op >= 16) memcpy(op, ip, 16);
         else memcpy(op, ip, lit);
         ip += lit; op += lit;
-        if (ip == iend) break;                                  /* the last sequence has literals only */
+        /* the last sequence has literals only */
+        if (ip == iend) break;
         if (iend - ip < 2) return -1;
         size_t off = ip[0] | (size_t)ip[1] << 8, len = token & 15;
         ip += 2;
@@ -30,7 +31,8 @@ static int lz4_block(const uint8_t *s, size_t sn, uint8_t *d, size_t dn) {
         size_t room = (size_t)(oend - op);
         if (off >= 16 && room >= len + 16) for (size_t k = 0; k < len; k += 16) memcpy(op + k, m + k, 16);
         else if (off >= 8 && room >= len + 8) for (size_t k = 0; k < len; k += 8) memcpy(op + k, m + k, 8);
-        else for (size_t k = 0; k < len; k++) op[k] = m[k];     /* overlapping: repeats the pattern */
+        /* overlapping: repeats the pattern */
+        else for (size_t k = 0; k < len; k++) op[k] = m[k];
         op += len;
     }
     return op == oend ? 0 : -1;
@@ -84,7 +86,8 @@ int tokp_load_image(const uint8_t *d, const tokp_layout *l, uint8_t *img, char *
         } else memcpy(img + s[i].mem, d + s[i].file, s[i].size);
         at = (uint64_t)s[i].mem + s[i].size;
     }
-    memset(img + at, 0, l->patch_off - at);     /* bss, key page, padding */
+    /* bss, key page, padding */
+    memset(img + at, 0, l->patch_off - at);
     return TOKP_OK;
 }
 
@@ -96,7 +99,8 @@ static int eh_read(const uint8_t *img, uint64_t len, int64_t o, int64_t ehs, uns
     int64_t x;
     if (fmt == 3) x = rd32(img + o);
     else if (fmt == 0xB) x = (int32_t)rd32(img + o);
-    else { uint64_t u = rd64(img + o); x = u > (uint64_t)1 << 62 ? (int64_t)1 << 62 : (int64_t)u; }   /* huge is all that matters */
+    /* huge is all that matters */
+    else { uint64_t u = rd64(img + o); x = u > (uint64_t)1 << 62 ? (int64_t)1 << 62 : (int64_t)u; }
     if (app == 0x10) x += o;
     if (app == 0x30) x += ehs;
     *v = x; *size = sz;

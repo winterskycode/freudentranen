@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive : enable
 // SMAA pass 3: neighbourhood blending of the canvas copy that pass 1 wrote (linear values, so the bilinear blends are
 // linear-light), written into the canvas itself as an R11G11B10F storage image. (A packed R32_UINT image copied over the
-// canvas instead cost ~0.95 ms on Turnip; the direct write costs nothing extra.)
+// canvas instead costs ~0.95 ms on Turnip; the direct write costs nothing extra.)
 layout(binding = 0) uniform sampler2D colorTex;
 layout(binding = 1) uniform sampler2D blendTex;
 layout(binding = 2, r11f_g11f_b10f) uniform writeonly image2D colorOut;

@@ -52,7 +52,8 @@ final class IconMod {
         final List<Glyph> glyphs = new ArrayList<>();
         final Map<String, byte[]> masks = new LinkedHashMap<>();
         int size;
-        String id = "";   // in a mod's mod.json as its version: another APK's drawings make the mod again
+        // in a mod's mod.json as its version: another APK's drawings make the mod again
+        String id = "";
 
         static Art read(byte[] b) throws IOException {
             if (b == null) throw new IOException("This app has no drawings of them.");
@@ -235,7 +236,8 @@ final class IconMod {
             else System.arraycopy(cff, strings.from(g), out, data + offsets[g], strings.to(g) - strings.from(g));
         }
         System.arraycopy(cff, strings.end, out, strings.start + length, cff.length - strings.end);
-        for (int op : new int[]{15, 16, 18}) {   // charset, Encoding, Private: what lies after the charstrings moves with them
+        // charset, Encoding, Private: what lies after the charstrings moves with them
+        for (int op : new int[]{15, 16, 18}) {
             List<int[]> args = top.get(op); if (args == null) continue;
             int[] offset = args.get(args.size() - 1);
             if (offset[0] >= strings.end) shift(out, offset, moved);
@@ -313,7 +315,8 @@ final class IconMod {
         ByteBuffer d = ModData.le(b); Set<String> left = new HashSet<>(art.masks.keySet());
         for (int i = at; i <= end - 0x78; i++) {
             if (b[i] != 'B' || b[i + 1] != 'R' || b[i + 2] != 'T' || b[i + 3] != 'I') continue;
-            long nameAt = d.getLong(i + 0x60); if (nameAt < 0 || nameAt > end - at - 2) continue;   // those bytes in a picture: no texture
+            // those bytes in a picture: no texture
+            long nameAt = d.getLong(i + 0x60); if (nameAt < 0 || nameAt > end - at - 2) continue;
             int nameSize = d.getShort(at + (int) nameAt) & 0xffff; if (nameAt + 2 + nameSize > end - at) continue;
             String name = new String(b, at + (int) nameAt + 2, nameSize, StandardCharsets.ISO_8859_1);
             int hat = name.indexOf('^'); if (hat >= 0) name = name.substring(0, hat);
@@ -368,7 +371,8 @@ final class IconMod {
             int done = 0;
             for (Future<Mods.Entry> job : jobs) { entries.add(job.get()); p.step(String.format(Locale.ROOT, "Making the PlayStation buttons %d / %d", ++done, ARCHIVES.length)); }
             entries.sort(Comparator.comparing(e -> e.path));
-        } finally {   // after a failure too: a job still running would write into the folder that is being removed
+        // after a failure too: a job still running would write into the folder that is being removed
+        } finally {
             pool.shutdownNow(); pool.awaitTermination(5, TimeUnit.MINUTES);
         }
     }

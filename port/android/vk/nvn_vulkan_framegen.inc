@@ -4,7 +4,7 @@
    The inputs are the ones the Mac port's MetalFX interpolation found (totk_mfx.m, nvn_mtl.m canvas_learn / mfx_pass_setup):
     - the canvas: the last colour target with the presented texture's shape before a pass into the presented texture,
       without depth or as the only colour target (with the HUD hidden, diving for one, the frame ends on the bloom
-      composite, which keeps the depth bound: counting only depth-less passes took the 640x360 bloom source then);
+      composite, which keeps the depth bound: counting only depth-less passes would take the 640x360 bloom source);
     - the G-buffer depth: a D32F depth of the colour size with three or more colour targets, and the camera from that
       pass's first draw (vertex uniform 1, the 2368-byte block: view-projection at floats 12..27, row-major, position at
       47/51/55);
@@ -21,33 +21,45 @@ static int fg_dump_state; static void fg_dump_image(image_entry *e, uint32_t w, 
 static const char *const fg_ui_vs[] = {"7f2113e2", "e9fd7b43", "a662e313", "16684efc", "3e11cee5", "48c18ae6", "35cbc686", "4872bec9", "9f47ed90"};
 static struct {
     int on;
-    uint64_t swap[4]; int nswap; uint32_t swap_w, swap_h; uint64_t canvas, last_c0; image_entry *last_c0_img;   /* last_c0_img: this frame's */
-    int aa_done; uint64_t aa_hudless;   /* a frame without UI anti-aliased at the copy into the presented texture */
+    /* last_c0_img: this frame's */
+    uint64_t swap[4]; int nswap; uint32_t swap_w, swap_h; uint64_t canvas, last_c0; image_entry *last_c0_img;
+    /* a frame without UI anti-aliased at the copy into the presented texture */
+    int aa_done; uint64_t aa_hudless;
     image_entry *depth; graphics_frame_entry *gbuffer; int want_cam, cam_ok, prev_ok, scene_done, cur;
     float cam[84], prev_cam[84];
     image_entry scene[2], out; int scene_valid[2];
-    image_entry last; int last_ok; uint32_t last_w, last_h; uint64_t kept_at;   /* the previous frame's finished picture (top-left last_w x last_h of a presented-texture-sized image); kept_at: presents + 1 of the frame it was kept in */
+    /* the previous frame's finished picture (top-left last_w x last_h of a presented-texture-sized image); kept_at:
+       presents + 1 of the frame it was kept in */
+    image_entry last; int last_ok; uint32_t last_w, last_h; uint64_t kept_at;
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline; VkSampler linear;
     VkDescriptorSetLayout hud_set_layout; VkPipelineLayout hud_layout; VkPipeline hud_pipeline;
-    int lsfg;   /* TOTK_LSFG: LSFG takes the scenes and the HUD too (nvn_vulkan_lsfg.inc) */
-    int hud_generated;   /* TOTK_FG_HUD=generated: the HUD goes through frame generation with the scene (fg_scene) */
+    /* TOTK_LSFG: LSFG takes the scenes and the HUD too (nvn_vulkan_lsfg.inc) */
+    int lsfg;
+    /* TOTK_FG_HUD=generated: the HUD goes through frame generation with the scene (fg_scene) */
+    int hud_generated;
     uint64_t made, frames, no_input, cuts, snapshots, hud_less, panel_limited;
-    float view[2];   /* this frame's G-buffer viewport as a share of its target (dynres_note), 0 before it is known */
-    int in_gbuffer; unsigned gdraws;   /* the current pass is a G-buffer pass; this frame's draws into G-buffer passes */
-    int menu, low_frames, menu_cap; uint64_t menus;   /* menu mode (fg_menu_frame), and the frame cap to restore after it */
-    int trace; unsigned trace_draws;   /* TOTK_FG_TRACE: frames left to log pass by pass (set when the canvas changes) */
+    /* this frame's G-buffer viewport as a share of its target (dynres_note), 0 before it is known */
+    float view[2];
+    /* the current pass is a G-buffer pass; this frame's draws into G-buffer passes */
+    int in_gbuffer; unsigned gdraws;
+    /* menu mode (fg_menu_frame), and the frame cap to restore after it */
+    int menu, low_frames, menu_cap; uint64_t menus;
+    /* TOTK_FG_TRACE: frames left to log pass by pass (set when the canvas changes) */
+    int trace; unsigned trace_draws;
 } fg = {.on = -1, .lsfg = -1, .hud_generated = -1};
 
-static int fg_fsr;   /* TOTK_FRAMEGEN=fsr<rate>: FSR 3.1 makes the picture (nvn_vulkan_fsrfg.inc), else the built-in pass */
+/* TOTK_FRAMEGEN=fsr<rate>: FSR 3.1 makes the picture (nvn_vulkan_fsrfg.inc), else the built-in pass */
+static int fg_fsr;
 static void fg_parse(const char *v, int *use_lsfg, int *hz, int *mult);
 static int fg_enabled(void) {
     if (fg.on < 0) { int l, hz, m; fg_parse(getenv("TOTK_FRAMEGEN"), &l, &hz, &m); fg.on = !l && hz > 0; LOG("[framegen] %s", !fg.on ? "off" : fg_fsr && fsr_device_ok ? "on: FSR 3.1, a generated picture between game frames" : "on: a generated picture between game frames"); }
     return fg.on;
 }
-static int smaa_on(void); static int smaa_apply(image_entry *canvas); static void smaa_toggle(void); static int smaa_scene_done(void);   /* nvn_vulkan_smaa.inc */
+static int smaa_on(void); static int smaa_apply(image_entry *canvas); static void smaa_toggle(void); static int smaa_scene_done(void);
 /* The canvas, the scene snapshots and the HUD are followed for either frame generation, and for anti-aliasing (the
    canvas before the first UI draw) */
-static int taa_enabled(void);   /* nvn_vulkan_taa.inc: it needs the G-buffer depth and the camera too */
+/* TAA needs the G-buffer depth and the camera too */
+static int taa_enabled(void);
 static int fg_track(void) {
     if (fg.lsfg < 0) fg.lsfg = lsfg_requested();
     return fg_enabled() || fg.lsfg || smaa_on() || taa_enabled();
@@ -91,7 +103,8 @@ static void fg_image_levels(image_entry *e, VkFormat format, uint32_t w, uint32_
    draws' shaders), to see what the game draws between its canvas and the presented texture. */
 static void fg_trace_start(void) {
     static int on = -1; if (on < 0) { const char *e = getenv("TOTK_FG_TRACE"); on = e && atoi(e) > 0; }
-    if (on) fg.trace = 3;   /* the rest of this frame, then two whole ones */
+    /* the rest of this frame, then two whole ones */
+    if (on) fg.trace = 3;
 }
 static void fg_trace_pass(graphics_frame_entry *frame, const image_entry *c0) {
     const graphics_pass_key *k = &frame->key.pass->key;
@@ -112,7 +125,8 @@ static void fg_trace_draw(const shader_entry *vs, const shader_entry *fs) {
 static void fg_pass_begin(graphics_frame_entry *frame) {
     if (!fg_track()) return;
     const graphics_pass_key *k = &frame->key.pass->key;
-    image_entry *c0 = k->colors && k->color_indices[0] < k->attachments ? frame->images[k->color_indices[0]] : NULL;   /* slot 0 may be unused */
+    /* slot 0 may be unused */
+    image_entry *c0 = k->colors && k->color_indices[0] < k->attachments ? frame->images[k->color_indices[0]] : NULL;
     if (fg.trace > 0) fg_trace_pass(frame, c0);
     if (c0 && fg.swap_w) {
         int to_swap = 0; for (int i = 0; i < fg.nswap; i++) to_swap |= fg.swap[i] == c0->serial;
@@ -131,12 +145,14 @@ static void fg_pass_begin(graphics_frame_entry *frame) {
    bar), and frame generation would only hold the menu's own animations (tab swipes) at the rendered rate. Neither runs
    in such frames, and in menu mode (three in a row) the frame cap goes up to the pictures shown (fg_shown_hz). */
 #define FG_MENU_GBUFFER_DRAWS 200
-int nvn_frame_cap_get(void) __attribute__((weak)); void nvn_frame_cap_set(int hz) __attribute__((weak));   /* hle_nvn.c */
+int nvn_frame_cap_get(void) __attribute__((weak)); void nvn_frame_cap_set(int hz) __attribute__((weak));
 static int fg_menu_frame(void) { return fg.gdraws < FG_MENU_GBUFFER_DRAWS; }
 /* TOTK_FRAMEGEN: 0, <rate> (built-in, x2) or lsfg<rate>[x<multiplier>]: the game's rendered rate, and the pictures shown
    (rate x multiplier, the player's frame rate cap; host/app.c frame_settings). fg_shown_hz: those pictures a second, 0
    without frame generation; the in-game menu changes it (ov_apply). */
-static int fg_shown = -1, fg_adaptive;   /* fg_adaptive: lsfg<rate>xa, the pictures shown match the display (nvn_vulkan_lsfg.inc); mult 1 then: the game renders at the cap */
+/* fg_adaptive: lsfg<rate>xa, the pictures shown match the display (nvn_vulkan_lsfg.inc); mult 1 then: the game renders
+   at the cap */
+static int fg_shown = -1, fg_adaptive;
 static void fg_parse(const char *v, int *use_lsfg, int *hz, int *mult) {
     *use_lsfg = v && !strncmp(v, "lsfg", 4); fg_fsr = v && !strncmp(v, "fsr", 3); *hz = v ? atoi(*use_lsfg ? v + 4 : fg_fsr ? v + 3 : v) : 0; *mult = 2; fg_adaptive = 0;
     const char *x = *use_lsfg ? strchr(v, 'x') : NULL;
@@ -152,7 +168,8 @@ static void fg_menu_update(void) {
     int menu = fg.low_frames >= 3;
     if (menu == fg.menu) return;
     fg.menu = menu;
-    int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0, hz = fg_shown_hz();   /* menus run at every picture shown */
+    /* menus run at every picture shown */
+    int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0, hz = fg_shown_hz();
     if (menu) {
         fg.menus++;
         if ((fg.on > 0 || fg.lsfg > 0) && nvn_frame_cap_set && hz > cap) { fg.menu_cap = cap; nvn_frame_cap_set(hz); }
@@ -185,14 +202,16 @@ static void fg_before_draw(const shader_entry *vs) {
        texture (no canvas yet) gives no scene, and the HUD stays in this frame's generated pictures */
     if (c->format != VK_FORMAT_B10G11R11_UFLOAT_PACK32 && c->format != VK_FORMAT_R16G16B16A16_SFLOAT) return;
     graphics_pass_end();
-    int touched = smaa_on() && !smaa_scene_done() && !fg_menu_frame() && smaa_apply(c);   /* anti-aliasing before the UI (and before the scene snapshot, which gets it too) */
+    /* anti-aliasing before the UI (and before the scene snapshot, which gets it too) */
+    int touched = smaa_on() && !smaa_scene_done() && !fg_menu_frame() && smaa_apply(c);
     touched |= fg_scene_copy(c);
     /* the UI draw's barrier for its colour target was recorded before the anti-aliasing and the copy: made again */
     if (touched) image_access(c, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 }
 /* this frame's scene snapshot for frame generation (none for anti-aliasing alone) */
 static int fg_scene_copy(image_entry *c) {
-    if ((!fg_enabled() && !fg.lsfg) || fg_hud_generated()) { fg.scene_done = 1; return 0; }   /* TOTK_FG_HUD=generated: no scene is read (fg_scene) */
+    /* TOTK_FG_HUD=generated: no scene is read (fg_scene) */
+    if ((!fg_enabled() && !fg.lsfg) || fg_hud_generated()) { fg.scene_done = 1; return 0; }
     image_entry *s = &fg.scene[fg.cur];
     fg_image(s, c->format, c->texture.d.width, c->texture.d.height, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     image_access(c, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
@@ -212,7 +231,8 @@ static void fg_after_pass(void) {
     else { static int said; if (said++ < 5) LOG("[framegen] G-buffer pass: vertex uniform 1 is %#llx / %u bytes, not the 2368-byte camera block", (unsigned long long)u->addr, (unsigned)u->size); }
 }
 
-static int fg_invert4(const double a[16], double o[16]) {   /* row-major, Gauss-Jordan with partial pivoting */
+/* row-major, Gauss-Jordan with partial pivoting */
+static int fg_invert4(const double a[16], double o[16]) {
     double m[4][8];
     for (int r = 0; r < 4; r++) for (int c = 0; c < 8; c++) m[r][c] = c < 4 ? a[r * 4 + c] : (c - 4 == r);
     for (int c = 0; c < 4; c++) {
@@ -252,10 +272,11 @@ static void fg_pipeline(void) {
 /* TOTK_FG_HUD: "real" (default) puts this frame's HUD on the generated pictures, sharp but moving at the rendered rate
    (labels that follow things in the world step across the screen); "generated" interpolates the finished pictures, HUD
    included: smooth labels, text may smear while moving. Live from the in-game menu (ov_apply). */
-static int fsr_fg_enabled(void);   /* nvn_vulkan_fsrfg.inc */
+static int fsr_fg_enabled(void);
 static int fg_hud_generated(void) {
     if (fg.hud_generated < 0) { const char *e = getenv("TOTK_FG_HUD"); fg.hud_generated = e && !strcmp(e, "generated"); }
-    return fg.hud_generated && !(fg.on > 0 && fsr_fg_enabled());   /* FSR moves everything with the camera: a HUD in its input comes out doubled */
+    /* FSR moves everything with the camera: a HUD in its input comes out doubled */
+    return fg.hud_generated && !(fg.on > 0 && fsr_fg_enabled());
 }
 /* This frame's scene (the canvas before the UI) when it was copied and has the picture's size, else NULL; prev: the
    previous frame's instead (NULL unless both frames have one). */
@@ -273,7 +294,8 @@ static image_entry *fg_scene(uint32_t w, uint32_t h, int prev) {
    current command buffer. */
 static void fg_hud_pass(image_entry *dst, image_entry *fin, image_entry *scene, image_entry *scene_prev, image_entry *fin_prev, uint32_t w, uint32_t h, int mode) {
     if (!fg.hud_pipeline) {
-        fg_pipeline();   /* the sampler */
+        /* for the sampler */
+        fg_pipeline();
         VkDescriptorSetLayoutBinding b[5];
         for (int i = 0; i < 5; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorType = i != 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
             .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
@@ -297,7 +319,8 @@ static void fg_hud_pass(image_entry *dst, image_entry *fin, image_entry *scene, 
     /* the previous frame's scene and finished picture: the see-through share of translucent UI (framegen_hud.comp) */
     int has_prev = scene_prev && fin_prev;
     if (has_prev) { image_access(scene_prev, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT); image_access(fin_prev, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT); }
-    else scene_prev = scene, fin_prev = fin;   /* stand-ins, unused */
+    /* stand-ins, unused */
+    else scene_prev = scene, fin_prev = fin;
     VkDescriptorImageInfo img[5] = {
         {fg.linear, attachment_view(fin, NULL, fin->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(scene, NULL, scene->format), VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(dst, NULL, dst->format), VK_IMAGE_LAYOUT_GENERAL},
@@ -327,9 +350,12 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
-    if (fsr_fg_enabled()) fsr_pipelines();   /* behind the boot logo: about 300 ms the first time, then from the pipeline cache */
-    if (fg.menu || fg_menu_frame()) return NULL;   /* from the first menu frame on, not three frames in */
-    if (pace_pictures_fit(nvn_frame_cap_get ? nvn_frame_cap_get() : 0) < 2) { fg.panel_limited++; return NULL; }   /* the panel has no room for it (pace_refresh_poll) */
+    /* behind the boot logo: about 300 ms the first time, then from the pipeline cache */
+    if (fsr_fg_enabled()) fsr_pipelines();
+    /* from the first menu frame on, not three frames in */
+    if (fg.menu || fg_menu_frame()) return NULL;
+    /* the panel has no room for it (pace_refresh_poll) */
+    if (pace_pictures_fit(nvn_frame_cap_get ? nvn_frame_cap_get() : 0) < 2) { fg.panel_limited++; return NULL; }
     if (!fg.cam_ok || !fg.prev_ok || !fg.depth || !fg.last_ok) { fg.no_input++; return NULL; }
     double dx = fg.cam[47] - fg.prev_cam[47], dy = fg.cam[51] - fg.prev_cam[51], dz = fg.cam[55] - fg.prev_cam[55];
     double turn = fg.cam[8] * fg.prev_cam[8] + fg.cam[9] * fg.prev_cam[9] + fg.cam[10] * fg.prev_cam[10];
@@ -356,13 +382,16 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     VkImageView depth_view = image_view_formatted(fg.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fg.depth->format)->view;
     float push[28];
-    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];   /* GLSL mat4 is column-major */
+    /* GLSL mat4 is column-major */
+    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
     push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
     static int debug; static uint64_t debug_next; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
-    if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];   /* <files>/fgdebug: tint by decision */
+    /* <files>/fgdebug: tint by decision */
+    if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
     push[20] = 1.0f; push[21] = 0.08f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
-    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = 0; push[27] = 0;   /* the picture is the top-left of the presented texture (the scenes are its size) */
+    /* the picture is the top-left of the presented texture (the scenes are its size) */
+    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = 0; push[27] = 0;
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
     else {
     VkDescriptorImageInfo img[5] = {
@@ -423,7 +452,8 @@ static int image_save_ppm(image_entry *e, uint32_t w, uint32_t h, const char *pa
     return ok;
 }
 static void fg_dump_image(image_entry *e, uint32_t w, uint32_t h, const char *tag) {
-    const char *dir = getenv("DM_VK_SHADERS"); char path[1200]; int raw = e->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32;   /* a scene: written as is (<tag>.r11g11b10) */
+    /* a scene: written as is (<tag>.r11g11b10) */
+    const char *dir = getenv("DM_VK_SHADERS"); char path[1200]; int raw = e->format == VK_FORMAT_B10G11R11_UFLOAT_PACK32;
     if (!dir) return;
     snprintf(path, sizeof path, "%s/../fgdump", dir); mkdir(path, 0700);
     snprintf(path, sizeof path, "%s/../fgdump/%06llu-%s.%s", dir, (unsigned long long)presents, tag, raw ? "r11g11b10" : "ppm");
@@ -431,7 +461,8 @@ static void fg_dump_image(image_entry *e, uint32_t w, uint32_t h, const char *ta
     uint8_t *px = image_read_back(e, w, h); FILE *f = px ? fopen(path, "wb") : NULL; if (!f) { free(px); return; }
     fwrite(px, 4, (size_t)w * h, f); fclose(f); free(px); LOG("[framegen] dump: %s (%ux%u)", path, w, h);
 }
-/* The debug files, every 250 ms as input.now is (each was two access() and an fopen a frame on the translation thread) */
+/* The debug files, every 250 ms as input.now is: each is two access() and an fopen, too much per frame on the
+   translation thread. */
 static void fg_dump_poll(void) {
     if (fg_dump_state) return;
     static uint64_t next; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC); if (now < next) return; next = now + 250000000ull;
@@ -441,13 +472,13 @@ static void fg_dump_poll(void) {
     /* <files>/aa.toggle: anti-aliasing on/off, for A/B screenshots of a frozen frame (frz.sh) */
     snprintf(path, sizeof path, "%s/../aa.toggle", dir);
     if (!access(path, F_OK)) { unlink(path); smaa_toggle(); }
-    snprintf(path, sizeof path, "%s/../exp.live", dir);   /* live experiments (nvn_vulkan_forward.inc) */
+    /* live experiments (nvn_vulkan_forward.inc) */
+    snprintf(path, sizeof path, "%s/../exp.live", dir);
     { FILE *f = fopen(path, "r"); char now[sizeof live_exp] = "";
       if (f) { if (!fgets(now, sizeof now, f)) now[0] = 0; fclose(f); now[strcspn(now, "\n")] = 0; }
       else { const char *e = getenv("TOTK_VK_LIVE"); if (e) snprintf(now, sizeof now, "%s", e); }
       if (strcmp(now, live_exp)) { snprintf(live_exp, sizeof live_exp, "%s", now); live_log_frame = 0; LOG("[exp] live: '%s'", live_exp); } }
 }
-/* After the real present: this frame becomes the previous one. */
 /* Keep this frame's finished picture for the next generated one: recorded into the current batch (LSFG records it after
    its HUD composites, which read the previous one: fg.kept_at, so fg_frame_end needs no batch of its own). */
 static void fg_keep_record(image_entry *fin, uint32_t sw, uint32_t sh) {
@@ -461,7 +492,8 @@ static void fg_keep_record(image_entry *fin, uint32_t sw, uint32_t sh) {
 static void fg_keep_picture(const tex_t *t, const int crop[4]) {
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
     if (crop && (crop[0] || crop[1])) { fg.last_ok = 0; return; }
-    if (fg.kept_at == presents + 1) return;   /* LSFG kept it already this frame */
+    /* LSFG kept it already this frame */
+    if (fg.kept_at == presents + 1) return;
     if (async_recording_owned) mtl_sub_commit();
     mtl_sub_begin();
     fg_keep_record(image_get(t), sw, sh);
@@ -472,7 +504,8 @@ static void fg_keep_picture(const tex_t *t, const int crop[4]) {
 static struct { int on; float w, h; uint32_t tw, th; unsigned n; struct { uint16_t w, h; unsigned count; } sizes[16]; } dynres = {.on = -1};
 static void dynres_note(float w, float h, uint32_t tw, uint32_t th) {
     if (dynres.on < 0) { const char *e = getenv("TOTK_DYNRES_STATS"); dynres.on = e && atoi(e) > 0; }
-    if (fg.in_gbuffer && tw && th) { fg.view[0] = w / (float)tw; fg.view[1] = h / (float)th; }   /* the share of the depth target the scene drew */
+    /* the share of the depth target the scene drew */
+    if (fg.in_gbuffer && tw && th) { fg.view[0] = w / (float)tw; fg.view[1] = h / (float)th; }
     if (dynres.on && tw >= 1024 && w * h > dynres.w * dynres.h) { dynres.w = w; dynres.h = h; dynres.tw = tw; dynres.th = th; }
 }
 static void dynres_frame(void) {
@@ -488,14 +521,16 @@ static void dynres_frame(void) {
     }
     dynres.w = dynres.h = 0;
 }
-static void taa_frame_end(void);   /* nvn_vulkan_taa.inc */
+static void taa_frame_end(void);
 static void fg_frame_end(const tex_t *t, const int crop[4]) {
     dynres_frame(); taa_frame_end();
-    fg_dump_poll(); magenta_poll(); shader_override_poll();   /* the debug files, once a frame (not per draw: ~7,600 clock reads a frame) */
+    /* the debug files, once a frame (per draw would be ~7,600 clock reads a frame) */
+    fg_dump_poll(); magenta_poll(); shader_override_poll();
     live_frame_base = draw_count;
     if (!fg_track()) return;
     if (fg.trace > 0 && !--fg.trace) LOG("[fg-trace] end");
-    if (fg.on > 0 || (fg.lsfg > 0 && fg.scene_done && !fg_hud_generated())) fg_keep_picture(t, crop);   /* LSFG: for the HUD composite's translucent UI */
+    /* LSFG: for the HUD composite's translucent UI */
+    if (fg.on > 0 || (fg.lsfg > 0 && fg.scene_done && !fg_hud_generated())) fg_keep_picture(t, crop);
     else fg.last_ok = 0;
     if (fg_dump_state == 2) { fg_dump_image(image_get(t), fg.out.texture.d.width, fg.out.texture.d.height, "real"); fg_dump_state = 0; }
     else if (fg_dump_state == 1 && fg.made && fg.out.image) { fg_dump_image(&fg.out, fg.out.texture.d.width, fg.out.texture.d.height, "mid"); fg_dump_state = 2; }
@@ -503,9 +538,11 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     if (!known) fg.swap[fg.nswap < 4 ? fg.nswap++ : (int)(t->serial % 4)] = t->serial;
     fg.swap_w = t->d.width; fg.swap_h = t->d.height;
     fg_menu_update();
-    memcpy(fg.prev_cam, fg.cam, sizeof fg.cam); fg.prev_ok = fg.cam_ok && !fg_menu_frame();   /* no picture generated from a menu frame */
+    /* no picture generated from a menu frame */
+    memcpy(fg.prev_cam, fg.cam, sizeof fg.cam); fg.prev_ok = fg.cam_ok && !fg_menu_frame();
     if (fg.scene_done) fg.cur ^= 1;
-    else fg.scene_valid[fg.cur ^ 1] = 0;   /* no scene this frame (no UI drawn): the older one is not the previous frame's */
+    /* no scene this frame (no UI drawn): the older one is not the previous frame's */
+    else fg.scene_valid[fg.cur ^ 1] = 0;
     fg.view[0] = fg.view[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0;
     if (fg.frames && !(fg.frames % 300)) LOG("[framegen] %llu game frames: %llu generated, %llu without room on the panel, %llu without inputs, %llu camera cuts, %llu scene snapshots, %llu with the HUD on top; canvas %llu; %llu menus; %llu anti-aliased without UI",
         (unsigned long long)fg.frames, (unsigned long long)fg.made, (unsigned long long)fg.panel_limited, (unsigned long long)fg.no_input, (unsigned long long)fg.cuts, (unsigned long long)fg.snapshots, (unsigned long long)fg.hud_less, (unsigned long long)fg.canvas, (unsigned long long)fg.menus, (unsigned long long)fg.aa_hudless);

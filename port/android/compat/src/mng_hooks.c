@@ -44,4 +44,5 @@ __attribute__((weak)) int mtl_b2_submit_uniforms_only(void) { return 0; }
 __attribute__((weak)) void *mtl_ucap_overlay(const void *base, const void *over) { (void)base; (void)over; return NULL; }
 __attribute__((weak)) void mtl_ucap_free(void *c) { (void)c; }
 __attribute__((weak)) void vr_b2_present_eye(int eye) { (void)eye; }
-void (*g_vr_find_camera)(const float *);   /* the VR compositor's camera search hook (totk_vr.m on the Mac) */
+/* the VR compositor's camera search hook (totk_vr.m on the Mac) */
+void (*g_vr_find_camera)(const float *);

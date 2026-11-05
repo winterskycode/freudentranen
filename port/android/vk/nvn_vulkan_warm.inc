@@ -1,21 +1,22 @@
-// PSO 预热：记录本机真实创建的图形管线描述，下次启动在后台重建，把驱动编译从游戏内首次遇到挪到启动/读取画面。
 // PSO warm-up: record genuinely created graphics pipeline descriptions, rebuild them in the background on the next
 // launch, moving driver compilation away from first in-game encounters to start-up / the loading screen.
-// 与 Metal 后端同一套思路（nvn_mtl.m warm_worker）：用户清单在本机积累，种子清单随构建分发；清单只描述管线状态。
 // Same design as the Metal backend (nvn_mtl.m warm_worker): a user manifest accumulates locally, a seed manifest
 // ships with the build; manifests describe pipeline state only.
-// 用户清单 $DM_VK_PIPELINE_CACHE_DIR/pso_vk_user.tsv（DM_PSO_USER=off 关闭记录）；种子清单 $DM_VK_SHADERS/pso_vk_manifest.tsv；
-// DM_PSO_MANIFEST=off 关闭预热，DM_PSO_MANIFEST=<path> 只加载该清单。
-// 行格式：'R\t<vs16hex>\t<fs16hex|->\t<pass_hex>\t<key_hex>'，头行同时校验版本与两个结构尺寸。
+// User manifest: $DM_VK_PIPELINE_CACHE_DIR/pso_vk_user.tsv (DM_PSO_USER=off stops recording). Seed manifest:
+// $DM_VK_SHADERS/pso_vk_manifest.tsv. DM_PSO_MANIFEST=off turns the warm-up off; DM_PSO_MANIFEST=<path> loads only that
+// manifest.
 // Line format: 'R\t<vs16hex>\t<fs16hex|->\t<pass_hex>\t<key_hex>'; the header verifies the version and both struct sizes.
 #define PSO_MANIFEST_LIMIT (8u<<20)
-#define PSO_RECORD_MAX 8192   /* a full 8 MB manifest is ~7,500 records */
+/* a full 8 MB manifest is ~7,500 records */
+#define PSO_RECORD_MAX 8192
 #define PSO_USER_NAME "pso_vk_user.tsv"
 #define PSO_SEED_NAME "pso_vk_manifest.tsv"
-typedef struct { char kind;char vs[17],fs[17];graphics_pass_key pass;pipeline_key key;uint64_t hash; } pso_record;   /* hash: of its manifest line */
+/* hash: of its manifest line */
+typedef struct { char kind;char vs[17],fs[17];graphics_pass_key pass;pipeline_key key;uint64_t hash; } pso_record;
 static pthread_mutex_t pso_manifest_mutex=PTHREAD_MUTEX_INITIALIZER;
 static _Atomic int pso_warm_running;
-static uint64_t *pso_built;static size_t pso_built_count;   /* line hashes of the records the warm-up built, sorted; set before pso_warm_running drops */
+/* line hashes of the records the warm-up built, sorted; set before pso_warm_running drops */
+static uint64_t *pso_built;static size_t pso_built_count;
 static pso_record *pso_records;
 static size_t pso_record_count;
 static uint64_t *pso_seen;
@@ -47,7 +48,6 @@ static int pso_seen_add(uint64_t hash) {
     while(pso_seen[at]){if(pso_seen[at]==hash)return 0;at=(at+1)&mask;}
     pso_seen[at]=hash;pso_seen_count++;return 1;
 }
-// 记录时归零结构体填充字节；清单行只由字段值决定，跨会话去重才稳定。
 // Zero struct padding when recording so manifest lines depend on field values only and dedup stays stable across sessions.
 static void pso_key_normalize(pipeline_key *out,const pipeline_key *in) {
     memset(out,0,sizeof *out);
@@ -60,7 +60,8 @@ static void pso_key_normalize(pipeline_key *out,const pipeline_key *in) {
     out->color=in->color;out->mask=in->mask;
     memcpy(out->blend,in->blend,sizeof in->blend);
     out->polygon=in->polygon;out->depth=in->depth;out->multisample=in->multisample;
-    out->depth_clamp=in->depth_clamp;out->raster_discard=in->raster_discard;out->pad_[1]=in->pad_[1]&0xc0;   /* feedback loop, raster order (not the bisection generations) */
+    /* feedback loop, raster order (not the bisection generations) */
+    out->depth_clamp=in->depth_clamp;out->raster_discard=in->raster_discard;out->pad_[1]=in->pad_[1]&0xc0;
 }
 static int pso_user_file(void) {
     if(pso_user_checked)return pso_user_fd;
@@ -91,7 +92,7 @@ static int pso_graphics_line(const shader_entry *vs,const shader_entry *fs,const
 static int pso_hash_cmp(const void *a,const void *b) {uint64_t x=*(const uint64_t *)a,y=*(const uint64_t *)b;return x<y?-1:x>y;}
 /* Whether the warm-up has built this pipeline this session: its compile is then in the driver's pipeline cache, and
    creating it at its first draw is a lookup (well under a millisecond), so the draw needn't be skipped for the
-   background build (nvn_vulkan_draw.inc). Skipping it there made every element flicker once the first time it was
+   background build (nvn_vulkan_draw.inc). Skipping it there makes every element flicker once the first time it is
    drawn, even with the whole start-up warmed: the title fade, the logo, the save pictures, the place name. */
 static int pso_warmed(const shader_entry *vs,const shader_entry *fs,const graphics_pass_key *pass,const pipeline_key *key) {
     if(atomic_load_explicit(&pso_warm_running,memory_order_acquire)||!pso_built_count)return 0;
@@ -178,13 +179,12 @@ static void pso_manifest_parse_fd(int fd,const char *name,int collect) {
     LOG("[vulkan-pso] manifest name=%s records=%zu total=%zu",name,pso_record_count-before,pso_record_count);
     free(data);
 }
-/* The user manifest only grows, and a new translator revision renames every shader: records of shaders no longer in the
-   cache can never be built, yet they filled the warm-up's record limit (the first 4096 lines) and the file's 8 MB, so
-   the warm-up built nothing and new pipelines were no longer recorded (every first draw skipped by the async build:
-   one-frame flickers at start). Before the file is opened for appending, it is rewritten without records whose shaders
-   (<key>.meta) are in none of the shader caches, or emptied if its header is from other struct sizes. Every cache counts
-   (the folders named shader-cache* beside DM_VK_SHADERS: one per GPU driver), so trying another driver keeps this one's
-   records. */
+/* The user manifest only grows, and a new translator revision renames every shader: records of shaders gone from the
+   cache can never be built, yet they fill the warm-up's record limit and the file's 8 MB, so the warm-up builds
+   nothing and new pipelines are not recorded (every first draw skipped by the async build: one-frame flickers at
+   start). Before the file is opened for appending, it is rewritten without records whose shaders (<key>.meta) are in
+   none of the shader caches, or emptied if its header is from other struct sizes. Every cache counts (the folders
+   named shader-cache* beside DM_VK_SHADERS: one per GPU driver), so trying another driver keeps this one's records. */
 enum { PSO_SHADER_DIRS = 16 };
 static int pso_shader_present(char dirs[][1024],int n,const char *key,size_t length) {
     if(length!=16)return 0;char path[1100];
@@ -217,7 +217,8 @@ static void pso_user_compact(void) {
                 keep=fs_end&&((fs_end-fs==2&&fs[1]=='-')||pso_shader_present(dirs,ndirs,fs+1,(size_t)(fs_end-fs-1)));}}
         if(keep){memcpy(kept+out,line,length);out+=length;kept[out++]='\n';}else if(line[0]!='#')dropped++;
     }
-    if(!header){out=0;dropped=lines=1;}   /* other struct sizes: nothing in it can be read; start over */
+    /* other struct sizes: nothing in it can be read; start over */
+    if(!header){out=0;dropped=lines=1;}
     if(dropped){
         char temporary[128];snprintf(temporary,sizeof temporary,".%s.%ld.tmp",PSO_USER_NAME,(long)getpid());
         int tfd=openat(pipeline_disk_dir,temporary,O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC|O_NOFOLLOW,0600);
@@ -237,7 +238,8 @@ static void pso_manifest_parse_path(const char *path,int collect) {
 }
 static int pso_warm_compute(const pso_record *record) {
     shader_entry *cs=shader_load_by_key(record->vs,0,0);if(!cs||cs->stage!=5||!cs->module||!cs->layout)return 0;
-    VkDescriptorSetLayout sets[2]={bl_layout,cs->layout};   /* TOTK_VK_BINDLESS: the global arrays are set 0 */
+    /* TOTK_VK_BINDLESS: the global arrays are set 0 */
+    VkDescriptorSetLayout sets[2]={bl_layout,cs->layout};
     VkPipelineLayout layout;VkPipelineLayoutCreateInfo li={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,.setLayoutCount=bl_set?2:1,.pSetLayouts=bl_set?sets:&cs->layout};
     if(vkCreatePipelineLayout(device,&li,NULL,&layout)!=VK_SUCCESS)return 0;
     VkComputePipelineCreateInfo ci={.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,.stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_COMPUTE_BIT,.module=cs->module,.pName="main"},.layout=layout};
@@ -246,13 +248,13 @@ static int pso_warm_compute(const pso_record *record) {
     VkPipelineShaderStageRequiredSubgroupSizeCreateInfo required;
     if(!dm_vk_driver_prepare_shader_stage(&vk_api,&ci.stage,&required))ok=0;
 #endif
-    if(ok&&pipeline_create_compute(&ci,&pipeline)==VK_SUCCESS)vkDestroyPipeline(device,pipeline,NULL);else ok=0;   /* stays in the driver cache */
+    /* stays in the driver cache */
+    if(ok&&pipeline_create_compute(&ci,&pipeline)==VK_SUCCESS)vkDestroyPipeline(device,pipeline,NULL);else ok=0;
     vkDestroyPipelineLayout(device,layout,NULL);
     return ok;
 }
 static int pso_warm_one(const pso_record *record) {
     if(record->kind=='C')return pso_warm_compute(record);
-    // 清单来自本机或无信任边界之外（种子），预热路径必须无副作用地跳过一切可疑记录。
     // Manifests may come from this device or from a shipped seed; the warm path must skip anything suspicious without side effects.
     const graphics_pass_key *pass_key=&record->pass;
     if(pass_key->attachments<1||pass_key->attachments>9||pass_key->colors>8)return 0;
@@ -263,14 +265,12 @@ static int pso_warm_one(const pso_record *record) {
     shader_entry *fs;
     if(record->fs[0]=='-'&&!record->fs[1])fs=graphics_empty_shader();
     else{fs=shader_load_by_key(record->fs,0,0);if(!fs)return 0;}
-    // 与运行期同一套 pass/layout 缓存：预热对象直接成为游戏线程首次命中的对象。
     // The same pass/layout caches as the runtime: warmed objects are exactly what the game thread hits first.
     VkAttachmentDescription attachments[9]={0};VkAttachmentReference colors[8]={0},depth={VK_ATTACHMENT_UNUSED,VK_IMAGE_LAYOUT_GENERAL};
     for(unsigned i=0;i<pass_key->attachments;i++)attachments[i]=(VkAttachmentDescription){.format=pass_key->formats[i],.samples=VK_SAMPLE_COUNT_1_BIT,.loadOp=pass_key->load[i],.storeOp=VK_ATTACHMENT_STORE_OP_STORE,.stencilLoadOp=pass_key->stencil_load[i],.stencilStoreOp=i==pass_key->depth?VK_ATTACHMENT_STORE_OP_STORE:VK_ATTACHMENT_STORE_OP_DONT_CARE,.initialLayout=VK_IMAGE_LAYOUT_GENERAL,.finalLayout=VK_IMAGE_LAYOUT_GENERAL};
     for(unsigned i=0;i<pass_key->colors;i++)colors[i]=(VkAttachmentReference){pass_key->color_indices[i],VK_IMAGE_LAYOUT_GENERAL};
     if(pass_key->depth!=VK_ATTACHMENT_UNUSED)depth.attachment=pass_key->depth;
     graphics_pass_entry *pass=graphics_pass_get(*pass_key,attachments,colors,depth,0);
-    // 驱动拒绝这个通道（多半是记录里的附件格式在这个设备/驱动上不合法）：跳过这条记录，不打断整个预热。
     // The driver rejected this pass (usually an attachment format in the record that is illegal on this device/driver):
     // skip that record without interrupting the whole warm-up.
     if(!pass)return 0;
@@ -281,16 +281,15 @@ static int pso_warm_one(const pso_record *record) {
     uint64_t wall=dm_android_clock_ns(CLOCK_MONOTONIC)-begin;
     if(result!=VK_SUCCESS)return 0;
     if(wall>50000000)LOG("[vulkan-pso-warm] slow vs=%s fs=%s wall_ms=%.1f",record->vs,record->fs,wall/1e6);
-    // 建后即毁：编译结果留在驱动管线缓存里，游戏线程首次用到时是缓存命中而不是现编。
     // Create then destroy: the compilation stays in the driver pipeline cache, so the game's first use is a cache hit, not a compile.
     vkDestroyPipeline(device,pipeline,NULL);
     return 1;
 }
-/* After the pipeline list, every translated shader in the cache directory is loaded
-   (reflection, module, descriptor layout) while the session loads: a shader the game first uses later is then a lookup,
-   not 1-10 ms of file reads and parsing on the translation thread (bursts of 30 new shaders were the last hitches).
-   Variants translated ahead of time on the PC that this device has not used yet (<key>.aot, tools/aot_shaders.py) are
-   left on disk: loading all ~20,000 would hold memory for shaders a session never meets. */
+/* After the pipeline list, every translated shader in the cache directory is loaded (reflection, module, descriptor
+   layout) while the session loads: a shader the game first uses later is then a lookup, not 1-10 ms of file reads
+   and parsing on the translation thread. Variants translated ahead of time on the PC that this device has not used
+   yet (<key>.aot, tools/aot_shaders.py) are left on disk: loading all ~20,000 would hold memory for shaders a
+   session never meets. */
 static void pso_preload_shaders(void) {
     const char *dir=getenv("DM_VK_SHADERS");if(!dir)return;
     DIR *d=opendir(dir);if(!d)return;
@@ -304,11 +303,12 @@ static void pso_preload_shaders(void) {
 }
 static void *pso_warm_main(void *unused) {
     (void)unused;pthread_setname_np(pthread_self(),"D2R PSO warm");
-    resource_create_quiet=1;   // 预热创建全部不记账（长帧账目与慢创建明细只管游戏线程）| warm creations never account (long-frame totals and slow-create details cover the game thread only)
+    // warm creations never account (long-frame totals and slow-create details cover the game thread only)
+    resource_create_quiet=1;
     uint64_t begin=dm_android_clock_ns(CLOCK_MONOTONIC),built=0,skipped=0;
     uint64_t *hashes=malloc(pso_record_count*sizeof *hashes);
-    /* how long each creation takes: a pipeline the driver's cache serves is well under 2 ms, a compile is 10 ms and more
-       (2026-10-31: 5,600 built in 104 s every launch with a 57 MB cache accepted: are they cache hits at all?) */
+    /* how long each creation takes: a pipeline the driver's cache serves is well under 2 ms, a compile is 10 ms and
+       more */
     uint64_t fast=0,slow=0,slow_ns=0,fast_ns=0;
     for(size_t i=0;i<pso_record_count;i++){
         uint64_t t0=dm_android_clock_ns(CLOCK_MONOTONIC);int ok=pso_warm_one(&pso_records[i]);uint64_t dt=dm_android_clock_ns(CLOCK_MONOTONIC)-t0;
@@ -320,15 +320,16 @@ static void *pso_warm_main(void *unused) {
     free(pso_records);pso_records=NULL;pso_record_count=0;
     if(hashes)qsort(hashes,pso_built_count,sizeof *hashes,pso_hash_cmp);else pso_built_count=0;
     pso_built=hashes;
-    pipeline_disk_request();   /* save the driver cache now: during the build it never settled long enough for the timed save */
+    /* save the driver cache at once: during the build it never settles long enough for the timed save */
+    pipeline_disk_request();
     pso_preload_shaders();
     atomic_store_explicit(&pso_warm_running,0,memory_order_release);
-    gpl_warm_start(0);   /* the shader libraries after the pipelines, when asked for (nvn_vulkan_gpl.inc) */
+    /* the shader libraries after the pipelines, when asked for (nvn_vulkan_gpl.inc) */
+    gpl_warm_start(0);
     return NULL;
 }
-// initialize() 末尾调用：读清单、建去重集合、后台开预热线程；本地缓存目录或显式清单缺失时不启动。
 // Called at the end of initialize(): read manifests, build the dedup set, start the background warm thread; idle when the local cache directory and explicit manifest are both absent.
-static void prepare_check(void);   /* nvn_vulkan_prepare.inc */
+static void prepare_check(void);
 static void pso_warm_start(void) {
     prepare_check();
     const char *setting=getenv("DM_PSO_MANIFEST");
@@ -342,14 +343,14 @@ static void pso_warm_start(void) {
     pthread_mutex_lock(&pso_manifest_mutex);
     if(explicit_path)pso_manifest_parse_path(setting,collect);
     else{
-        // 先本机积累（更贴近实际使用顺序），再随包种子；同一行只算一次。
         // Local accumulation first (closer to actual use order), then the shipped seed; a line counts once.
         pso_user_compact();pso_user_file();
         if(pipeline_disk_dir>=0){int fd=openat(pipeline_disk_dir,PSO_USER_NAME,O_RDONLY|O_CLOEXEC|O_NOFOLLOW);if(fd>=0){pso_manifest_parse_fd(fd,PSO_USER_NAME,collect);close(fd);}}
         if(seed[0])pso_manifest_parse_path(seed,collect);
     }
     pthread_mutex_unlock(&pso_manifest_mutex);
-    if(!collect||!pso_record_count){free(pso_records);pso_records=NULL;gpl_warm_start(0);return;}   /* nothing to warm: the shader libraries at once, when asked for */
+    /* nothing to warm: the shader libraries at once, when asked for */
+    if(!collect||!pso_record_count){free(pso_records);pso_records=NULL;gpl_warm_start(0);return;}
     LOG("[vulkan-pso-warm] start records=%zu seed=%s user_dir=%s",pso_record_count,seed[0]?seed:"(none)",getenv("DM_VK_PIPELINE_CACHE_DIR")?getenv("DM_VK_PIPELINE_CACHE_DIR"):"(none)");
     atomic_store(&pso_warm_running,1);
     pthread_t thread;

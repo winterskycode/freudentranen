@@ -5,7 +5,8 @@
    wrong. Logged every 300 presents as [uboprobe], with the ranges that changed most. */
 enum { UBOPROBE_MEMORY, UBOPROBE_CAPTURE, UBOPROBE_KNOWN_COPY, UBOPROBE_COPY_OVERLAY, UBOPROBE_GPU_PENDING, UBOPROBE_CLASSES };
 static const char *const uboprobe_class_name[UBOPROBE_CLASSES] = {"game memory", "submit capture", "known copy", "memory + pending copies", "pending GPU write"};
-typedef struct { uintptr_t address; uint32_t size, cls; uint64_t hash; uint8_t *copy; } uboprobe_entry;   /* copy: capture-class bytes as given */
+/* copy: capture-class bytes as given */
+typedef struct { uintptr_t address; uint32_t size, cls; uint64_t hash; uint8_t *copy; } uboprobe_entry;
 static struct { uboprobe_entry *e; uint32_t n, cap; } uboprobe_slots[DM_VK_BATCH_SLOTS];
 static int uboprobe_state = -1;
 static int uboprobe_on(void) {
@@ -21,7 +22,8 @@ static void uboprobe_note(uintptr_t address, uint32_t size, const uint8_t *bytes
     if (!async_current) return;
     unsigned slot = (unsigned)(async_current - async_batches);
     typeof(uboprobe_slots[0]) *s = &uboprobe_slots[slot]; uint64_t h = uboprobe_hash(bytes, size);
-    for (uint32_t i = s->n; i-- > 0 && i + 64 >= s->n;) if (s->e[i].address == address && s->e[i].size == size && s->e[i].hash == h) return;   /* noted just now */
+    /* noted already */
+    for (uint32_t i = s->n; i-- > 0 && i + 64 >= s->n;) if (s->e[i].address == address && s->e[i].size == size && s->e[i].hash == h) return;
     if (s->n == s->cap) { s->cap = s->cap ? s->cap * 2 : 1024; s->e = realloc(s->e, s->cap * sizeof *s->e); if (!s->e) die("uboprobe"); }
     s->e[s->n++] = (uboprobe_entry){address, size, (uint32_t)cls, h, NULL};
     if (cls == UBOPROBE_CAPTURE && (s->e[s->n - 1].copy = malloc(size))) memcpy(s->e[s->n - 1].copy, bytes, size);

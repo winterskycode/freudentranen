@@ -48,13 +48,15 @@ static void add(uint8_t **image, uint64_t *size, uint8_t **row, const char *path
     wr64(*row, *size); wr64(*row + 8, n); wr32(*row + 16, (uint32_t)name); wr32(*row + 20, (uint32_t)strlen(path) + 1); *row += 24;
     *size += n;
 }
-static unsigned victim;   /* one damaged file a round: the first that fails stops the rest */
+/* one damaged file a round: the first that fails stops the rest */
+static unsigned victim;
 static void one_side(uint8_t **image, uint64_t *size, uint8_t **index, size_t *index_size, int is_new) {
     uint64_t names = strlen("Pack/ZsDic.pack.zs") + 1; for (unsigned i = 0; i < nfiles; i++) names += strlen(files[i].path) + 1;
     uint64_t count = nfiles + 1, strings = 24 + 24 * count;
     uint8_t *ix = calloc(1, strings + names), *row = ix + 24; memcpy(ix, "TOTKRFS1", 8); wr64(ix + 8, count); wr64(ix + 16, strings);
     free(*image); *image = NULL; *size = 0; uint64_t at = 0;
-    for (unsigned i = 0; i <= nfiles; i++) {   /* the paths sort with the dictionaries' after Actor/... and before the rest only by chance: sorted at load */
+    /* the paths sort with the dictionaries' after Actor/... and before the rest only by chance: sorted at load */
+    for (unsigned i = 0; i <= nfiles; i++) {
         const char *path = i < nfiles ? files[i].path : "Pack/ZsDic.pack.zs";
         memcpy(ix + strings + at, path, strlen(path) + 1);
         if (i == nfiles) add(image, size, &row, path, dict_pack, dict_size, at);
@@ -81,7 +83,8 @@ int main(int argc, char **argv) {
     for (uint64_t i = 0; i < now.count; i++) if (!strcmp(now.rows[i].path, "Pack/ZsDic.pack.zs")) { dict_size = now.rows[i].size; dict_pack = malloc(dict_size); tokc_romfs_pread(g, dict_pack, dict_size, now.rows[i].off); }
     job real = {.g = g, .lock = PTHREAD_MUTEX_INITIALIZER};
     file_row dict_row = {"Pack/ZsDic.pack.zs", 0, dict_size}; index_table dict_table = {&dict_row, 1, NULL};
-    new_image = dict_pack; new_size = dict_size;   /* make_dicts reads through the fake */
+    /* make_dicts reads through the fake */
+    new_image = dict_pack; new_size = dict_size;
     if (make_dicts(&real, &dict_table)) { fprintf(stderr, "%s\n", real.err); return 1; }
     new_image = NULL; new_size = 0;
     for (uint64_t a = 0, b = 0; a < old.count && b < now.count && nfiles < MAX_FILES;) {

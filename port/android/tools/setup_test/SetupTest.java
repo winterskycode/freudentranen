@@ -23,7 +23,8 @@ import java.util.Set;
 
 /** Setup.java on a desktop JVM: tools/setup_test/run.sh. Every key here is made up. */
 public class SetupTest {
-    static final String FAKE_KEY = "00112233445566778899aabbccddeeff";   // a made-up value: must never show up outside prod.keys
+    // a made-up value: must never show up outside prod.keys
+    static final String FAKE_KEY = "00112233445566778899aabbccddeeff";
     static final byte[] GOOD_KEYS = ("header_key = " + FAKE_KEY + FAKE_KEY + "\n").getBytes(StandardCharsets.US_ASCII);
     static final Setup.Progress QUIET = what -> { };
     static final Setup.Stop GO = () -> false;
@@ -130,7 +131,8 @@ public class SetupTest {
         });
         test("keys that cannot be written leave a message and no file", () -> {
             Fake f = new Fake(); File d = folder(); Setup s = new Setup(new File(d, "x"), f);
-            Files.write(new File(d, "x").toPath(), new byte[1]);   // a file where the folder should be
+            // a file where the folder should be
+            Files.write(new File(d, "x").toPath(), new byte[1]);
             s.takeKeys(new ByteArrayInputStream(GOOD_KEYS));
             same(Setup.KEYS_NOT_SAVED, s.keysProblem(), "message");
         });
@@ -493,7 +495,8 @@ public class SetupTest {
             check(s.hasKeys(), "keys refused: " + s.keysProblem());
             s.takeFiles(Arrays.asList(real(new File(fakes, "base.nsp")), real(new File(fakes, "update.nsp"))), Setup.BASE);
             contains(s.keysProblem(), "Your prod.keys lacks "); contains(s.keysProblem(), "which this game needs"); check(!s.complete(), "complete");
-            s.takeKeys(Files.newInputStream(keysFile.toPath()));   // the right ones: no need to pick the files again
+            // the right ones: no need to pick the files again
+            s.takeKeys(Files.newInputStream(keysFile.toPath()));
             check(s.complete(), s.keysProblem() + " " + s.problem(Setup.BASE) + " " + s.problem(Setup.UPDATE));
             Setup w = new Setup(folder(), new Real());
             w.takeKeys(new ByteArrayInputStream(("header_key = " + FAKE_KEY + FAKE_KEY + "\n").getBytes(StandardCharsets.US_ASCII)));
@@ -523,7 +526,8 @@ public class SetupTest {
             Files.write(empty.toPath(), new byte[0]);
             s.takeFiles(Collections.singletonList(real(empty)), Setup.BASE);
             same(Setup.NOT_GAME, s.problem(Setup.BASE), "empty");
-            try (RandomAccessFile f = new RandomAccessFile(big, "rw")) { f.setLength(20 * GB); f.write(new byte[64]); }   // sparse: nothing is written but the head
+            // sparse: nothing is written but the head
+            try (RandomAccessFile f = new RandomAccessFile(big, "rw")) { f.setLength(20 * GB); f.write(new byte[64]); }
             long before = bytesRead();
             s.takeFiles(Collections.singletonList(real(big)), Setup.BASE);
             long read = bytesRead() - before;

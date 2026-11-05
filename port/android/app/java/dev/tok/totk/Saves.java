@@ -61,7 +61,8 @@ import java.util.zip.ZipOutputStream;
     Every Problem's message is for the player. Methods that touch files are for a background thread. */
 class Saves {
     static final int KEEP = 10, MAX_FILES = 20000, MAX_DEPTH = 16;
-    static final long MAX_BYTES = 1L << 30;   // a save is tens of MB; this leaves room for a full album
+    /** A save is tens of MB; this leaves room for a full album. */
+    static final long MAX_BYTES = 1L << 30;
 
     static final String RUNNING = "The game is running. Quit it first, then try again. If you have just quit, wait a few seconds.";
     static final String NOT_A_SAVE = "This is not a save. A save has folders named slot_00 to slot_05, with a saved game in at least one.";
@@ -80,7 +81,8 @@ class Saves {
 
     private static final Pattern SWAP = Pattern.compile("([0-9a-f]{32})\\.(new|old)"), ACCOUNT = Pattern.compile("[0-9a-f]{32}");
     private static final Pattern SLOT = Pattern.compile("slot_0[0-5]");
-    private static final AtomicBoolean BUSY = new AtomicBoolean();   // static: an activity recreated in mid-task must see it
+    /** Static: an activity recreated in mid-task must see it. */
+    private static final AtomicBoolean BUSY = new AtomicBoolean();
 
     /** A failure with words for the player. */
     static final class Problem extends IOException {
@@ -160,8 +162,10 @@ class Saves {
             for (String line : new String(Files.readAllBytes(store.toPath()), StandardCharsets.UTF_8).split("\n")) {
                 String l = line.endsWith("\r") ? line.substring(0, line.length() - 1) : line;
                 boolean star = l.startsWith("*"); if (star) l = l.substring(1);
-                int tab = l.indexOf('\t'); if (tab < 0 || ids.size() == 8) continue;   // RUNTIME_USERS_MAX
-                String id = l.substring(0, tab).toLowerCase(Locale.ROOT);   // the folder's name is always lower case (hex32)
+                // 8 is RUNTIME_USERS_MAX
+                int tab = l.indexOf('\t'); if (tab < 0 || ids.size() == 8) continue;
+                // the folder's name is always lower case (hex32)
+                String id = l.substring(0, tab).toLowerCase(Locale.ROOT);
                 if (!ACCOUNT.matcher(id).matches() || id.matches("0+") || ids.contains(id)) continue;
                 if (star && marked < 0) marked = ids.size();
                 ids.add(id); names.add(l.substring(tab + 1));
@@ -170,7 +174,8 @@ class Saves {
         if (Files.exists(uid.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             if (!Files.isRegularFile(uid.toPath(), LinkOption.NOFOLLOW_LINKS)) throw new Problem(BAD_ACCOUNT);
             byte[] raw = Files.readAllBytes(uid.toPath());
-            if (raw.length == 0) throw new Problem(START_ONCE);   // the game fills an empty one in
+            // the game fills an empty one in
+            if (raw.length == 0) throw new Problem(START_ONCE);
             if (raw.length != 16) throw new Problem(BAD_ACCOUNT);
             ByteBuffer b = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);
             long lo = b.getLong(), hi = b.getLong();
@@ -181,7 +186,8 @@ class Saves {
         String[] kids = saveDir().list();
         if (kids != null) for (String k : kids) if (ACCOUNT.matcher(k).matches() && !k.matches("0+") && new File(saveDir(), k).isDirectory()) areas.add(k);
         if (areas.size() == 1) return new Account(areas.get(0), "Local", 1, false);
-        if (areas.size() > 1) throw new Problem(START_ONCE);   // the game picks one by directory order, and writes users.txt then
+        // the game picks one by directory order, and writes users.txt then
+        if (areas.size() > 1) throw new Problem(START_ONCE);
         byte[] id = new byte[16];
         do new SecureRandom().nextBytes(id); while (Arrays.equals(id, new byte[16]));
         return new Account(hex(id), "Local", 1, true);
@@ -262,7 +268,8 @@ class Saves {
             if (d == null || !d.dir) continue;
             boolean used = false;
             for (Item i : items) if (i.path.startsWith(slot + "/")) { used = true; break; }
-            if (!used) continue;   // empty unused slots are harmless
+            // empty unused slots are harmless
+            if (!used) continue;
             if (populated != null) populated.add(slot);
             Item progress = all.get(slot + "/progress.sav"), caption = all.get(slot + "/caption.sav");
             if (progress != null && !progress.dir && progress.size != 0 && caption != null && !caption.dir && caption.size != 0) good.add(slot);
@@ -347,7 +354,7 @@ class Saves {
 
     /** The folder's names on the disk. Not every file system takes this, and nothing depends on it but a power cut. */
     private static void sync(File dir) {
-        try (FileChannel c = FileChannel.open(dir.toPath(), StandardOpenOption.READ)) { c.force(true); } catch (IOException e) { /* see above */ }
+        try (FileChannel c = FileChannel.open(dir.toPath(), StandardOpenOption.READ)) { c.force(true); } catch (IOException e) { }
     }
 
     /** Copies a tree; returns the sums of the bytes read. */
@@ -519,7 +526,8 @@ class Saves {
         }
         long bytes = 0;
         for (Item i : items) if (i.size > 0) bytes += i.size;
-        needSpace(bytes * 3);   // here, the backup of about the same size, and <account>.new
+        // here, the backup of about the same size, and <account>.new
+        needSpace(bytes * 3);
         if (!root.mkdirs()) throw new Problem(NO_SPACE);
         Map<String, String> want = new TreeMap<>();
         long left = MAX_BYTES; int done = 0;
@@ -536,7 +544,8 @@ class Saves {
                 if (++done % 16 == 0) p.at("Copying the save: " + done + " files");
             }
             List<Item> staged = tree(root);
-            if (isSave) validate(staged);   // again, with the real sizes: a folder's listing may not have them
+            // again, with the real sizes: a folder's listing may not have them
+            if (isSave) validate(staged);
             if (!sums(root).equals(want)) throw new Problem(NOT_COPIED);
             checkpoint("staged");
             return new Staged(root, want, new Info(staged));
@@ -597,7 +606,8 @@ class Saves {
         if (!dir.isDirectory() && !dir.mkdirs()) throw new Problem(NO_SPACE);
         String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date(now())) + "-profile", name = stamp;
         for (int n = 2; new File(dir, name).exists(); n++) name = stamp + "-" + n;
-        File tmp = new File(dir, ".new-" + name), done = new File(dir, name);   // saves.py does not list dot names
+        // saves.py does not list dot names
+        File tmp = new File(dir, ".new-" + name), done = new File(dir, name);
         delete(tmp);
         try {
             Map<String, String> read = copyTree(live, tmp);
@@ -616,7 +626,8 @@ class Saves {
         List<String> names = new ArrayList<>();
         String[] all = backupDir().list();
         if (all != null) for (String n : all) if (!n.startsWith(".") && new File(backupDir(), n).isDirectory()) names.add(n);
-        Collections.sort(names, Collections.reverseOrder());   // named by time: the newest first
+        // named by time: the newest first
+        Collections.sort(names, Collections.reverseOrder());
         return names;
     }
 
@@ -633,7 +644,8 @@ class Saves {
     List<Backup> backups() {
         List<Backup> out = new ArrayList<>();
         for (String n : backupNames())
-            try { out.add(new Backup(n, new Info(tree(new File(backupDir(), n))))); } catch (IOException e) { /* a backup with a link in it: not offered */ }
+            /* a backup with a link in it: not offered */
+            try { out.add(new Backup(n, new Info(tree(new File(backupDir(), n))))); } catch (IOException e) { }
         return out;
     }
 

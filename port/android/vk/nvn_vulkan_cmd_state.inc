@@ -1,4 +1,3 @@
-// Vulkan 命令状态在每个 command buffer 开始时清空；相同状态无需反复发送驱动命令。
 // Clear Vulkan command state at each command-buffer begin; identical state needs no repeated driver commands.
 typedef struct graphics_command_state {
     VkPipeline pipeline;
@@ -12,7 +11,8 @@ typedef struct graphics_command_state {
     VkBuffer vertices[16],index;
     VkDeviceSize offsets[16],index_offset;
     VkIndexType index_type;
-    ds_st eds_depth; poly_st eds_polygon;   /* extended dynamic state, valid bit 1024 */
+    /* extended dynamic state, valid bit 1024 */
+    ds_st eds_depth; poly_st eds_polygon;
     uint32_t valid;
 } graphics_command_state;
 static graphics_command_state graphics_commands;
@@ -23,9 +23,9 @@ static void graphics_command_apply(VkPipeline pipeline,VkPipelineLayout layout,c
     const VkViewport *viewport,const VkRect2D *scissor,const float blend[4],float units,float factor,const VkStencilOpState faces[2]) {
     graphics_command_state *last=&graphics_commands;
     if(last->pipeline!=pipeline){vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);last->pipeline=pipeline;graphics_command_emitted++;}else graphics_command_reused++;
-    // 动态偏移同属绑定状态：只比集合不看偏移，复用的就是上一次的位置。
     // Dynamic offsets are part of the binding state: comparing sets alone would reuse the previous positions.
-    if(last->layout!=layout||memcmp(last->sets,sets,sizeof last->sets)||last->dynamic_count!=dynamic_count||memcmp(last->dynamic_offsets,dynamic_offsets,dynamic_count*sizeof *dynamic_offsets)){if(bl_set&&!(last->valid&2048)){vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&bl_set,0,NULL);last->valid|=2048;}   /* the global arrays, set 0 of every layout: once per command buffer */
+    /* the global arrays, set 0 of every layout: once per command buffer */
+    if(last->layout!=layout||memcmp(last->sets,sets,sizeof last->sets)||last->dynamic_count!=dynamic_count||memcmp(last->dynamic_offsets,dynamic_offsets,dynamic_count*sizeof *dynamic_offsets)){if(bl_set&&!(last->valid&2048)){vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&bl_set,0,NULL);last->valid|=2048;}
         vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,bl_set?1:0,2,sets,dynamic_count,dynamic_offsets);last->layout=layout;memcpy(last->sets,sets,sizeof last->sets);last->dynamic_count=dynamic_count;memcpy(last->dynamic_offsets,dynamic_offsets,dynamic_count*sizeof *dynamic_offsets);graphics_command_emitted++;}else graphics_command_reused++;
     if(!(last->valid&1)||memcmp(&last->viewport,viewport,sizeof *viewport)){vkCmdSetViewport(command,0,1,viewport);last->viewport=*viewport;graphics_command_emitted++;}else graphics_command_reused++;
     if(!(last->valid&2)||memcmp(&last->scissor,scissor,sizeof *scissor)){vkCmdSetScissor(command,0,1,scissor);last->scissor=*scissor;graphics_command_emitted++;}else graphics_command_reused++;

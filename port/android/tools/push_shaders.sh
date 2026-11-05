@@ -4,7 +4,7 @@
 #   port/android/tools/push_shaders.sh work/android/v143/shader-aot/<digest>
 # Streamed into files/shader-cache-turnip.new, then swapped in with the app stopped; the cache it replaces is kept as
 # files/shader-cache-turnip.old (one generation: an older .old is removed, unless there is no cache to keep).
-# Translations the device makes later are added to the new cache as before.
+# Translations the device makes later are added to the new cache.
 set -e
 DIR=${1:?usage: push_shaders.sh <shader-aot folder>}
 [ -f "$DIR/request-profile.json" ] || { echo "$DIR: not an aot_shaders.py output (no request-profile.json)"; exit 1; }

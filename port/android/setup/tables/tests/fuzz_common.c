@@ -1,4 +1,3 @@
-/* fuzz_common.h */
 #include "fuzz_common.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,7 +43,8 @@ void fz_load(fz_case *c, const char *rewritten, const char *exefs) {
     for (unsigned m = 0; m < TOKT_MODULE_COUNT; m++) {
         tokt_files *f = &c->f[m];
         if (tokt_files_load(f, rewritten, exefs, tokt_module_names[m], err, sizeof err)) die(err);
-        c->image[m] = f->image;          /* malloc'd at its exact size */
+        /* malloc'd at its exact size */
+        c->image[m] = f->image;
         c->nso_size[m] = f->nso_size < 0x100 ? f->nso_size : 0x100;
         c->nso[m] = malloc(c->nso_size[m]);
         if (!c->nso[m]) die("memory");
@@ -121,7 +121,8 @@ int fz_run(fz_case *c, const uint64_t image_bytes[TOKT_MODULE_COUNT]) {
     for (unsigned i = 0; i < TOKT_MODULE_COUNT; i++) {
         r[i] = c->rewrite[i];
         const uint8_t *img = c->image[i];
-        if (image_bytes && image_bytes[i]) {     /* an exact-size copy of the start */
+        /* an exact-size copy of the start */
+        if (image_bytes && image_bytes[i]) {
             r[i].image_size = image_bytes[i];
             cut[i] = malloc((size_t)image_bytes[i]);
             if (!cut[i]) die("memory");
@@ -135,7 +136,8 @@ int fz_run(fz_case *c, const uint64_t image_bytes[TOKT_MODULE_COUNT]) {
     char err[200];
     int rc = tokt_make(m, &tables, &size, err, sizeof err);
     if (rc == TOKT_OK) {
-        uint8_t *exact = malloc(size);    /* exact size for the check too */
+        /* exact size for the check too */
+        uint8_t *exact = malloc(size);
         if (!exact) die("memory");
         memcpy(exact, tables, size);
         check_tables(exact, size);

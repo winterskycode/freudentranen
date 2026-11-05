@@ -1,4 +1,3 @@
-// 完成后的批次复用映射 uniform 页；未完成的绘制始终保留各自的数据版本。
 // Reuse mapped uniform pages only after a batch completes; pending draws keep their own data versions.
 typedef struct uniform_chunk {
     vk_buffer buffer;
@@ -12,7 +11,8 @@ typedef struct uniform_driver_cache {
 } uniform_driver_cache;
 static uniform_chunk *uniform_chunks,*uniform_current;
 static uint64_t uniform_stride,uniform_arena_bytes,uniform_driver_hits;
-static uniform_driver_cache uniform_drivers[6][3];   /* kind 0 c[0], 1 c[2], 2 the bindless slot block */
+/* kind 0 c[0], 1 c[2], 2 the bindless slot block */
+static uniform_driver_cache uniform_drivers[6][3];
 static uint64_t uniform_driver_fast_hits,uniform_driver_builds,uniform_driver_avoided_bytes,uniform_clear_avoided_bytes;
 static int uniform_driver_current(unsigned stage,unsigned kind,VkDescriptorBufferInfo *info) {
     uniform_driver_cache *cache=&uniform_drivers[stage][kind];
@@ -20,7 +20,6 @@ static int uniform_driver_current(unsigned stage,unsigned kind,VkDescriptorBuffe
     *info=cache->info;uniform_driver_hits++;uniform_driver_fast_hits++;uniform_driver_avoided_bytes+=cache->size;return 1;
 }
 static void uniform_reset(void) {
-    // descriptor_reset 的调用点已等待该批次的 fence，才允许覆盖这些内存。
     // descriptor_reset is called after this batch's fence, before any of its memory is overwritten.
     for(uniform_chunk *c=uniform_chunks;c;c=c->next)c->used=0;
     uniform_current=uniform_chunks;
@@ -35,7 +34,6 @@ static uniform_chunk *uniform_chunk_new(void) {
     c->buffer=buffer_create(uniform_stride*16);memset(c->buffer.mapped,0,uniform_stride*16);
     uniform_arena_bytes+=c->buffer.capacity;immutable_buffer_bytes+=c->buffer.capacity;return c;
 }
-// 调用方必须立即完整覆盖 dirty 字节；仅旧数据尾部需要清零。
 // The caller must immediately overwrite all dirty bytes; only the old tail needs clearing.
 static VkDescriptorBufferInfo uniform_allocate_mode(uint32_t dirty,uint8_t **data,int overwrite) {
     if(dirty>65536)die("Vulkan uniform write range");
@@ -43,7 +41,6 @@ static VkDescriptorBufferInfo uniform_allocate_mode(uint32_t dirty,uint8_t **dat
     while(uniform_current->used==16){if(!uniform_current->next)uniform_current->next=uniform_chunk_new();uniform_current=uniform_current->next;}
     unsigned slot=uniform_current->used++;uint64_t offset=slot*uniform_stride;
     *data=(uint8_t*)uniform_current->buffer.mapped+offset;
-    // 页最初全零；新前缀由调用方完整覆盖，仅清旧前缀多出的尾部，保留全部 64 KiB 零填充语义。
     // Pages start zero; callers replace the new prefix, so clear only the excess old tail and preserve all 64 KiB zero-padding semantics.
     uint32_t old=uniform_current->dirty[slot];
     uint32_t clear_start=overwrite?dirty:0;

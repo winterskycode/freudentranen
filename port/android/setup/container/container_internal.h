@@ -22,8 +22,10 @@ int tokc_pread_full(int fd, void *buf, size_t n, uint64_t off);
 /* ---- crypto ---- */
 enum { TOKC_AES_AUTO, TOKC_AES_PORTABLE };
 typedef struct {
-    uint8_t rk[176];   /* encryption round keys, as bytes */
-    uint8_t dk[176];   /* the same for the instructions' decryption: reversed, InvMixColumns applied */
+    /* encryption round keys, as bytes */
+    uint8_t rk[176];
+    /* the same for the instructions' decryption: reversed, InvMixColumns applied */
+    uint8_t dk[176];
     int hw;
 } tokc_aes;
 void tokc_aes_init(tokc_aes *a, const uint8_t key[16], int mode);
@@ -56,13 +58,15 @@ void tokc_sha256_buf(const void *data, size_t n, uint8_t out[32]);
 struct tokc_keys {
     uint8_t header[32];
     uint8_t titlekek[TOKC_GENERATIONS][16], area_app[TOKC_GENERATIONS][16], master[TOKC_GENERATIONS][16];
-    uint32_t have_titlekek, have_area_app, have_master;   /* a bit per generation */
+    /* a bit per generation */
+    uint32_t have_titlekek, have_area_app, have_master;
     int have_header;
 };
 
 /* ---- containers ---- */
 #define TOKC_NCA_HEADER 0xC00u
-typedef struct { char name[64]; uint64_t off, size; } tokc_entry;   /* off: from the start of the range parsed */
+/* off: from the start of the range parsed */
+typedef struct { char name[64]; uint64_t off, size; } tokc_entry;
 /* Reads n bytes at off of some range: a file or a decrypted section. */
 typedef int (*tokc_reader)(const void *ctx, void *buf, size_t n, uint64_t off);
 /* PFS0 (stride 24) or HFS0 (stride 64) at off of a range of size bound. *out is malloc'd. */
@@ -71,8 +75,10 @@ int tokc_part_parse(tokc_reader read, const void *ctx, uint64_t off, uint64_t bo
 
 typedef struct {
     int fd;
-    uint64_t off, size;             /* in the file */
-    uint8_t hdr[TOKC_NCA_HEADER];   /* decrypted */
+    /* in the file */
+    uint64_t off, size;
+    /* decrypted */
+    uint8_t hdr[TOKC_NCA_HEADER];
     uint8_t content_type, area_index;
     unsigned generation;
     uint64_t title_id;
@@ -99,10 +105,13 @@ enum { FS_ROMFS = 0, FS_PFS0 = 1, HASH_SHA256 = 2, HASH_IVFC = 3, CRYPT_NONE = 1
 /* A section of an NCA, decrypted on read. */
 typedef struct {
     int fd;
-    uint64_t file_off;    /* of the section in the file */
-    uint64_t nca_off;     /* in the NCA: the counter counts from there */
+    /* of the section in the file */
+    uint64_t file_off;
+    /* in the NCA: the counter counts from there */
+    uint64_t nca_off;
     uint64_t size;
-    uint8_t high[8];      /* the counter's fixed half */
+    /* the counter's fixed half */
+    uint8_t high[8];
     int encrypted;
     tokc_aes aes;
 } tokc_section;
@@ -112,14 +121,18 @@ typedef struct {
 int tokc_section_present(const tokc_nca *n, int i);
 int tokc_section_open(tokc_section *s, const tokc_nca *n, int i, const tokc_keys *keys, const tokc_package *const *packages,
                       int npackages, char *err, size_t errlen);
-int tokc_section_read(const void *section, void *buf, size_t n, uint64_t off);   /* a tokc_reader */
+/* a tokc_reader */
+int tokc_section_read(const void *section, void *buf, size_t n, uint64_t off);
 
 /* ---- the patched RomFS ---- */
 typedef struct {
-    uint64_t *virt;       /* where each relocation starts in the section, ascending */
-    uint64_t *phys;       /* where it starts in its source; the top bit says the update */
+    /* where each relocation starts in the section, ascending */
+    uint64_t *virt;
+    /* where it starts in its source; the top bit says the update */
+    uint64_t *phys;
     uint64_t nrel, total;
-    uint64_t *sub_off;    /* where each subsection starts in the update section, ascending */
+    /* where each subsection starts in the update section, ascending */
+    uint64_t *sub_off;
     uint32_t *sub_ctr;
     uint64_t nsub, sub_total;
 } tokc_bktr;
@@ -131,9 +144,12 @@ void tokc_bktr_free(tokc_bktr *b);
 struct tokc_game {
     tokc_section base, update, exefs;
     tokc_bktr bktr;
-    uint64_t image_off, image_size;   /* the RomFS in the patched section */
-    uint64_t base_image_off, base_image_size;   /* and in the base game's own */
-    uint64_t pfs_off, pfs_size;       /* the ExeFS in its section, and its hash table */
+    /* the RomFS in the patched section */
+    uint64_t image_off, image_size;
+    /* the RomFS in the base game's own section */
+    uint64_t base_image_off, base_image_size;
+    /* the ExeFS in its section, and its hash table */
+    uint64_t pfs_off, pfs_size;
     uint64_t hash_off, hash_size;
     uint32_t hash_block;
     uint8_t master_hash[32];

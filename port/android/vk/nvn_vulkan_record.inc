@@ -7,7 +7,8 @@
 #define REC_SLOTS 4
 static struct {
     VkPipeline pipeline; VkPipelineLayout layout; VkDescriptorSetLayout set_layout; VkSampler linear;
-    vk_buffer buf[REC_SLOTS]; uint64_t ticket[REC_SLOTS], pts[REC_SLOTS]; int state[REC_SLOTS];   /* 0 free, 1 recorded, 2 submitted */
+    /* 0 free, 1 recorded, 2 submitted */
+    vk_buffer buf[REC_SLOTS]; uint64_t ticket[REC_SLOTS], pts[REC_SLOTS]; int state[REC_SLOTS];
     int pending; uint64_t last_ns; int thread;
     pthread_mutex_t lock; pthread_cond_t cond;
 } rec = {.pending = -1, .lock = PTHREAD_MUTEX_INITIALIZER, .cond = PTHREAD_COND_INITIALIZER};

@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 _Noreturn void runtime_fail(const char *message);
-void *dm_android_asset(const char *name, size_t *size);   /* host/app.c */
+void *dm_android_asset(const char *name, size_t *size);
 /* romfs-config.txt: the size and hashes of 1.4.3's merged image and index. Constants of the game version, no content: the
    reader reproduces them from the packages (setup/tables chain --full). */
 static const char romfs_config[] =
@@ -45,7 +45,7 @@ int player_on(void) {
     const char *a = getenv("TOTK_BASE_FD"), *b = getenv("TOTK_BASE_PATH");
     return (a && *a) || (b && *b);
 }
-/* The index the runtime reads, written once: it is the cache the plan keeps, and every reader of it stays as it is. */
+/* The index the runtime reads, written once: it serves as the cache, so every reader of it stays as it is. */
 static void write_index(void) {
     const char *dir = getenv("TOTK_ROMFS");
     if (!dir || !*dir) return;

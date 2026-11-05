@@ -1,12 +1,13 @@
 /* Present-time upscaling (TOTK_UPSCALER=fsr1 | bilinear; default fsr1). In handheld mode the game's finished picture is
-   1280x720 (UI included) and the present stretched it to the 1920x1080 panel with a linear blit. With FSR 1 the stretch
+   1280x720 (UI included) and the present stretches it to the 1920x1080 panel with a linear blit. With FSR 1 the stretch
    is EASU (edge-adaptive upsampling) into a display-size image, then RCAS sharpening (TOTK_FSR_SHARPNESS, in stops: 0 is
    the strongest, default 0.25), then a same-size copy into the swapchain image. Shaders: shaders/fsr1_*.comp (AMD
    FidelityFX FSR 1, MIT, third_party/fsr1; tools/gen_shaders.sh). The picture is gamma-encoded RGBA8, as EASU expects. */
 #include <math.h>
 typedef struct { VkImage image; VkDeviceMemory memory; VkImageView view; uint32_t w, h; } upscale_image;
 static struct {
-    int mode;   /* -1 unread, 0 bilinear blit, 1 FSR 1 */
+    /* -1 unread, 0 bilinear blit, 1 FSR 1 */
+    int mode;
     float sharpness;
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline easu, rcas; VkSampler sampler;
     upscale_image mid, out;
@@ -87,7 +88,7 @@ static void upscale_pass(VkPipeline pipeline, VkImageView src, VkImageView dst, 
 }
 
 /* Replaces the present blit of the picture (the sw x sh region at the origin of e) into dst's (x, y, dw, dh) rect when it is
-   an enlargement. Returns 0 to let the caller blit as before. */
+   an enlargement. Returns 0 to let the caller blit. */
 static int upscale_present(image_entry *e, int sx, int sy, int sw, int sh, VkImage dst, int x, int y, int dw, int dh) {
     if (!upscale_ready() || sx || sy || sw <= 0 || sh <= 0 || (sw >= dw && sh >= dh) || e->aspect != VK_IMAGE_ASPECT_COLOR_BIT) { upscale.fallbacks++; return 0; }
     graphics_pass_end();

@@ -71,7 +71,8 @@ static void memprobe_run(void) {
         if (r || fd < 0) { LOG("[memprobe] A type %u: vkGetMemoryFdKHR failed %d", t, r); continue; }
         uint8_t *v1 = mmap(NULL, rq.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0), *v2 = mmap(NULL, rq.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         void *slot = mmap(NULL, rq.size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        uint8_t *v3 = slot == MAP_FAILED ? MAP_FAILED : mmap(slot, rq.size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);   /* at a chosen address */
+        /* at a chosen address */
+        uint8_t *v3 = slot == MAP_FAILED ? MAP_FAILED : mmap(slot, rq.size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
         if (v1 == MAP_FAILED || v2 == MAP_FAILED || v3 == MAP_FAILED) { LOG("[memprobe] A type %u: mmap of the dma-buf failed: %s", t, strerror(errno)); close(fd); continue; }
         uint32_t *w1 = (uint32_t *)v1, *w2 = (uint32_t *)v2, *w3 = (uint32_t *)v3;
         double a0 = memprobe_ms(); for (size_t i = 0; i < words; i++) w1[i] = (uint32_t)(i * 2654435761u) ^ 0x3c3c3c3cu; double a1 = memprobe_ms();

@@ -18,7 +18,8 @@ def symbols(elf):
     sections = [struct.unpack_from('<IIQQQQIIQQ', elf, shoff + i * shentsize) for i in range(shnum)]
     out = {}
     for sh in sections:
-        if sh[1] != 2:   # SHT_SYMTAB
+        # SHT_SYMTAB
+        if sh[1] != 2:
             continue
         strtab = sections[sh[6]]
         for off in range(sh[4], sh[4] + sh[5], 24):
@@ -44,7 +45,8 @@ def main():
         uc.mem_write(vaddr, elf[off:off + filesz])
     for base, size in ((STACK, 0x10000), (DATA, 0x100000), (RETURN, 0x1000)):
         uc.mem_map(base, size)
-    uc.reg_write(A.UC_ARM64_REG_CPACR_EL1, 3 << 20)   # the FP and SIMD unit on
+    # the FP and SIMD unit on
+    uc.reg_write(A.UC_ARM64_REG_CPACR_EL1, 3 << 20)
     entry = symbols(elf)['tokt_sha256_hw_blocks']
 
     def blocks(state_at, data_at, n):

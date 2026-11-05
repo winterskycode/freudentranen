@@ -1,9 +1,3 @@
-# 逐处等价验证：原指令（原映像，x18 是真寄存器）vs 补丁块（改写映像，x18 在 TSD 槽）。
-# 每处随机状态多组；比较 x0-x30（x18 对比槽值）、sp、nzcv、v0-v31、全部内存写入、结束 PC、访存异常。
-# 用法：equiv.py <改写产物目录> <模块> <NSO> [--seed 1] [--jobs N] [--min-eff 2] [--max-extra 16] [--mutate 300] [--tsv 文件]
-# 射程：两边都访存异常的试验只比异常地址，不算「有效」；每处至少 min-eff 次有效试验，不够就补抽（≤max-extra 次），仍不够的列名。
-# 变异自检：抽 mutate 个普通改写块，一半把替换后的那条指令改成 nop、一半把跳板出口 b 的目标 +4，都必须被判出分歧（判据能区分的负对照）。
-# 宿主门（svc / cntpct / cntvct）语义由宿主定，这里不跑，由 structck.py 做结构核对；已登记剪口（cuts.tsv）是有意的语义改动，同样只由 structck 核字节。
 # Per-site equivalence verification: original instruction (original image, x18 is a real register) vs patch block (rewritten image, x18 lives in a TSD slot).
 # Several random states per site; compares x0-x30 (x18 compared against the slot value), sp, nzcv, v0-v31, all memory writes, final PC, memory access faults.
 # Usage: equiv.py <rewrite build output dir> <module> <NSO> [--seed 1] [--jobs N] [--min-eff 2] [--max-extra 16] [--mutate 300] [--tsv file]
@@ -22,29 +16,29 @@ ap.add_argument('dir'); ap.add_argument('mod'); ap.add_argument('nso')
 ap.add_argument('--seed', type=int, default=1); ap.add_argument('--jobs', type=int, default=os.cpu_count())
 ap.add_argument('--min-eff', type=int, default=2); ap.add_argument('--max-extra', type=int, default=16)
 ap.add_argument('--mutate', type=int, default=300); ap.add_argument('--tsv')
-ap.add_argument('--target', choices=('apple', 'android'), default=None)   # None = 自动识别；显式 --target 不被 <mod>.target 覆盖 | None = auto-detect; an explicit --target is not overridden by <mod>.target
+ap.add_argument('--target', choices=('apple', 'android'), default=None)
 A = ap.parse_args()
 
-# Android 目标：显式 --target 优先（含 --target apple，不再被自动识别改掉 M7）；未指定时才从 <mod>.target 识别。
-# Android target: an explicit --target wins (including --target apple, no longer overridden by auto-detection, M7); auto-detect from <mod>.target only when unspecified.
+# An explicit --target wins, --target apple included; <mod>.target decides only when unspecified.
 TARGET = A.target
 if TARGET is None:
     TARGET = 'android' if (os.path.exists(f'{A.dir}/{A.mod}.target') and open(f'{A.dir}/{A.mod}.target').read().strip() == 'android-context-v1') else 'apple'
 
 IB = 0x100000000
-ARENA = 0x0; ARENA_SZ = 0x1000000          # 低 16 MB 可读写随机区 | Low 16 MB readable/writable random area
+# low 16 MB readable/writable random area
+ARENA = 0x0; ARENA_SZ = 0x1000000
 TSD = 0x2000000
-ENTRY = 0x3000000                          # Android 宿主上下文入口桩（键页第 8 项指向它；blr 后 x16 = 上下文基址 = TSD） | Android host-context entry stub (key page index 8 points here; after blr, x16 = context base = TSD)
+# Android host-context entry stub (key page index 8 points here; after blr, x16 = context base = TSD)
+ENTRY = 0x3000000
 SP0 = 0x800000
-# Android 补丁侧的宿主寄存器毒值（I3）：真实 TPIDRRO_EL0 / TPIDR_EL0 与上下文 / KTLS 槽分离，且落在未映射高位
-# （不能用 0：ARENA 映射在 0，散落的 mrs tpidrro; ldr 会读到有效内存而漏过）。上下文只经键页第 8 项的入口桩到达补丁区。
-# Android patched-side host-register poison (I3): real TPIDRRO_EL0 / TPIDR_EL0 are separated from the context / KTLS slot and sit at
+# Android patched-side host-register poison: real TPIDRRO_EL0 / TPIDR_EL0 are separated from the context / KTLS slot and sit at
 # unmapped high addresses (not 0: ARENA is mapped at 0, so a stray `mrs tpidrro; ldr` near 0 would read valid memory and slip through).
 # The context reaches the patch area only via the key-page[8] entry stub.
 POISON_RO = 0xE000000000
 POISON_TP = 0xF000000000
 DIR, MOD = A.dir, A.mod
-hdr = nsoimg.header(DIR, MOD)                  # 表头：段边界与写死进指令的线程槽号 | Header: segment boundaries and the thread slot numbers hard-coded into instructions
+# header: segment boundaries and the thread slot numbers hard-coded into instructions
+hdr = nsoimg.header(DIR, MOD)
 PATCH_OFF = hdr['PATCH_OFF']
 KEY_IDX = {k[4:-4]: v for k, v in hdr.items() if k.startswith('KEY_') and k.endswith('_IDX')}
 KEY_SLOT = {k: 300 + i for i, k in enumerate(sorted(KEY_IDX, key=KEY_IDX.get))}
@@ -55,7 +49,6 @@ orig = nsoimg.load(A.nso)
 ncut = sum(1 for l in open(f'{DIR}/{MOD}.cuts.tsv') if not l.startswith('#'))
 nobs = sum(1 for l in open(f'{DIR}/{MOD}.obs.tsv') if not l.startswith('#')) if os.path.exists(f'{DIR}/{MOD}.obs.tsv') else 0
 def deexcl(b):
-    # 仅测试用：全部独占读写（各位宽、单 / 成对）→ 普通 ldr/str/ldp/stp；store 后紧跟的状态 cbz/cbnz → nop。两份映像同样处理。
     # Test only: all exclusive loads/stores (every width, single / pair) → plain ldr/str/ldp/stp; the status cbz/cbnz right after a store → nop. Both images are processed the same way.
     LD = {0: 0x39400000, 1: 0x79400000, 2: 0xB9400000, 3: 0xF9400000}
     ST = {0: 0x39000000, 1: 0x79000000, 2: 0xB9000000, 3: 0xF9000000}
@@ -85,7 +78,8 @@ for l in open(f'{DIR}/{MOD}.sites.tsv'):
     if f[1] == 'W': winend[a] = int(f[2], 16); sites.append(a)
     elif f[1] == 'C': winend[a] = int(f[2], 16); callinfo[a] = winend[a] - 4; sites.append(a)
     elif f[1] == 'J': brinfo[a] = (int(f[2], 16), int(f[3]))
-    elif f[1] in ('svc', 'cntpct', 'cntvct'): ngate += 1      # 宿主门：语义由宿主定，只做结构核对 | Host gate: semantics are defined by the host, only a structural check is done
+    # host gate: semantics are defined by the host, only a structural check is done
+    elif f[1] in ('svc', 'cntpct', 'cntvct'): ngate += 1
     else: sites.append(a)
 atomic_groups = nsoimg.exclusive_groups(orig, [(lo, hi) for lo, hi in winend.items() if lo not in callinfo])
 
@@ -94,9 +88,10 @@ def btarget(b, o):
     if imm & 0x2000000: imm -= 0x4000000
     return o + 4 * imm
 def plain_block_apple(a):
-    """普通改写块（stp; 键页间接读槽; 替换指令; 键页间接写槽; ...）→ 替换指令偏移。 | Ordinary rewrite block (stp; indirect slot read via key page; replaced instruction; indirect slot write via key page; ...) → offset of the replaced instruction."""
+    """Ordinary rewrite block (stp; indirect slot read via key page; replaced instruction; indirect slot write via key page; ...) → offset of the replaced instruction."""
     s = btarget(pat, a); w0 = struct.unpack_from('<I', pat, s)[0]
-    if w0 & 0xFFC003E0 != 0xA90003E0: return None          # stp xS, xT, [sp, #off]
+    # stp xS, xT, [sp, #off]
+    if w0 & 0xFFC003E0 != 0xA90003E0: return None
     ins = list(md.disasm(bytes(pat[s:s + 36]), s))
     if len(ins) < 8 or ins[1].mnemonic != 'mrs' or 'tpidrro_el0' not in ins[1].op_str:
         return None
@@ -104,22 +99,26 @@ def plain_block_apple(a):
     if ins[3].mnemonic != 'ldr' or ins[3].operands[1].mem.base != ins[2].operands[0].reg: return None
     T = ins[1].operands[0].reg
     if ins[4].mnemonic != 'add' or ins[4].operands[0].reg != T or ins[4].operands[1].reg != T: return None
-    if ins[5].mnemonic != 'ldr' or ins[5].operands[1].mem.base != T: return None              # ldr xS,[xT]：读槽 | ldr xS,[xT]: read the slot
-    if ins[7].mnemonic != 'str' or ins[7].operands[1].mem.base != T: return None              # str xS,[xT]：写回槽——只有普通块有，条件块没有（与旧版口径相同） | str xS,[xT]: write back to the slot - only ordinary blocks have it, conditional blocks do not (same convention as the old version)
+    # ldr xS,[xT]: read the slot
+    if ins[5].mnemonic != 'ldr' or ins[5].operands[1].mem.base != T: return None
+    # str xS,[xT]: write back to the slot; only ordinary blocks have it, conditional blocks do not
+    if ins[7].mnemonic != 'str' or ins[7].operands[1].mem.base != T: return None
     return ins[6].address
 
 def plain_block_android(a):
-    """Android 普通改写块：含 blr 宿主入口，且有 add Xt,Xt,Xs; ldr Xs,[Xt]; <替换指令>; str Xs,[Xt] 的槽读/写回配对（仅 'none'/base_imm 普通块有，正好一条被替换指令）。→ 替换指令偏移。
-    | Android plain block: has the blr host entry, and the slot read/writeback pair add Xt,Xt,Xs; ldr Xs,[Xt]; <replaced>; str Xs,[Xt] (only 'none'/base_imm plain blocks, with exactly one replaced instruction in between). → replaced instruction offset."""
+    """Android plain block: has the blr host entry, and the slot read/writeback pair add Xt,Xt,Xs; ldr Xs,[Xt]; <replaced>; str Xs,[Xt] (only 'none'/base_imm plain blocks, with exactly one replaced instruction in between). → replaced instruction offset."""
     s = btarget(pat, a); w0 = struct.unpack_from('<I', pat, s)[0]
-    if w0 & 0xFFC003FF != 0xD10003FF: return None          # sub sp, sp, #N
+    # sub sp, sp, #N
+    if w0 & 0xFFC003FF != 0xD10003FF: return None
     full = list(md.disasm(bytes(pat[s:s + 200]), s))
-    ins = []                                                # 只取本块：到第一条回 text 的 b 为止，不越界到相邻块 | this block only: up to the first b back to text, no spill into the adjacent block
+    # this block only: up to the first b back to text, no spill into the adjacent block
+    ins = []
     for x in full:
         ins.append(x)
         if x.mnemonic == 'b' and x.operands and x.operands[0].imm < PATCH_OFF: break
     if not any(x.mnemonic == 'blr' for x in ins): return None
-    def ldst_base(x):   # ldr/str xS,[xT]（无偏移、无变址）→ (S, T)，否则 None | ldr/str xS,[xT] with no offset/index → (S, T) else None
+    # ldr/str xS,[xT] with no offset/index → (S, T) else None
+    def ldst_base(x):
         if len(x.operands) != 2 or x.op_str.endswith('!') or ',' in x.op_str.split('[')[-1]: return None
         try: return (x.operands[0].reg, x.operands[1].mem.base) if x.operands[1].mem.disp == 0 else None
         except Exception: return None
@@ -129,19 +128,17 @@ def plain_block_android(a):
         lb = ldst_base(q)
         if not lb: continue
         S_, T_ = lb
-        if p.operands[0].reg != T_ or p.operands[0].reg != p.operands[1].reg: continue   # add Xt, Xt, Xs
+        # add Xt, Xt, Xs
+        if p.operands[0].reg != T_ or p.operands[0].reg != p.operands[1].reg: continue
         if i + 2 >= len(ins) or ins[i + 2].mnemonic != 'str': continue
         sb = ldst_base(ins[i + 2])
         if sb == (S_, T_): return ins[i + 1].address
     return None
 
 def plain_block(a): return plain_block_android(a) if TARGET == 'android' else plain_block_apple(a)
-# 独占窗口内的条件分支（状态 cbz/cbnz 已被 deexcl 改成 nop，不在此列）：随机状态几乎抽不到「比较相等」那一向（2^-32），
-# 所以每条分支两个方向各强制走一遍——两份映像同一条分支同时改成 nop（不跳）/ 无条件 b（必跳），其余照常比。
-# 由来：r40 及以前改写器把窗口副本的「顺序落出」出口排在外部出口之后，比较交换窗口写成功后落进「比较不等」的出口；随机试验全绿（暗黑 6 个窗口：main 0x1848eb8 / 0x1848f28 / 0x1848f84，sdk 0x2ea0fc / 0x2ea4cc / 0x2ea644）。
 # Conditional branches inside an exclusive window (the status cbz/cbnz has already been turned into nop by deexcl and is not included): a random state almost never draws the "compare equal" direction (2^-32),
 # so each branch is forced through both directions once -- in both images the same branch is changed to nop (not taken) / an unconditional b (taken) at the same time, and the rest is compared as usual.
-# Background: up to r40 the rewriter placed the "sequential fall-out" exit of the window copy after the external exits, so a compare-and-swap window fell into the "compare not equal" exit after a successful write; the random trials were all green (6 windows in the game: main 0x1848eb8 / 0x1848f28 / 0x1848f84, sdk 0x2ea0fc / 0x2ea4cc / 0x2ea644).
+# Random trials alone stay green on a compare-and-swap window whose sequential fall-out exit is placed after the external exits: after a successful write it falls into the "compare not equal" exit.
 def cond_target(w, pc):
     if w & 0xFF000010 == 0x54000000 or w & 0x7E000000 == 0x34000000: imm = (w >> 5) & 0x7FFFF; imm -= (imm & 0x40000) << 1; return pc + 4 * imm
     if w & 0x7E000000 == 0x36000000: imm = (w >> 5) & 0x3FFF; imm -= (imm & 0x2000) << 1; return pc + 4 * imm
@@ -150,7 +147,6 @@ win_br = {}
 for a0, hi0 in winend.items():
     gate = btarget(pat, a0); pre = list(md.disasm(bytes(pat[gate:gate + 80]), gate))
     if TARGET == 'android':
-        # 前导：sub sp; stp; <宿主入口 blr 序列>; adrp; ldr; add Xt,Xt,Xs; ldr Xs,[Xt]。副本从槽读之后开始。
         # Prologue: sub sp; stp; <host-entry blr sequence>; adrp; ldr; add Xt,Xt,Xs; ldr Xs,[Xt]. The copy starts after the slot read.
         copy0 = None
         for i in range(1, len(pre)):
@@ -177,34 +173,31 @@ if A.mutate:
     cand = [a for a in sites if a not in winend and a not in brinfo and plain_block(a)]
     mut_sites = sorted(random.Random(A.seed).sample(cand, min(A.mutate, len(cand))))
     pat_mut = bytearray(pat)
-    def exit_b(a):   # 改写块回 text 的那条 b（块内第一条目标落回 text 的无条件 b） | The b by which a rewrite block returns to text (the first unconditional b in the block whose target lands back in text)
+    # the b by which a rewrite block returns to text (the first unconditional b in the block whose target lands back in
+    # text)
+    def exit_b(a):
         w = struct.unpack_from('<I', pat, a)[0]; o = a + 4 * (((w & 0x3FFFFFF) ^ 0x2000000) - 0x2000000)
         for k in range(o, o + 4 * 24, 4):
             w = struct.unpack_from('<I', pat, k)[0]
             if w & 0xFC000000 == 0x14000000 and k + 4 * (((w & 0x3FFFFFF) ^ 0x2000000) - 0x2000000) < PATCH_OFF: return k, w
         return None
     def scratch_pair(a):
-        """块内成对的帧暂存 stp/ldp xS,xT,[sp,#0]（base sp、disp 0、无变址）的地址表，供 spdown 变异把它们整体移到 [sp,#-32]。
-        | Addresses of the paired framed-scratch stp/ldp xS,xT,[sp,#0] (base sp, disp 0, no writeback) in the block, for the spdown mutation to shift them to [sp,#-32]."""
+        """Addresses of the paired framed-scratch stp/ldp xS,xT,[sp,#0] (base sp, disp 0, no writeback) in the block, for the spdown mutation to shift them to [sp,#-32]."""
         s = btarget(pat, a); out = []
         for ins in md.disasm(bytes(pat[s:s + 256]), s):
             if ins.mnemonic == 'b' and ins.operands and ins.operands[0].imm < PATCH_OFF:
-                break                              # 止于回 text，不越入相邻块 | stop at the return-to-text, no spill into the adjacent block
-            # 只挑「非变址」的帧暂存 stp/ldp xS,xT,[sp,#0]（既非前变址 `!` 也非后变址 [sp],#i）——
-            # 后变址的 thread_base 收栈 ldp x16,x30,[sp],#16 若被当暂存下移，会动到 SP、以普通状态分歧（非 spviol）被抓，污染负对照（Codex r2 blocker 1）。
-            # Pick only non-indexed framed scratch stp/ldp xS,xT,[sp,#0] (neither pre-index `!` nor post-index [sp],#i) --
-            # the post-index thread_base pop ldp x16,x30,[sp],#16, if shifted as scratch, would move SP and be caught by ordinary state divergence (not spviol), contaminating the control (Codex r2 blocker 1).
-            # 按编码精确挑：64 位带符号偏移形 stp/ldp（0xA9000000 / 0xA9400000，非变址），Rn=sp，imm7=0（Opus r2）。
-            # Select by encoding: 64-bit signed-offset stp/ldp (0xA9000000 / 0xA9400000, no writeback), Rn=sp, imm7=0 (Opus r2).
+                # stop at the return-to-text, no spill into the adjacent block
+                break
+            # Pick only non-indexed framed scratch stp/ldp xS,xT,[sp,#0] (neither pre-index `!` nor post-index [sp],#i):
+            # the post-index thread_base pop ldp x16,x30,[sp],#16, if shifted as scratch, would move SP and be caught by ordinary state divergence (not spviol), contaminating the control.
+            # Select by encoding: 64-bit signed-offset stp/ldp (0xA9000000 / 0xA9400000, no writeback), Rn=sp, imm7=0.
             w = struct.unpack_from('<I', pat, ins.address)[0]
             if w & 0xFFC00000 in (0xA9000000, 0xA9400000) and (w >> 5) & 31 == 31 and (w >> 15) & 0x7F == 0:
                 out.append(ins.address)
         return out
-    # 三类变异各约三分之一：nop（替换指令改 nop）、exit+4（跳板出口 b 目标 +4）、spdown（帧暂存 stp/ldp 整体下移 32 到活动 SP 下方、避开 thread_base 压栈格——
-    # 值 / SP / 寄存器全不变，只有 spviol 能判出：这正是「每写对照活动 SP」判据的负对照 B2/I3；无暂存对的站点退回 nop 以保持计数稳定）。
     # Three mutation kinds, ~a third each: nop (replaced insn → nop), exit+4 (trampoline exit b target +4), spdown (shift the framed-scratch
     # stp/ldp 32 bytes below the live SP, clear of the thread_base push slot — value / SP / registers all unchanged, so ONLY spviol can tell it apart: the negative control for the
-    # per-write live-SP criterion B2/I3; a site without a scratch pair falls back to nop to keep counts stable).
+    # per-write live-SP criterion; a site without a scratch pair falls back to nop to keep counts stable).
     mut_kind = {}
     for i, a in enumerate(mut_sites):
         if i % 3 == 1:
@@ -215,8 +208,7 @@ if A.mutate:
             if len(pair) >= 2:
                 for pa in pair:
                     w = struct.unpack_from('<I', pat_mut, pa)[0]
-                    # [sp,#0] → [sp,#-32]：避开 thread_base 压栈格 [sp-16, sp)（下移 16 会被 stp x16,x30,[sp,#-16]! 覆盖 → 寄存器分歧，非 spviol，Opus r2）。
-                    # [sp,#0] → [sp,#-32]: clear of the thread_base push slot [sp-16, sp) (a 16-byte shift is overwritten by stp x16,x30,[sp,#-16]! → register divergence, not spviol, Opus r2).
+                    # [sp,#0] → [sp,#-32]: clear of the thread_base push slot [sp-16, sp) (a 16-byte shift is overwritten by stp x16,x30,[sp,#-16]! → register divergence, not spviol).
                     struct.pack_into('<I', pat_mut, pa, (w & ~(0x7F << 15)) | ((-4 & 0x7F) << 15))
                 mut_kind[a] = 'spdown'; continue
         struct.pack_into('<I', pat_mut, plain_block(a), 0xD503201F); mut_kind[a] = 'nop'
@@ -232,14 +224,14 @@ def mk(image, arena0):
     u.mem_map(ARENA, ARENA_SZ); u.mem_write(ARENA, arena0)
     u.mem_map(TSD, 0x10000)
     if TARGET == 'android':
-        u.mem_map(ENTRY, 0x1000); u.mem_write(ENTRY, struct.pack('<I', 0xD65F03C0))   # ret：宿主上下文入口桩，x16 由代码钩子置为 TSD | ret: host context entry stub; x16 set to TSD by the code hook
+        # ret: host context entry stub; x16 set to TSD by the code hook
+        u.mem_map(ENTRY, 0x1000); u.mem_write(ENTRY, struct.pack('<I', 0xD65F03C0))
     u.reg_write(UC_ARM64_REG_TPIDRRO_EL0, TSD)
     st = {'w': [], 'fault': None, 'arena': arena0, 'spb': SP0, 'pend': [], 'maxlo': {}}
     def wr(uc, acc, addr, size, val, d):
         st['w'].append((addr, size, val & ((1 << (8 * size)) - 1)))
-        # Android SP 安全：记下每条写的地址与「写该指令时的 SP（指令起点）」，在下一条指令（= 本指令执行后的 SP）定案
-        # lo = min(SP_before, SP_after)。前变址压栈写在新 SP（lo==addr，安全）、后变址写在旧 SP（lo==addr，安全）、普通负偏移红区写 lo==SP>addr（违规）。
         # Android SP-safety: record each write's address and the SP at that instruction's start; the next instruction (= SP after this one) finalizes lo = min(SP_before, SP_after).
+        # A pre-index push writes at the new SP and a post-index store at the old SP (lo == addr, safe); an ordinary negative-offset red-zone write has lo == SP > addr (a violation).
         if TARGET == 'android' and not (TSD <= addr < TSD + 0x10000): st['pend'].append((addr, st['spb']))
     def bad(uc, acc, addr, size, val, d): st['fault'] = (acc, addr); return False
     # Keep one code hook for the emulator's lifetime. Repeatedly adding/removing
@@ -259,10 +251,8 @@ def restore(u, st):
     st['w'].clear(); st['fault'] = None; st['spb'] = SP0; st['pend'] = []; st['maxlo'] = {}
 
 def finalize_pend(st, sp_now):
-    """为挂起的写定案：lo = min(SP_before, SP_after)，取每址最大 lo（addr < 它 ⇒ 至少一次写在当时活动 SP 下方）。
-    补丁侧与原指令侧都算，trial 以「补丁写在活动 SP 下方、而原指令没有」判定 B2 违规（避免把低地址数据写误判）。
-    | Finalize pending writes: lo = min(SP_before, SP_after), keep the max lo per address (addr < it ⇒ written below the live SP at least once).
-    Computed on both the patch and the original side; trial flags a B2 violation as "written below live SP by the patch but not by the original" (so low-address data writes are not misjudged)."""
+    """Finalize pending writes: lo = min(SP_before, SP_after), keep the max lo per address (addr < it ⇒ written below the live SP at least once).
+    Computed on both the patch and the original side; trial flags a violation as "written below live SP by the patch but not by the original" (so low-address data writes are not misjudged)."""
     m = st['maxlo']
     for addr, spb in st['pend']:
         lo = spb if spb < sp_now else sp_now
@@ -276,7 +266,7 @@ def state(u, st, patched):
     g = g + [tp]
     # Only the runtime's actual TLS slots are private. A guest register-offset
     # store may legitimately land elsewhere in the mapped TSD page (v1.1.2
-    # main+0x24dd68 did so in the fixed random corpus). Do not hide that write.
+    # main+0x24dd68 does so in the fixed random corpus). Do not hide that write.
     private_slots = {TSD + 8 * slot for slot in KEY_SLOT.values()}
     w = [x for x in st['w'] if not (patched and x[0] in private_slots and x[1] == 8)]
     return g, u.reg_read(UC_ARM64_REG_SP), u.reg_read(UC_ARM64_REG_NZCV), [u.reg_read(r) for r in VR], w, st['fault']
@@ -292,9 +282,9 @@ def run(u, st, start, patched, init):
         for key, idx in KEY_IDX.items():
             u.mem_write(IB + KEY_PAGE_OFF + 8 * idx, struct.pack('<Q', KEY_SLOT[key] * 8))
         if TARGET == 'android':
-            u.mem_write(IB + KEY_PAGE_OFF + 8 * 8, struct.pack('<Q', ENTRY))   # 键页第 8 项 = 宿主上下文入口桩 | key page index 8 = host context entry stub
-            # I3：补丁侧真实宿主寄存器置毒值，上下文只经键页第 8 项入口桩（代码钩子置 x16=TSD）；补丁区若读/写真实 tpidr(ro) 会被 HOSTLEAK / 访存异常暴露。
-            # I3: poison the patched side's real host registers; the context arrives only via the key-page[8] entry stub (the code hook sets x16=TSD); any patch-area read/write of the real tpidr(ro) is exposed as HOSTLEAK / a fault.
+            # key page index 8 = host context entry stub
+            u.mem_write(IB + KEY_PAGE_OFF + 8 * 8, struct.pack('<Q', ENTRY))
+            # Poison the patched side's real host registers; the context arrives only via the key-page[8] entry stub (the code hook sets x16=TSD); any patch-area read/write of the real tpidr(ro) is exposed as HOSTLEAK / a fault.
             u.reg_write(UC_ARM64_REG_TPIDRRO_EL0, POISON_RO)
             u.reg_write(UC_ARM64_REG_TPIDR_EL0, POISON_TP)
         u.mem_write(TSD + 8 * SLOT18, struct.pack('<Q', init['g'][18]))
@@ -306,9 +296,11 @@ def run(u, st, start, patched, init):
         seen = {'patch': False}; android = TARGET == 'android'
         def hk(uc, addr, size, d):
             if android:
-                if addr == ENTRY:                                    # 宿主上下文入口：只改 x16 = 上下文基址（= TSD），不碰其余寄存器 / 标志 | host context entry: changes only x16 = context base (= TSD)
+                # host context entry: changes only x16 = context base (= TSD)
+                if addr == ENTRY:
                     uc.reg_write(UC_ARM64_REG_X16, TSD); return
-                sp = uc.reg_read(UC_ARM64_REG_SP)                    # = 上一条执行后的 SP；为其挂起的写定案 | = SP after the previous instruction; finalize its pending writes
+                # = SP after the previous instruction; finalize its pending writes
+                sp = uc.reg_read(UC_ARM64_REG_SP)
                 if st['pend']: finalize_pend(st, sp)
                 st['spb'] = sp
             if addr >= IB + PATCH_OFF: seen['patch'] = True
@@ -322,10 +314,10 @@ def run(u, st, start, patched, init):
         try: u.emu_start(start, IB + 0x7FFFFFFF, count=400)
         except UcError: pass
         st['code_hook'] = None
-        if android and st['pend']: finalize_pend(st, u.reg_read(UC_ARM64_REG_SP))   # writes of the last instruction
+        # writes of the last instruction
+        if android and st['pend']: finalize_pend(st, u.reg_read(UC_ARM64_REG_SP))
         if end['pc'] is None and st['fault'] is None: end['pc'] = 'NOEXIT'
-        # I3：补丁区不得读/写真实宿主 tpidr(ro)。若毒值被改动（msr tpidr / 把 mrs 结果写回等），记为 HOSTLEAK —— 与原侧的结束 PC 不同即暴露为分歧。
-        # I3: the patch area must not read/write the real host tpidr(ro). If the poison changed (msr tpidr / writing back an mrs result, etc.), mark HOSTLEAK — it differs from the original side's end PC and surfaces as a divergence.
+        # The patch area must not read/write the real host tpidr(ro). If the poison changed (msr tpidr / writing back an mrs result, etc.), mark HOSTLEAK — it differs from the original side's end PC and surfaces as a divergence.
         if android and (u.reg_read(UC_ARM64_REG_TPIDRRO_EL0) != POISON_RO or u.reg_read(UC_ARM64_REG_TPIDR_EL0) != POISON_TP):
             end['pc'] = 'HOSTLEAK'
     elif start - IB in winend:
@@ -333,7 +325,8 @@ def run(u, st, start, patched, init):
         android = TARGET == 'android'
         group = atomic_groups.get(start - IB, [(lo - IB, hi - IB)])
         def hk2(uc, addr, size, d):
-            if android:   # the original side also tracks each write's live SP (both sides are compared)
+            # the original side also tracks each write's live SP (both sides are compared)
+            if android:
                 sp = uc.reg_read(UC_ARM64_REG_SP)
                 if st['pend']: finalize_pend(st, sp)
                 st['spb'] = sp
@@ -349,7 +342,8 @@ def run(u, st, start, patched, init):
         try: u.emu_start(start, IB + 0x7FFFFFFF, count=1)
         except UcError: pass
         end['pc'] = u.reg_read(UC_ARM64_REG_PC) if st['fault'] is None else None
-        if TARGET == 'android' and st['pend']: finalize_pend(st, u.reg_read(UC_ARM64_REG_SP))   # 单条原指令：lo = min(SP0, 终态 SP) | single original instruction: lo = min(SP0, final SP)
+        # single original instruction: lo = min(SP0, final SP)
+        if TARGET == 'android' and st['pend']: finalize_pend(st, u.reg_read(UC_ARM64_REG_SP))
     s = state(u, st, patched)
     return s + (end['pc'],)
 
@@ -362,10 +356,8 @@ def init_state(rng, kind, site_br=None):
     if site_br: g[18] = IB + site_br[0] + 4 * rng.randrange(site_br[1])
     return {'g': g, 'v': [rng.getrandbits(128) for _ in range(32)], 'nzcv': rng.randrange(16) << 28, 'tls': rng.randrange(0, 0x100000) & ~15, 'tlr': rng.randrange(0x100000, 0x200000) & ~15}
 
-# 逐条写分类（纯函数，供反例单测直接验，无需跑 Unicorn）：补丁写在活动 SP 下方而原指令没有 → spviol（B2 / Codex C4：
-# 原址相同、当下 SP 不同的边界违规也要抓）；否则原指令也写的 / 高位意外写保留比较，帧暂存丢弃。plo/olo = 每址最大活动 SP（addr < 它即当时在 SP 下方）。
 # Per-write classification (pure function, so the counterexample can assert it directly without Unicorn): a patch write below its live SP where the original did not → spviol
-# (B2 / Codex C4: catch the same-address-different-SP boundary violation too); otherwise original-also-wrote / unexpected-high writes are kept, framed scratch is dropped. plo/olo = max live SP per addr (addr < it ⇒ below SP then).
+# (the same-address-different-SP boundary violation included); otherwise original-also-wrote / unexpected-high writes are kept, framed scratch is dropped. plo/olo = max live SP per addr (addr < it ⇒ below SP then).
 def classify_writes(writes, ow, plo, olo, sp0=SP0):
     keep = []; spviol = False
     for x in writes:
@@ -434,7 +426,8 @@ def work(job):
     return out
 
 def runall(lst, mutated):
-    k = 64                                   # 切块数固定，结果只随 seed 变、不随 jobs 变 | Chunk count is fixed, so the result varies only with seed, not with jobs
+    # chunk count is fixed, so the result varies only with seed, not with jobs
+    k = 64
     jobs = [(i, lst[i::k], mutated) for i in range(k) if lst[i::k]]
     with mp.get_context('fork').Pool(A.jobs) as p:
         return [r for part in p.imap_unordered(work, jobs) for r in part]
@@ -457,10 +450,8 @@ if __name__ == '__main__':
         caught = sum(1 for r in mres if r[3])
         for a, n, eff, d in mres:
             if not d: i = ins_of(a); print(f'MUTMISS {a:#x} {mut_kind[a]} {i.mnemonic} {i.op_str} trials={n} eff={eff}')
-        # spdown 必须「只」经 spviol 判出：每条分歧都含 spviol，且除写入序列（字段 4，spviol 写被保留比较的后果）外无别的字段不同
-        # （寄存器 / SP / NZCV / 向量 / 异常 / 结束 PC 全同）。否则它不是 spviol 的负对照（Codex/Opus r2 blocker）。
         # spdown must be caught ONLY via spviol: every divergence includes spviol and no field other than the write list (field 4, a consequence of keeping
-        # the spviol write for comparison) differs (registers / SP / NZCV / vectors / fault / end PC identical). Otherwise it is not a spviol control (Codex/Opus r2 blocker).
+        # the spviol write for comparison) differs (registers / SP / NZCV / vectors / fault / end PC identical). Otherwise it is not a spviol control.
         for a, n, eff, d in mres:
             if mut_kind[a] != 'spdown' or not d: continue
             if not all('spviol' in fl and set(fl) <= {4, 'spviol'} for _, fl in d):
@@ -474,7 +465,8 @@ if __name__ == '__main__':
         with open(A.tsv, 'w') as f:
             f.write('site\ttrials\teff\tdiffs\n')
             for a, n, eff, d in res: f.write(f'{a:#x}\t{n}\t{eff}\t{len(d)}\n')
-    ok = not bad and not zero and not miss and not sp_contaminated   # 变异漏抓 / spdown 非 spviol 判出 = 判据不可靠，判红 | a missed mutation / an spdown not caught via spviol = the criterion is unreliable, fail
+    # a missed mutation / an spdown not caught via spviol = the criterion is unreliable, fail
+    ok = not bad and not zero and not miss and not sp_contaminated
     print(f'EQUIV {MOD} {"OK" if ok else "FAIL"} 站点={len(res)} 试验={T} 有效试验={E} 双异常={T - E} '
           f'有效≥1站点={len(res) - len(zero)} 有效≥{A.min_eff}站点={len(res) - len(low)} 零有效={len(zero)} 分歧站点={len(bad)} '
           f'窗口={len(winend)} 其中含条件分支={len(win_br)}（{sum(len(v) for v in win_br.values())} 条×2 向强制） 门站点(结构核对)={ngate} 已登记剪口(结构核对)={ncut} 观测门(结构核对)={nobs} 变异={len(mut_sites)}（{mut_by}） 抓到={caught} 漏抓={miss} seed={A.seed}', flush=True)

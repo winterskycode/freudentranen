@@ -1,4 +1,3 @@
-// Vulkan 资源分配之前解决客体内存读取依赖；不在绑定途中提交或提前公布 GPU 结果。
 // Resolve guest-memory read dependencies before allocating Vulkan resources; never submit during binding or publish GPU results early.
 static uint64_t dependency_flushes;
 enum {
@@ -21,7 +20,6 @@ static void dependencies_report(void) {
     static uint64_t frame;static dependency_timing previous[DEP_COUNT];
     static const char *const names[DEP_COUNT]={"none","ubo","ssbo","compute_ubo_pointer","texel","shader_texture","index","vertex","copy_buffer_source","texture","copy_texture_source","copy_texture_destination"};
     if(!presents||presents%60||presents==frame)return;uint64_t span=presents-frame;dependency_timing total={0};
-    // wait 是完整客体完成等待，包含 GPU、发布 worker 与锁调度；不是 GPU 忙时。
     // Wait is guest completion latency including GPU, publication worker and lock scheduling, not GPU busy time.
     for(unsigned i=1;i<DEP_COUNT;i++){
         dependency_timing *s=&dependency_times[i],*p=&previous[i];uint64_t calls=s->calls-p->calls;
@@ -56,7 +54,6 @@ static int dependencies_overlap(uintptr_t a,uint64_t an,uintptr_t b,uint64_t bn)
     return a<b+bn&&b<a+an;
 }
 
-// 每类每窗口只读一次已有 post 元数据；不重新调用 forward_find 或改依赖计数。
 // Read existing post metadata once per class/window; never call forward_find again or change dependency counters.
 static void dependencies_detail_posts(dependency_detail *d,const post_op *posts) {
     for(const post_op *p=posts;p;p=p->next){
@@ -94,7 +91,6 @@ static void dependencies_prepare_range(uintptr_t address,uint64_t size) {
     if(dependencies_unknown(address,size))dependencies_flush(DEP_COPY_BUFFER_SOURCE);
 }
 
-// GPU 生成图像直接采样；CPU 上传图像的待公布写入会在完成时才更新脏页代数。
 // Sample GPU-generated images directly; pending writes to CPU-uploaded images update dirty generations only on completion.
 static int dependencies_texture_unknown(const tex_t *texture) {
     image_entry *image=image_lookup(texture->serial);
@@ -119,7 +115,6 @@ static void dependencies_prepare_copy_texture(const p_copy_b2t *copy) {
     if(stride<pitch)die("Vulkan dependency texture copy stride");
     if(!count||count-1>(UINT64_MAX-pitch)/stride)die("Vulkan dependency texture copy range overflow");
     if((count-1)*stride+pitch>UINTPTR_MAX-copy->src)die("Vulkan dependency texture source range overflow");
-    // 逐行检查真实读取，行间的 padding 不会无故触发同步。
     // Check actual row reads; padding between rows does not unnecessarily force synchronization.
     for(uint64_t i=0;i<count;i++)if(dependencies_unknown(copy->src+i*stride,pitch)){dependencies_flush(DEP_COPY_TEXTURE_SOURCE);return;}
 }
@@ -147,7 +142,6 @@ static int dependencies_shader_unknown(const shader_entry *shader) {
                 if(binding->cb_slot!=0||slot<0||slot>=16)die("Vulkan dependency storage mapping: shader=%s cb=%u offset=%#x",shader->key,binding->cb_slot,off);
             }
             u=uniform_pointer?&state.ubo[shader->stage][slot]:&state.ssbo[shader->stage][slot];}
-            // 可写 buffer 也读取初值；反射只有 Write 位，不能把它当作纯覆盖输出。
             // Writable buffers also read their initial contents; reflection has only a Write bit, not a write-only guarantee.
             uint64_t bytes=u->size?u->size:65536,alignment=(binding->flags&1)?4:gpu_limits.minStorageBufferOffsetAlignment;
             int result=-1;
@@ -169,7 +163,6 @@ static int dependencies_shader_unknown(const shader_entry *shader) {
                     if(type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER?dependencies_gpu_unknown(address,bytes,texel_buffer_alignment(&descriptor)):dependencies_unknown(address,bytes))return DEP_TEXEL;}
             }
         }else if(type!=VK_DESCRIPTOR_TYPE_SAMPLER){
-            // Packaged storage 图像也读 CPU 初值；普通 GPU storage 图像保持直接消费。
             // Packaged storage images also read CPU initial contents; ordinary GPU storage images remain direct consumers.
             for(unsigned j=0;j<binding->count;j++){
                 uint32_t handle=shader_handle(binding,shader->stage,j);unsigned id=handle&0xfffff;
@@ -184,7 +177,8 @@ static int dependencies_shader_unknown(const shader_entry *shader) {
             }
         }
     }
-    for(unsigned i=0;i<shader->bindless_count;i++){   /* textures read through the global arrays (nvn_vulkan_bindless.inc) */
+    /* textures read through the global arrays (nvn_vulkan_bindless.inc) */
+    for(unsigned i=0;i<shader->bindless_count;i++){
         texture_descriptor descriptor=descriptor_texture(shader_handle(&shader->bindless[i],shader->stage,0)&0xfffff);
         if(descriptor.valid&&dependencies_texture_unknown(&descriptor.texture))return DEP_SHADER_TEXTURE;
     }
@@ -203,7 +197,6 @@ static void dependencies_prepare_shader(const shader_entry *shader) {
     if(dependencies_have_unknown()){unsigned reason=dependencies_shader_unknown(shader);if(reason)dependencies_flush(reason);}
 }
 
-// 先等待索引本身，再用不可变快照的最大值检查顶点前缀；flush 之后 Draw 重新取得快照。
 // Wait for indices before checking the vertex prefix using immutable-snapshot maxima; after a flush the draw acquires its snapshot again.
 /* The last instance a draw fetches from an instance-rate stream (TOTK draws instanced DrawArrays too), for the vertex
    fetch and the dependency check alike. */
@@ -228,12 +221,11 @@ static int index_stash_take(const p_draw_idx *indexed,uint64_t size,vk_buffer *i
 }
 
 static void dependencies_prepare_draw(const shader_entry *vertex,const shader_entry *fragment,const p_draw *draw,const p_draw_idx *indexed) {
-    if(inplace_on())return;   /* nothing is read on the CPU for a draw bound in place */
+    /* nothing is read on the CPU for a draw bound in place */
+    if(inplace_on())return;
     if((draw&&draw->count<=0)||(indexed&&(indexed->count<=0||!indexed->instances))||!dependencies_have_unknown())return;
-    // 第一阶段不能读取未知索引，更不能分配会被 flush 清理的 descriptor/arena。
     // Stage one must not read unknown indices or allocate descriptors/arena data that flushing would reclaim.
     unsigned index_bytes=indexed?(indexed->itype==0?1:indexed->itype==1?2:4):0;
-    // 保留原来的短路次序；分类来自真正首先触发的分支，不重复查询依赖。
     // Preserve short-circuit order; classify the first actual trigger without querying dependencies twice.
     unsigned reason=dependencies_shader_unknown(vertex);
     if(!reason)reason=dependencies_shader_unknown(fragment);
@@ -253,7 +245,6 @@ static void dependencies_prepare_draw(const shader_entry *vertex,const shader_en
         int bw,bh;uint32_t end=attribute.offset+nvn_fmt_bpb(attribute.fmt,&bw,&bh);
         if(end>attribute_end[attribute.stream])attribute_end[attribute.stream]=end;
     }
-    // 第二阶段按真实属性与实例偏移限制范围；等待后正常 draw 会重新读取索引和绑定。
     // Stage two bounds reads by actual attributes and instance offsets; after waiting, normal drawing re-reads indices and bindings.
     for(unsigned i=0;i<16;i++)if(attribute_end[i]){
         const vs_st *stream=&state.streams[i];const NVNbufferRange *buffer=&state.vertices[i];

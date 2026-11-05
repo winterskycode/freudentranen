@@ -21,7 +21,8 @@ static void blocks(uint32_t h[8], const uint8_t *p, size_t n) {
         uint32x4_t a = s0, b = s1;
         uint32x4_t m0 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p))), m1 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 16)));
         uint32x4_t m2 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 32))), m3 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 48)));
-        for (int i = 0; i < 16; i++) {   /* m0 always holds the next four schedule words */
+        /* m0 always holds the next four schedule words */
+        for (int i = 0; i < 16; i++) {
             uint32x4_t t = vaddq_u32(m0, vld1q_u32(K + 4 * i)), a0 = a;
             a = vsha256hq_u32(a, b, t);
             b = vsha256h2q_u32(b, a0, t);

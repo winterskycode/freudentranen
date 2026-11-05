@@ -24,6 +24,7 @@ for a in range(256):
             out.append(bytes((a, b, c)))
             for d in REST:
                 out.append(bytes((a, b, c, d)))
-                out.append(bytes((0x41, a, b, c, d)))    # after an ASCII byte
+                # after an ASCII byte
+                out.append(bytes((0x41, a, b, c, d)))
 for s in out:
     sys.stdout.write(f'{s.hex()} {valid(s)}\n')

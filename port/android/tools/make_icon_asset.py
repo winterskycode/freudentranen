@@ -28,11 +28,14 @@ from fontTools.ttLib import TTFont
 Y0, Y1 = 20, 585
 CY, R = (Y0 + Y1) / 2, (Y1 - Y0) / 2
 K = 0.5523
-SIZE, MARGIN, SUPERSAMPLE = 108, 4, 4   # the button guide's textures in 1.4.3
+# the button guide's textures in 1.4.3
+SIZE, MARGIN, SUPERSAMPLE = 108, 4, 4
 TEXTURES = {'Nt_KeyTexA_00': 0xE040, 'Nt_KeyTexB_00': 0xE041, 'Nt_KeyTexX_00': 0xE042, 'Nt_KeyTexY_00': 0xE043,
             'Nt_KeyTexL_00': 0xE044, 'Nt_KeyTexZL_00': 0xE046,
-            'Nt_KeyTexLSt_00': 0xE052,   # the left stick with an arrow up: push it forward
-            'Nt_KeyTexLSt_01': 0xE05E}   # the left stick
+            # the left stick with an arrow up: push it forward
+            'Nt_KeyTexLSt_00': 0xE052,
+            # the left stick
+            'Nt_KeyTexLSt_01': 0xE05E}
 
 
 class Letters:
@@ -96,7 +99,8 @@ def oriented(pen, points, hole):
 
 def arrow_up_hole(pen, cx, cy, size):
     """An arrow up (triangle head and stem) cut out of a key, clockwise so it is a hole."""
-    def at(u, v):   # u along the arrow, v across it
+    # u along the arrow, v across it
+    def at(u, v):
         return (cx - v * size, cy + u * size)
     pts = [at(0.5, 0), at(0.0, 0.42), at(0.0, 0.15), at(-0.5, 0.15), at(-0.5, -0.15), at(0.0, -0.15), at(0.0, -0.42)]
     polygon(ReverseContourPen(pen), pts)
@@ -119,13 +123,15 @@ def dpad(*lit, advance=640):
         polygon(pen, [(cx + length, CY - arm), (cx + length, CY + arm), (cx + arm, CY + arm), (cx + arm, CY + length),
                       (cx - arm, CY + length), (cx - arm, CY + arm), (cx - length, CY + arm), (cx - length, CY - arm),
                       (cx - arm, CY - arm), (cx - arm, CY - length), (cx + arm, CY - length), (cx + arm, CY - arm)])
-        m, t, h = (length + arm) / 2, arm * 0.72, arm * 0.80   # arm centre, half base and height of the arrow
+        # arm centre, half base and height of the arrow
+        m, t, h = (length + arm) / 2, arm * 0.72, arm * 0.80
         heads = {'up': [(cx - t, CY + m - h / 2), (cx, CY + m + h / 2), (cx + t, CY + m - h / 2)],
                  'down': [(cx + t, CY - m + h / 2), (cx, CY - m - h / 2), (cx - t, CY - m + h / 2)],
                  'left': [(cx - m + h / 2, CY - t), (cx - m - h / 2, CY), (cx - m + h / 2, CY + t)],
                  'right': [(cx + m - h / 2, CY + t), (cx + m + h / 2, CY), (cx + m - h / 2, CY - t)]}
         for d in lit:
-            polygon(pen, heads[d])   # already clockwise: a hole
+            # already clockwise: a hole
+            polygon(pen, heads[d])
     return advance, draw
 
 
@@ -134,7 +140,8 @@ def playstation(g):
     shows the prompts with the Switch's letter positions, so the glyph of A is the east button's)."""
     def face(symbol, advance=640):
         def draw(pen):
-            cx, s = advance / 2, R * 0.50   # symbol half size
+            # symbol half size
+            cx, s = advance / 2, R * 0.50
             circle(pen, cx, CY, R)
             if symbol == 'circle':
                 circle(ReverseContourPen(pen), cx, CY, s); circle(pen, cx, CY, s * 0.70)
@@ -147,8 +154,10 @@ def playstation(g):
                 gx, gy = cx, sum(y for _, y in pts) / 3
                 oriented(pen, pts, hole=True)
                 oriented(pen, [(gx + (x - gx) * 0.62, gy + (y - gy) * 0.62) for x, y in pts], hole=False)
-            else:   # cross: one 12-point outline, so the two strokes do not overlap as separate holes
-                a, w = s * 1.05, s * 0.22 * math.sqrt(2)   # arm reach along the diagonal, half stroke width
+            # cross: one 12-point outline, so the two strokes do not overlap as separate holes
+            else:
+                # arm reach along the diagonal, half stroke width
+                a, w = s * 1.05, s * 0.22 * math.sqrt(2)
                 pts = [(cx, CY + w), (cx + a - w, CY + a), (cx + a, CY + a - w), (cx + w, CY),
                        (cx + a, CY - a + w), (cx + a - w, CY - a), (cx, CY - w), (cx - a + w, CY - a),
                        (cx - a, CY - a + w), (cx - w, CY), (cx - a, CY + a - w), (cx - a + w, CY + a)]
@@ -162,13 +171,15 @@ def playstation(g):
         def draw(pen):
             rounded(pen, 60, Y0, advance - 60, Y1, 60, 230); g.hole(pen, label, advance / 2, CY - 20, 230, advance - 220)
         return advance, draw
-    def options(advance=640):   # three bars, as on the DualSense Options button
+    # three bars, as on the DualSense Options button
+    def options(advance=640):
         def draw(pen):
             circle(pen, advance / 2, CY, R); reverse = ReverseContourPen(pen)
             for dy in (-115, 0, 115):
                 rounded(reverse, advance / 2 - 150, CY + dy - 38, advance / 2 + 150, CY + dy + 38, 38)
         return advance, draw
-    def create(advance=640):   # three short strokes rising to the right, as on the Create button
+    # three short strokes rising to the right, as on the Create button
+    def create(advance=640):
         def draw(pen):
             circle(pen, advance / 2, CY, R); cx = advance / 2
             for dx in (-110, 0, 110):
@@ -209,7 +220,8 @@ def rasterize(draw, size):
     inner = size - 2 * MARGIN; scale = inner / max(x1 - x0, y1 - y0)
     ox = MARGIN + (inner - (x1 - x0) * scale) / 2 - x0 * scale
     oy = MARGIN + (inner - (y1 - y0) * scale) / 2 - y0 * scale
-    flat = PolygonPen(); rec.replay(TransformPen(flat, (scale, 0, 0, -scale, ox, size - oy)))   # font y up -> rows down
+    # font y up -> rows down
+    flat = PolygonPen(); rec.replay(TransformPen(flat, (scale, 0, 0, -scale, ox, size - oy)))
     edges = [(a, b) for poly in flat.polygons for a, b in zip(poly, poly[1:] + poly[:1]) if a[1] != b[1]]
     n = size * SUPERSAMPLE; cover = [0] * (size * size)
     for row in range(n):

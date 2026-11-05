@@ -14,23 +14,31 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define TOKC_TITLE_BASE 0x0100F2C0115B6000ull     /* Tears of the Kingdom */
-#define TOKC_TITLE_UPDATE 0x0100F2C0115B6800ull   /* and its updates */
-#define TOKC_VERSION_BASE 0u                      /* 1.0.0, in the content meta */
-#define TOKC_VERSION_UPDATE 720896u               /* 1.4.3 */
+#define TOKC_TITLE_BASE 0x0100F2C0115B6000ull
+#define TOKC_TITLE_UPDATE 0x0100F2C0115B6800ull
+/* 1.0.0, in the content meta */
+#define TOKC_VERSION_BASE 0u
+/* 1.4.3 */
+#define TOKC_VERSION_UPDATE 720896u
 
 enum {
     TOKC_OK = 0,
-    TOKC_E_ARGS = -1,          /* bad call */
-    TOKC_E_IO = -2,            /* a read failed or came up short */
-    TOKC_E_FORMAT = -3,        /* the file is malformed, damaged or of a kind not supported */
+    TOKC_E_ARGS = -1,
+    /* a read failed or came up short */
+    TOKC_E_IO = -2,
+    /* the file is malformed, damaged or of a kind not supported */
+    TOKC_E_FORMAT = -3,
     TOKC_E_NOMEM = -4,
-    TOKC_E_KEY_MISSING = -5,   /* prod.keys lacks a key this file needs; the text names it */
-    TOKC_E_KEY_WRONG = -6,     /* the keys do not decrypt this file */
-    TOKC_E_TICKET = -7,        /* no usable common ticket for a file that needs one */
+    /* prod.keys lacks a key this file needs; the text names it */
+    TOKC_E_KEY_MISSING = -5,
+    /* the keys do not decrypt this file */
+    TOKC_E_KEY_WRONG = -6,
+    /* no usable common ticket for a file that needs one */
+    TOKC_E_TICKET = -7,
     TOKC_E_WRONG_GAME = -8,
     TOKC_E_WRONG_VERSION = -9,
-    TOKC_E_SWAPPED = -10,      /* the update was given as the base game, or the other way round */
+    /* the update was given as the base game, or the other way round */
+    TOKC_E_SWAPPED = -10,
 };
 
 typedef struct tokc_keys tokc_keys;
@@ -46,11 +54,14 @@ void tokc_keys_free(tokc_keys *keys);
 typedef enum { TOKC_META_NONE = 0, TOKC_META_APPLICATION = 0x80, TOKC_META_PATCH = 0x81, TOKC_META_ADDON = 0x82 } tokc_meta_type;
 
 typedef struct {
-    uint64_t title_id;     /* from the content meta */
+    /* from the content meta */
+    uint64_t title_id;
     uint32_t version;
-    uint32_t type;         /* tokc_meta_type */
+    /* tokc_meta_type */
+    uint32_t type;
     int is_xci;
-    int metas;             /* content metas found; the fields above are this game's if one is, else the first's */
+    /* content metas found; the fields above are this game's if one is, else the first's */
+    int metas;
 } tokc_info;
 
 /* What one file holds, for telling a player at once that they picked the wrong one. */
@@ -87,13 +98,19 @@ int tokc_base_romfs_index(const tokc_game *g, uint8_t **bytes, size_t *size, cha
 int tokc_romfs_same_as_base(const tokc_game *g, uint64_t off, uint64_t base_off, uint64_t n);
 
 typedef struct {
-    uint64_t relocations;     /* BKTR entries: which file an image range comes from */
-    uint64_t subsections;     /* BKTR entries: which counter a range of the update uses */
-    uint64_t table_bytes;     /* heap the open game keeps for them */
-    uint64_t image_offset;    /* of the RomFS in the patched section */
-    uint64_t base_bytes, update_bytes;   /* of the section, by where the bytes come from */
+    /* BKTR entries: which file an image range comes from */
+    uint64_t relocations;
+    /* BKTR entries: which counter a range of the update uses */
+    uint64_t subsections;
+    /* heap the open game keeps for them */
+    uint64_t table_bytes;
+    /* of the RomFS in the patched section */
+    uint64_t image_offset;
+    /* of the section, by where the bytes come from */
+    uint64_t base_bytes, update_bytes;
 } tokc_stats;
 void tokc_game_stats(const tokc_game *g, tokc_stats *out);
 
-const char *tokc_aes_impl_name(void);   /* the AES this machine runs: "armv8", "aes-ni" or "portable" */
+/* the AES this machine runs: "armv8", "aes-ni" or "portable" */
+const char *tokc_aes_impl_name(void);
 #endif

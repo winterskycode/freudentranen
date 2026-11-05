@@ -39,7 +39,8 @@ static void test_sha(void) {
     memset(a, 'a', n);
     tokt_sha256_hex(a, n, hex);
     check(!strcmp(hex, "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"), "SHA-256 of a million a");
-    for (size_t chunk = 1; chunk < 200; chunk++) {   /* the same in pieces of every small size */
+    /* the same in pieces of every small size */
+    for (size_t chunk = 1; chunk < 200; chunk++) {
         tokt_sha256 s;
         uint8_t d[32];
         char h2[65];
@@ -83,7 +84,8 @@ static void test_limit(void) {
     if (!img) { check(0, "memory"); return; }
     wr32(img + 4, 0x20);
     memcpy(img + 0x20, "MOD0", 4); wr32(img + 0x24, DYN - 0x20);
-    wr32(img + RO + 4, 2000000);                        /* DT_HASH chain count */
+    /* DT_HASH chain count */
+    wr32(img + RO + 4, 2000000);
     memset(img + NAME, 'x', 2000);
     const uint64_t tags[][2] = {{DT_HASH, RO}, {DT_STRTAB, NAME}, {DT_SYMTAB, SYMTAB}, {DT_RELA, 0}, {DT_RELASZ, 0}, {DT_RELAENT, 24}, {DT_STRSZ, 0x1000}, {DT_SYMENT, 24},
                                 {DT_INIT, 0}, {DT_PLTREL, 7}, {DT_JMPREL, 0}, {DT_PLTRELSZ, 0}};

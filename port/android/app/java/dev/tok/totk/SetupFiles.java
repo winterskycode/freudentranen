@@ -47,9 +47,10 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
     /** The name and size the provider gives for a file picked on its own. */
     private Setup.Doc doc(Uri uri) {
         String name = null; long size = -1;
+        // a failed query leaves the name and size unknown: the reader finds out whether it opens
         try (Cursor q = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null)) {
             if (q != null && q.moveToFirst()) { name = q.getString(0); if (!q.isNull(1)) size = q.getLong(1); }
-        } catch (RuntimeException e) { /* the reader finds out whether it opens */ }
+        } catch (RuntimeException e) { }
         return new Setup.Doc(uri.toString(), uri.toString(), name, size);
     }
 
@@ -72,7 +73,8 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
         try (Cursor c = resolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, id), COLUMNS, null, null, null)) {
             if (c == null) throw new IOException();
             while (c.moveToNext()) {
-                if ((c.getInt(4) & DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT) != 0) continue;   // has no bytes of its own
+                // has no bytes of its own
+                if ((c.getInt(4) & DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT) != 0) continue;
                 out.add(new Setup.Entry(c.getString(0), c.getString(1), DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2)), c.isNull(3) ? -1 : c.getLong(3)));
             }
         }
@@ -124,7 +126,8 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
     }
 
     @Override public void drop(String grant) {
-        try { resolver.releasePersistableUriPermission(Uri.parse(grant), GRANT); } catch (RuntimeException e) { /* it went with the file */ }
+        // a grant that cannot be released went with the file
+        try { resolver.releasePersistableUriPermission(Uri.parse(grant), GRANT); } catch (RuntimeException e) { }
     }
 
     // ---- GameActivity: the process :game ----
@@ -157,6 +160,7 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
         ContentResolver r = c.getContentResolver();
         Setup s = new Setup(c.getNoBackupFilesDir(), null);
         if (!s.complete()) return true;
+        // setenv fails only out of memory
         try {
             int base = forGame(r, s, Setup.BASE), update = base < 0 ? -1 : forGame(r, s, Setup.UPDATE);
             if (update < 0) { Os.setenv("TOTK_SETUP_STOP", "1", true); return false; }
@@ -164,6 +168,6 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
             Os.setenv("TOTK_UPDATE_FD", Integer.toString(update), true);
             Os.setenv("TOTK_KEYS", s.keysFile().getPath(), true);
             return true;
-        } catch (ErrnoException e) { throw new IllegalStateException(e); }   // setenv fails only out of memory
+        } catch (ErrnoException e) { throw new IllegalStateException(e); }
     }
 }

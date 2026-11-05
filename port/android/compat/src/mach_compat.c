@@ -40,7 +40,8 @@ kern_return_t mach_port_deallocate(mach_port_t task, mach_port_t name) { (void)t
 kern_return_t mach_port_mod_refs(mach_port_t task, mach_port_t name, int right, int delta) { (void)task; (void)name; (void)right; (void)delta; return KERN_NOT_SUPPORTED; }
 
 static uint64_t thread_cpu_ns(pid_t tid) {
-    clockid_t clock = (clockid_t)((~(unsigned)tid << 3) | 6);   /* CPUCLOCK_PERTHREAD | CPUCLOCK_SCHED */
+    /* CPUCLOCK_PERTHREAD | CPUCLOCK_SCHED */
+    clockid_t clock = (clockid_t)((~(unsigned)tid << 3) | 6);
     struct timespec t;
     return clock_gettime(clock, &t) ? 0 : (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
 }
@@ -109,13 +110,14 @@ static Backing *backing_at(uintptr_t a) {
 typedef struct { uintptr_t base; size_t size; int fd; off_t off; } Alias;
 typedef struct { int fd; off_t off; size_t size; int dmabuf; } Overlay;
 #define MAX_ALIASES 65536
-/* one per zero-copy pool: the game had over 2,048 of them on the bench route with the 4 KiB floor (2026-10-31); the
-   process limits are 32,768 fds and 65,530 mappings */
+/* one per zero-copy pool: the game has over 2,048 of them with the 4 KiB floor; the process limits are 32,768 fds
+   and 65,530 mappings */
 #define MAX_OVERLAYS 16384
 static Alias aliases[MAX_ALIASES]; static unsigned naliases;
 static Overlay overlays[MAX_OVERLAYS]; static unsigned noverlays;
 unsigned compat_overlay_count(void) { return noverlays; }
-static void alias_drop_inside(uintptr_t lo, uintptr_t hi) {   /* caller holds backing_lock */
+/* caller holds backing_lock */
+static void alias_drop_inside(uintptr_t lo, uintptr_t hi) {
     for (unsigned i = 0; i < naliases;) if (aliases[i].base >= lo && aliases[i].base + aliases[i].size <= hi) aliases[i] = aliases[--naliases]; else i++;
 }
 static void overlay_drop_fd(int fd) { for (unsigned i = 0; i < noverlays;) if (overlays[i].fd == fd) overlays[i] = overlays[--noverlays]; else i++; }
@@ -129,8 +131,10 @@ static int map_file_range(uintptr_t va, size_t size, int prot, int fd, off_t off
             if (o->off > off && o->off < next) next = o->off; }
         off_t piece_end = best ? (best->off + (off_t)best->size < end ? best->off + (off_t)best->size : end) : next;
         size_t n = (size_t)(piece_end - off);
+        /* MAP_NORESERVE as in backed_map: a piece without it never merges with its neighbours, and they pile up to
+           vm.max_map_count */
         void *p = best ? mmap((void *)va, n, prot, MAP_SHARED | MAP_FIXED, best->dmabuf, off - best->off)
-                       : mmap((void *)va, n, prot, MAP_SHARED | MAP_NORESERVE | MAP_FIXED, fd, off);   /* as backed_map: a piece without it never merges with its neighbours, and they pile up to vm.max_map_count */
+                       : mmap((void *)va, n, prot, MAP_SHARED | MAP_NORESERVE | MAP_FIXED, fd, off);
         if (p != (void *)va) return -1;
         va += n; off = piece_end;
     }
@@ -170,17 +174,19 @@ int compat_guest_overlay(void *address, size_t size, int dmabuf) {
         if (overlays[i].fd == bfd && overlays[i].off < off + (off_t)size && off < overlays[i].off + (off_t)overlays[i].size) { pthread_mutex_unlock(&backing_lock); return -1; }
     void *tmp = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, dmabuf, 0);
     if (tmp == MAP_FAILED) { pthread_mutex_unlock(&backing_lock); return -1; }
-    memcpy(tmp, address, size); munmap(tmp, size);   /* the pool's contents so far */
+    /* the pool's contents so far */
+    memcpy(tmp, address, size); munmap(tmp, size);
     overlays[noverlays++] = (Overlay){bfd, off, size, dmabuf};
     remap_ctx c = {bfd, PROT_READ | PROT_WRITE};
     int r = for_each_mapping(bfd, off, size, remap_one, &c);
-    if (!r) fallocate(bfd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, (off_t)size);   /* the memfd pages are no longer used */
-    /* The remap left the range's page tables empty: every page the game touched afterwards faulted on its own threads
-       (page-fault sampling through Zora Domain, 2026-11-01: during the hitches 79% of faults were the game's, with up
-       to 357 pools overlaid per 60 frames while streaming). Populate the new mapping here instead, on this thread.
-       TOTK_OVERLAY_POPULATE=1 turns it on; measured no gain, since the pool is made on the game thread and the populate runs there too. */
-    { static int populate = -1; if (populate < 0) { const char *e = getenv("TOTK_OVERLAY_POPULATE"); populate = e && atoi(e) != 0; }   /* off: on the game thread it only moves the cost (Zora A/B 2026-11-01) */
-      if (!r && populate && madvise(address, size, MADV_POPULATE_WRITE)) { volatile uint8_t *p = address;   /* an older kernel: touch the pages */
+    /* the dma-buf replaces these memfd pages: free them */
+    if (!r) fallocate(bfd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, (off_t)size);
+    /* The remap leaves the range's page tables empty, so every page the game touches afterwards faults on its own
+       threads. TOTK_OVERLAY_POPULATE=1 populates the new mapping here instead; it is off because the pool is made on
+       the game thread, so populating here only moves the cost. */
+    { static int populate = -1; if (populate < 0) { const char *e = getenv("TOTK_OVERLAY_POPULATE"); populate = e && atoi(e) != 0; }
+      /* an older kernel: touch the pages */
+      if (!r && populate && madvise(address, size, MADV_POPULATE_WRITE)) { volatile uint8_t *p = address;
           for (size_t i = 0; i < size; i += 4096) p[i] = p[i]; } }
     pthread_mutex_unlock(&backing_lock);
     return r;
@@ -191,7 +197,8 @@ int compat_guest_unoverlay(void *address, size_t size) {
     int found = resolve((uintptr_t)address, size, &fd, &off);
     for (unsigned i = 0; found && i < noverlays; i++) if (overlays[i].fd == fd && overlays[i].off == off && overlays[i].size == size) k = i;
     if (k == noverlays) { pthread_mutex_unlock(&backing_lock); return -1; }
-    ssize_t w = pwrite(fd, address, size, off);   /* contents back into the memfd */
+    /* contents back into the memfd */
+    ssize_t w = pwrite(fd, address, size, off);
     overlays[k] = overlays[--noverlays];
     remap_ctx c = {fd, PROT_READ | PROT_WRITE};
     int r = w == (ssize_t)size ? for_each_mapping(fd, off, size, remap_one, &c) : -1;
@@ -278,7 +285,8 @@ kern_return_t mach_vm_remap(vm_map_t task, mach_vm_address_t *target, mach_vm_si
         memcpy(dst, (void *)(uintptr_t)src, (size_t)size);
     } else {
         pthread_mutex_lock(&backing_lock);
-        int fd = -1; off_t off = 0; int ok = resolve((uintptr_t)src, (size_t)size, &fd, &off);   /* an alias of an alias resolves too */
+        /* an alias of an alias resolves too */
+        int fd = -1; off_t off = 0; int ok = resolve((uintptr_t)src, (size_t)size, &fd, &off);
         if (!ok) { pthread_mutex_unlock(&backing_lock); fprintf(stderr, "[compat] mach_vm_remap: %#llx+%#llx is not memfd-backed guest memory\n", (unsigned long long)src, (unsigned long long)size); return KERN_INVALID_ADDRESS; }
         int r = map_file_range((uintptr_t)dst, (size_t)size, PROT_READ | PROT_WRITE, fd, off);
         if (!r) { alias_drop_inside((uintptr_t)dst, (uintptr_t)dst + size);

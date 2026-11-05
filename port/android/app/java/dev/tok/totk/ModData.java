@@ -44,7 +44,8 @@ final class ModData {
         private final RandomAccessFile indexFile, image;
         private final ByteBuffer index;
         private final long count, strings;
-        final boolean player;   // through PlayerRomfs: the player's own files, no image
+        /** Through PlayerRomfs: the player's own files, no image. */
+        final boolean player;
 
         Romfs() { indexFile = image = null; index = null; count = strings = 0; player = true; }
 
@@ -53,7 +54,8 @@ final class ModData {
             indexFile = new RandomAccessFile(new File(dir, "runtime-index.bin"), "r");
             index = indexFile.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, indexFile.length());
             index.order(ByteOrder.LITTLE_ENDIAN);
-            byte[] magic = new byte[8]; index.duplicate().get(magic, 0, 8);   // not get(int, byte[], ...): that is Android 14 and up
+            // not get(int, byte[], ...): that is Android 14 and up
+            byte[] magic = new byte[8]; index.duplicate().get(magic, 0, 8);
             if (!new String(magic, StandardCharsets.US_ASCII).equals("TOTKRFS1")) throw new IOException("not a RomFS index");
             count = index.getLong(8); strings = index.getLong(16);
             image = new RandomAccessFile(new File(dir, "romfs.bin"), "r");
@@ -285,7 +287,8 @@ final class ModData {
     // ---- the 1.0.0 base (tools/make_mod_base.py) ----
 
     static final class BaseMember {
-        final long hash; final byte[] byml;   /* byml: 1.0.0's bytes when it is BYML and 1.4.3's differs, else null */
+        /** byml: 1.0.0's bytes when it is BYML and 1.4.3's differs, else null. */
+        final long hash; final byte[] byml;
         BaseMember(long hash, byte[] byml) { this.hash = hash; this.byml = byml; }
     }
 
@@ -300,7 +303,7 @@ final class ModData {
             ByteBuffer b = le(h); files = b.getInt(8); packs = b.getInt(12); filesOff = b.getLong(16); packsOff = b.getLong(24);
         }
 
-        private long readKey(long at) throws IOException { f.seek(at); return f.readLong(); }   /* big endian, like key8 */
+        private long readKey(long at) throws IOException { f.seek(at); return f.readLong(); }
 
         private int search(long tableOff, int n, int stride, long key) throws IOException {
             int lo = 0, hi = n;

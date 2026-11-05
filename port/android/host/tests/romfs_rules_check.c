@@ -123,7 +123,7 @@ static void compare_heaps(const char *dir) {
         uint8_t *made = rc == 1 ? unzs(out, out_n, &mn) : NULL;
         snprintf(line, sizeof line, "HeapDef %s: +%llu KiB, %llu decompressed bytes equal the overlay", e->d_name, (unsigned long long)test_extra >> 10, (unsigned long long)tn);
         result(made && mn == tn && !memcmp(made, target, tn), line);
-        /* the old path: an overlay already loaded stays as it is, so the heaps do not grow twice */
+        /* not on the player's files: an overlay already loaded stays as it is, so the heaps do not grow twice */
         test_own_files = 0; uint8_t *again = NULL; uint64_t an = 0;
         snprintf(line, sizeof line, "HeapDef %s: on the old path the overlay stays", e->d_name);
         result(generate(kHeapDef, over, on, &again, &an) == 0 && !again, line);
@@ -150,10 +150,13 @@ static uint64_t rng = 88172645463325252ull;
 static uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (uint32_t)(rng >> 16); }
 static uint8_t *damaged(const uint8_t *src, uint64_t n, uint64_t *out) {
     static const uint8_t hot[] = {0x00, 0x01, 0x02, 0x7f, 0x80, 0xff};
-    uint64_t m = rnd() % 8 ? n : rnd() % (n + 1);   /* cut short now and then */
-    uint8_t *b = malloc(m ? m : 1); memcpy(b, src, m);   /* exactly m bytes: ASan sees any read past them */
+    /* cut short now and then */
+    uint64_t m = rnd() % 8 ? n : rnd() % (n + 1);
+    /* exactly m bytes: ASan sees any read past them */
+    uint8_t *b = malloc(m ? m : 1); memcpy(b, src, m);
     for (unsigned k = rnd() % 9; m && k; k--) {
-        uint64_t at = rnd() % 4 ? rnd() % m : rnd() % (m < 256 ? m : 256);   /* the headers more often */
+        /* the headers more often */
+        uint64_t at = rnd() % 4 ? rnd() % m : rnd() % (m < 256 ? m : 256);
         b[at] = rnd() % 2 ? hot[rnd() % sizeof hot] : (uint8_t)rnd();
     }
     *out = m; return b;

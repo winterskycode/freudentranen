@@ -26,7 +26,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const uint8_t *e = data + 12 * i;
         uint64_t off = (uint64_t)e[2] | (uint64_t)e[3] << 8 | (uint64_t)e[4] << 16 | (uint64_t)e[5] << 24, value = 0;
         for (int k = 0; k < 6; k++) value |= (uint64_t)e[6 + k] << 8 * k;
-        if (e[1] & 0x80) value |= 0xFFFF000000000000ull;   /* so that negative words are reachable */
+        /* so that negative words are reachable */
+        if (e[1] & 0x80) value |= 0xFFFF000000000000ull;
         fz_edit(&c, e[0] % TOKT_MODULE_COUNT, (e[0] >> 2) % FZ_REGIONS, off, 1u << (e[1] & 3), value);
     }
     fz_run(&c, NULL);

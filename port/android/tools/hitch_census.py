@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hitch census of a bench route run (tools/bench.py --env TOTK_VK_FRAMEPROF=1): for each scene, the frames whose present interval exceeds 33 ms, classified by
-the frame profile line (TOTK_VK_FRAMEPROF=1): the game's submit gap, our queue wait and translation, the GPU time
-completed in the window, pipeline creations, uploads.  hitch.py <bench run dir>"""
+the frame profile line: the game's submit gap, our queue wait and translation, the GPU time completed in the window,
+pipeline creations, uploads.  hitch_census.py <bench run dir>"""
 import re, sys, json, collections
 D = sys.argv[1]
 r = json.load(open(D + '/report.json')); scenes = [(s['scene'], s['begin'], s['end']) for s in r['scenes']]

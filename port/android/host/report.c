@@ -25,7 +25,8 @@
 #include <unistd.h>
 
 void *dm_android_asset(const char *name, size_t *size);
-char *dm_android_device_info(void);   /* app.c: GameActivity.deviceInfo() */
+/* app.c: GameActivity.deviceInfo() */
+char *dm_android_device_info(void);
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static char status[300], info[1024];
@@ -33,7 +34,8 @@ static int busy, capture;
 
 static void say(const char *fmt, const char *arg) { pthread_mutex_lock(&lock); snprintf(status, sizeof status, fmt, arg); pthread_mutex_unlock(&lock); }
 
-static int copy_tree(const char *from, const char *to) {   /* files and folders under from; the files copied */
+/* files and folders under from; returns the files copied */
+static int copy_tree(const char *from, const char *to) {
     DIR *d = opendir(from); if (!d) return 0;
     mkdir(to, 0755); int n = 0; struct dirent *e;
     while ((e = readdir(d))) {
@@ -56,7 +58,8 @@ static void remove_tree(const char *path) {
     rmdir(path);
 }
 
-static void temperatures(FILE *f) {   /* the thermal zones the app may read */
+/* the thermal zones the app may read */
+static void temperatures(FILE *f) {
     for (int i = 0; i < 128; i++) {
         char p[96], type[64] = "", temp[32] = ""; FILE *t;
         snprintf(p, sizeof p, "/sys/class/thermal/thermal_zone%d/type", i); if (!(t = fopen(p, "r"))) continue;
@@ -64,7 +67,8 @@ static void temperatures(FILE *f) {   /* the thermal zones the app may read */
         snprintf(p, sizeof p, "/sys/class/thermal/thermal_zone%d/temp", i); if (!(t = fopen(p, "r"))) continue;
         if (!fgets(temp, sizeof temp, t)) temp[0] = 0; fclose(t);
         type[strcspn(type, "\n")] = 0; double c = atol(temp) / 1000.0;
-        static const char *const wanted[] = {"cpu-", "cpuss-", "gpuss-", "ddr", "battery", "sys-therm-", "video"};   /* not the power ICs */
+        /* not the power ICs */
+        static const char *const wanted[] = {"cpu-", "cpuss-", "gpuss-", "ddr", "battery", "sys-therm-", "video"};
         int keep = 0; for (unsigned k = 0; k < sizeof wanted / sizeof *wanted; k++) keep |= !strncmp(type, wanted[k], strlen(wanted[k]));
         if (keep && c > 0 && c < 150) fprintf(f, "  %-14s %5.1f °C\n", type, c);
     }
@@ -98,28 +102,32 @@ static void *report_main(void *arg) {
         temperatures(f);
         fclose(f); free(build); free(device);
     }
-    if (capture && files) {   /* freeze the next frame (hle_nvn.c freeze-frame), probe a replay of it, copy the probe, resume */
+    /* freeze the next frame (hle_nvn.c freeze-frame), probe a replay of it, copy the probe, resume */
+    if (capture && files) {
         say("Saving the bug report: %s", "frame capture");
         char freeze[700], trigger[700], probes[700]; int found = 0; time_t started = time(NULL);
         snprintf(freeze, sizeof freeze, "%s/freeze", files); snprintf(trigger, sizeof trigger, "%s/probe.trigger", files); snprintf(probes, sizeof probes, "%s/liveprobe", files);
         FILE *t = fopen(freeze, "w"); if (t) fclose(t);
-        sleep(2);   /* armed, then a frame recorded, then replaying */
+        /* armed, then a frame recorded, then replaying */
+        sleep(2);
         t = fopen(trigger, "w"); if (t) { fputs("\n", t); fclose(t); }
-        for (int wait = 0; wait < 600 && !found; wait++) {   /* up to a minute; the probe's numbers restart with each run */
+        /* up to a minute; the probe's numbers restart with each run */
+        for (int wait = 0; wait < 600 && !found; wait++) {
             usleep(100000);
             DIR *d = opendir(probes); struct dirent *e; struct stat st;
             while (d && !found && (e = readdir(d))) {
                 if (e->d_name[0] == '.') continue;
                 snprintf(from, sizeof from, "%s/%s/done", probes, e->d_name);
                 if (!stat(from, &st) && st.st_mtime >= started) {
-                    snprintf(from, sizeof from, "%s/%s", probes, e->d_name); snprintf(path, sizeof path, "%s/capture", dir); copy_tree(from, path); remove_tree(from); found = 1;   /* the report has it now */
+                    snprintf(from, sizeof from, "%s/%s", probes, e->d_name); snprintf(path, sizeof path, "%s/capture", dir); copy_tree(from, path); remove_tree(from); found = 1;
                 }
             }
             if (d) closedir(d);
         }
         unlink(freeze); capture = found;
         if (!found) say("Bug report saved without the frame capture, which did not finish in time: %s", dir), sleep(1);
-        snprintf(from, sizeof from, "%s/profile/totk.log", files); snprintf(path, sizeof path, "%s/totk.log", dir); copy_file(from, path);   /* with the capture's lines */
+        /* with the capture's lines */
+        snprintf(from, sizeof from, "%s/profile/totk.log", files); snprintf(path, sizeof path, "%s/totk.log", dir); copy_file(from, path);
     }
     say("Bug report saved: %s", dir);
     fprintf(stderr, "[report] saved %s (%d video segments, %d save files%s)\n", dir, segments, saves, capture ? ", frame capture" : "");
@@ -134,7 +142,8 @@ static void *report_main(void *arg) {
 void dm_android_report(int start, const char *details, char *out, size_t size) {
     pthread_mutex_lock(&lock);
     if (start && !busy) {
-        const char *root = getenv("TOTK_DATA_ROOT"), *reports = getenv("TOTK_REPORTS_DIR"); char base[300], *dir = malloc(400);   /* the launcher's choice (ReportStore.ROOT) */
+        /* the launcher's choice (ReportStore.ROOT) */
+        const char *root = getenv("TOTK_DATA_ROOT"), *reports = getenv("TOTK_REPORTS_DIR"); char base[300], *dir = malloc(400);
         if (reports && *reports) snprintf(base, sizeof base, "%s", reports); else snprintf(base, sizeof base, "%s/reports", root ? root : "/sdcard/tok");
         mkdir(base, 0755);
         time_t now = time(NULL); char stamp[32]; strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", localtime(&now));

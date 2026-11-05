@@ -3,7 +3,8 @@
    the Metal backend appends the missing outputs to the vertex shader's MSL). Vulkan requires every fragment input to
    have a matching vertex output, and the Adreno linker rejects the pipeline otherwise. The vertex shader is patched
    instead: each missing location becomes an output of the type the fragment shader reads, initialised to zero. */
-typedef struct { uint8_t base, count; } spirv_io;   /* base: 1 float, 2 signed int, 3 unsigned int (32-bit); count 1..4 */
+/* base: 1 float, 2 signed int, 3 unsigned int (32-bit); count 1..4 */
+typedef struct { uint8_t base, count; } spirv_io;
 
 enum { SPV_OP_ENTRY_POINT = 15, SPV_OP_TYPE_INT = 21, SPV_OP_TYPE_FLOAT = 22, SPV_OP_TYPE_VECTOR = 23, SPV_OP_TYPE_POINTER = 32,
        SPV_OP_CONSTANT_NULL = 46, SPV_OP_FUNCTION = 54, SPV_OP_VARIABLE = 59, SPV_OP_DECORATE = 71,
@@ -51,7 +52,8 @@ static uint32_t *spirv_add_outputs(const uint32_t *w, size_t n, const spirv_io i
     for (size_t i = 5; i < n;) {
         uint32_t op = w[i] & 0xffff, wc = w[i] >> 16; if (!wc || i + wc > n) die("SPIR-V patch: malformed module");
         if (op == SPV_OP_ENTRY_POINT && !entry) entry = i;
-        if (!first_type && op >= 19 && op <= 39) first_type = i;   /* OpTypeVoid .. OpTypeForwardPointer: the type section starts */
+        /* OpTypeVoid .. OpTypeForwardPointer: the type section starts */
+        if (!first_type && op >= 19 && op <= 39) first_type = i;
         if (!first_function && op == SPV_OP_FUNCTION) first_function = i;
         if (op == SPV_OP_TYPE_FLOAT && w[i + 2] == 32) ids[1] = w[i + 1];
         if (op == SPV_OP_TYPE_INT && w[i + 2] == 32) ids[w[i + 3] ? 2 : 3] = w[i + 1];

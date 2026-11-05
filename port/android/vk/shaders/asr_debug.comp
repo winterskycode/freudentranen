@@ -2,7 +2,8 @@
 // into the output (motion: the length in pixels).
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(push_constant) uniform P { vec4 sel; } p;   // channel, scale, 1: motion length in pixels (x size), size x
+// channel, scale, 1: motion length in pixels (x size), size x
+layout(push_constant) uniform P { vec4 sel; } p;
 layout(set = 0, binding = 0) uniform sampler2D src;
 layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D dst;
 void main() {

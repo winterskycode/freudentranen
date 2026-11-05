@@ -1,12 +1,13 @@
 /* Image memory, suballocated (TOTK_VK_IMAGE_POOL=0: one allocation an image). vkAllocateMemory is a kernel allocation, about
-   0.2 ms a MB on the Odin: the frames arriving in a new area spent 16-28 ms of the translation thread on it, the first
-   world frame after a load 72 ms (350 MB, 2026-11-03). Images are carved out of 64 MB blocks instead, and a background thread
-   keeps TOTK_VK_IMAGE_RESERVE_MB (default 256) of empty blocks ready and gives surplus ones back, so neither the kernel's
+   0.2 ms a MB on the Odin: frames arriving in a new area would spend 16-28 ms of the translation thread on it, the first
+   world frame after a load 72 ms (350 MB). Images are carved out of 64 MB blocks instead, and a background thread keeps
+   TOTK_VK_IMAGE_RESERVE_MB (default 256) of empty blocks ready and gives surplus ones back, so neither the kernel's
    allocation nor its free happens on the translation thread. An image too large for a block, or met with no room left,
-   is allocated by itself as before. Recycled memory is not zeroed: a new image's contents are undefined in Vulkan, and
-   the free list of whole images has always handed out old contents. */
+   is allocated by itself. Recycled memory is not zeroed: a new image's contents are undefined in Vulkan, and the free
+   list of whole images hands out old contents too. */
 enum { IMAGE_BLOCK_BYTES = 64u << 20, IMAGE_POOL_LARGEST = 32u << 20 };
-typedef struct image_range { VkDeviceSize offset, size; struct image_range *next; } image_range;   /* a block's free ranges, by offset */
+/* a block's free ranges, by offset */
+typedef struct image_range { VkDeviceSize offset, size; struct image_range *next; } image_range;
 typedef struct image_block { VkDeviceMemory memory; unsigned images; image_range *free; struct image_block *next; } image_block;
 typedef struct image_memory { VkDeviceMemory memory; VkDeviceSize offset, size; image_block *block; } image_memory;
 static image_block *image_blocks;
@@ -32,7 +33,8 @@ static void *image_pool_main(void *unused) {
             if (got != VK_SUCCESS) { free(b); free(r); image_pool_reserve = 0; image_pool_report("out of memory, no reserve from now on"); continue; }
             r->size = IMAGE_BLOCK_BYTES; b->free = r; b->next = image_blocks; image_blocks = b; image_pool_blocks++; image_pool_empty++;
             if (!(image_pool_blocks % 8)) image_pool_report("grown");
-        } else {   /* over the reserve: give an empty block back */
+        /* over the reserve: give an empty block back */
+        } else {
             image_block **link = &image_blocks; while (*link && (*link)->images) link = &(*link)->next;
             image_block *b = *link; if (!b) { image_pool_empty = 0; continue; }
             *link = b->next; image_pool_blocks--; image_pool_empty--;
@@ -49,7 +51,8 @@ static int image_block_carve(image_block *b, VkDeviceSize size, VkDeviceSize ali
         image_range *r = *link; VkDeviceSize at = (r->offset + alignment - 1) / alignment * alignment, end = r->offset + r->size;
         if (at + size > end) continue;
         VkDeviceSize tail = end - (at + size);
-        if (at > r->offset) {   /* the alignment's gap stays free in front */
+        /* the alignment's gap stays free in front */
+        if (at > r->offset) {
             r->size = at - r->offset;
             if (tail) { image_range *t = malloc(sizeof *t); if (!t) die("Vulkan image pool allocation"); *t = (image_range){at + size, tail, r->next}; r->next = t; }
         } else if (tail) { r->offset = at + size; r->size = tail; }
@@ -88,7 +91,8 @@ static void image_memory_give(const image_memory *m) {
     pthread_mutex_lock(&image_pool_lock);
     image_range **link = &b->free, *before = NULL; while (*link && (*link)->offset < at) { before = *link; link = &(*link)->next; }
     image_range *after = *link;
-    if (before && before->offset + before->size == at) {   /* joins the range in front, perhaps the one behind too */
+    /* joins the range in front, perhaps the one behind too */
+    if (before && before->offset + before->size == at) {
         before->size += size;
         if (after && at + size == after->offset) { before->size += after->size; before->next = after->next; free(after); }
     } else if (after && at + size == after->offset) { after->offset = at; after->size += size; }

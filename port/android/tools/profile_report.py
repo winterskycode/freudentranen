@@ -20,7 +20,8 @@ for l in lines:
         frames.append(f); between[int(f['frame'])] = pending; pending = []
     elif '[frameprof]' not in l:
         pending.append(l)
-frames = [f for f in frames if f['draws'] > 50]   # game frames (not loading screens)
+# game frames (not loading screens)
+frames = [f for f in frames if f['draws'] > 50]
 if not frames: sys.exit('no game frames in run.log')
 
 def pct(v, p): v = sorted(v); return v[min(len(v) - 1, int(len(v) * p))]
@@ -77,13 +78,14 @@ for name, ticks in by.most_common(14):
     if ticks: print('  %-24s %6.2f ms/frame  %5.1f%%' % (name, ticks * 10 / max(n, 1), 100 * ticks / max(total, 1)))
 
 # simpleperf: by thread, then by function inside the busiest threads
-perf = os.path.abspath(os.path.join(D, 'perf.data'))   # the cache builder runs inside D
+# the cache builder runs inside D
+perf = os.path.abspath(os.path.join(D, 'perf.data'))
 if '--no-perf' not in sys.argv and os.path.exists(perf):
     cache = os.path.join(D, 'binary_cache')
     if not os.path.isdir(cache):
         subprocess.run([sys.executable, os.path.join(NDK_SP, 'binary_cache_builder.py'), '-i', perf, '-lib',
                         os.path.join(ROOT, 'work/android/v143/build-host'), os.path.join(ROOT, 'work/turnip-build/build-release/src/freedreno/vulkan'),
-                        '--disable_adb_root'], cwd=D, capture_output=True)   # writes binary_cache/ into the current directory
+                        '--disable_adb_root'], cwd=D, capture_output=True)
     sp = os.path.join(NDK_SP, 'bin/linux/x86_64/simpleperf')
     def report(*args):
         r = subprocess.run([sp, 'report', '-i', perf, '--symfs', cache, '--percent-limit', '0.8', *args], capture_output=True, text=True)

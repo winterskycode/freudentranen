@@ -16,16 +16,21 @@
 #define TOKT_VERSION "v143"
 /* The 1.4.3 main module as stored: the one image prepare_runtime.py accepts for this version. */
 #define TOKT_MAIN_NSO_SHA256 "e84a90d551fed0824b4b74933b9c6d043c458521363a7cea58b2faca1822dc9e"
-#define TOKT_MAX_TABLES (1ull << 30)   /* load_tables refuses this size and up; the real file is 16 MB */
+/* load_tables refuses this size and up; the real file is 16 MB */
+#define TOKT_MAX_TABLES (1ull << 30)
 /* game-data/rewriter.txt, whole. */
 #define TOKT_REWRITER_TXT "# SHA-256 of the patch_nso.py that rewrote rewritten/" TOKT_VERSION "\nREWRITER_SHA256 " TOKP_PY_SHA256 "\n"
 
 enum {
     TOKT_OK = 0,
-    TOKT_E_ARGS = -1,      /* bad call */
-    TOKT_E_FORMAT = -2,    /* a module is malformed: what is an assert or an exception in the Python tool */
-    TOKT_E_VERSION = -3,   /* tokt_check_main: not the supported 1.4.3 */
-    TOKT_E_TOO_BIG = -4,   /* the tables would reach TOKT_MAX_TABLES */
+    /* bad call */
+    TOKT_E_ARGS = -1,
+    /* a module is malformed: what is an assert or an exception in the Python tool */
+    TOKT_E_FORMAT = -2,
+    /* tokt_check_main: not the supported 1.4.3 */
+    TOKT_E_VERSION = -3,
+    /* the tables would reach TOKT_MAX_TABLES */
+    TOKT_E_TOO_BIG = -4,
     TOKT_E_NOMEM = -5,
 };
 
@@ -34,11 +39,14 @@ typedef enum { TOKT_MAIN, TOKT_SUBSDK0, TOKT_SDK, TOKT_MODULE_COUNT } tokt_modul
 extern const char *const tokt_module_names[TOKT_MODULE_COUNT];
 
 typedef struct {
-    const void *nso; size_t nso_size;   /* the module as stored (tokc_game_module): only its header is read */
-    const void *image;                  /* the rewritten image: rewrite->image_size bytes */
+    /* the module as stored (tokc_game_module): only its header is read */
+    const void *nso; size_t nso_size;
+    /* the rewritten image: rewrite->image_size bytes */
+    const void *image;
     const tokp_result *rewrite;
-    const char *image_sha256;           /* the image's SHA-256 in lowercase hex if the caller knows it, or NULL to hash it
-                                           here. Taken as given: it goes into the tables, unchecked. */
+    /* the image's SHA-256 in lowercase hex if the caller knows it, or NULL to hash it here. Taken as given: it goes
+       into the tables, unchecked. */
+    const char *image_sha256;
 } tokt_module;
 
 /* prepare_runtime.py's version check, kept apart so that tests can feed tokt_make damaged modules: run it on the main module
@@ -55,5 +63,6 @@ void tokt_sha256_init(tokt_sha256 *s);
 void tokt_sha256_update(tokt_sha256 *s, const void *data, size_t n);
 void tokt_sha256_final(tokt_sha256 *s, uint8_t out[32]);
 void tokt_sha256_hex(const void *data, size_t n, char hex[65]);
-const char *tokt_sha_impl_name(void);   /* "armv8" or "portable" */
+/* "armv8" or "portable" */
+const char *tokt_sha_impl_name(void);
 #endif

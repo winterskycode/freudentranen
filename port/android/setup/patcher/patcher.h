@@ -14,20 +14,27 @@
 #define TOKP_PY_SHA256 "cd1a4bccf4842382ee0518a97eb72124f5b75bd272d1203ff36c488a4e1715d6"
 #define TOKP_TARGET "android-context-v1"
 #define TOKP_KEY_PAGE_SIZE 0x4000u
-#define TOKP_MAX_IMAGE (1ull << 30)   /* larger images are refused; the largest game module is 62 MB */
+/* larger images are refused; the largest game module is 62 MB */
+#define TOKP_MAX_IMAGE (1ull << 30)
 
 enum {
     TOKP_OK = 0,
-    TOKP_E_ARGS = -1,      /* bad call */
-    TOKP_E_FORMAT = -2,    /* the module is malformed */
-    TOKP_E_RULE = -3,      /* well formed, but a rewrite rule refuses it (what is an assert or SystemExit in the Python tool) */
-    TOKP_E_SPACE = -4,     /* image_cap is too small: the result's image_size says what it takes */
+    /* bad call */
+    TOKP_E_ARGS = -1,
+    /* the module is malformed */
+    TOKP_E_FORMAT = -2,
+    /* well formed, but a rewrite rule refuses it (what is an assert or SystemExit in the Python tool) */
+    TOKP_E_RULE = -3,
+    /* image_cap is too small: the result's image_size says what it takes */
+    TOKP_E_SPACE = -4,
     TOKP_E_NOMEM = -5,
-    TOKP_E_DECODER = -6,   /* Capstone failed */
+    /* Capstone failed */
+    TOKP_E_DECODER = -6,
 };
 
 typedef enum { TOKP_SVC, TOKP_TPIDR_R, TOKP_TPIDR_W, TOKP_TPIDRRO_R, TOKP_CNTPCT, TOKP_CNTVCT, TOKP_KIND_COUNT } tokp_kind;
-extern const char *const tokp_kind_names[TOKP_KIND_COUNT];   /* the names in sites.tsv and gates.tsv */
+/* the names in sites.tsv and gates.tsv */
+extern const char *const tokp_kind_names[TOKP_KIND_COUNT];
 
 /* A rewritten instruction. arg: the svc number, or the destination register of a timer read. */
 typedef struct { uint64_t off; uint32_t kind, arg; } tokp_site;
@@ -36,18 +43,24 @@ typedef struct { uint64_t ret, original; uint32_t kind, arg; } tokp_gate;
 
 typedef struct {
     uint64_t text_end, ro_off, data_off;
-    uint64_t key_page_off;   /* the loader fills this page */
-    uint64_t patch_off;      /* the patch area; the image before it is the module, its key page and padding */
-    char build_id[33];       /* first 16 bytes of the NSO module id, in hex */
+    /* the loader fills this page */
+    uint64_t key_page_off;
+    /* the patch area; the image before it is the module, its key page and padding */
+    uint64_t patch_off;
+    /* first 16 bytes of the NSO module id, in hex */
+    char build_id[33];
 } tokp_layout;
 
 typedef struct {
     tokp_layout layout;
-    uint64_t image_size;     /* patch_off + patch_size: the size of <name>.patched.bin */
+    /* patch_off + patch_size: the size of <name>.patched.bin */
+    uint64_t image_size;
     uint64_t patch_size;
-    tokp_site *sites; size_t nsites;   /* by address */
+    /* by address */
+    tokp_site *sites; size_t nsites;
     tokp_gate *gates; size_t ngates;
-    uint32_t slot_refs;      /* key page references in the patch area (the Python tool's slot_refs) */
+    /* key page references in the patch area (the Python tool's slot_refs) */
+    uint32_t slot_refs;
 } tokp_result;
 
 /* Reads the header only and checks it: the layout, so a caller can size its buffer. image_cap must hold patch_off plus the

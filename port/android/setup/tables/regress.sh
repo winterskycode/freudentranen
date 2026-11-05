@@ -57,7 +57,8 @@ result() { if [ "$1" = 0 ]; then echo "PASS $2"; else echo "FAIL $2"; FAILS=$((F
 export CC=clang
 CAP=$ROOT/port/android/deps/src/capstone
 [ -f "$CAP/cs.c" ] || { CAP=$SCRATCH/capstone; sh "$HERE/../patcher/fetch_capstone.sh" "$CAP" || exit 2; }
-build() {   # <name> <cmake options...>
+# <name> <cmake options...>
+build() {
   local dir=$SCRATCH/$1; shift
   cmake -G Ninja -S "$HERE" -B "$dir" -DCAPSTONE_SRC="$CAP" "$@" > "$dir.log" 2>&1 && cmake --build "$dir" -j "$J" >> "$dir.log" 2>&1 ||
     { echo "the build failed: $dir.log" >&2; exit 2; }
@@ -142,7 +143,8 @@ one_case() {
   echo "${d##*/} [$(cat "$d/fault.txt")]: $c"
 }
 export -f one_case; export PY CLI
-run_cases() {   # <folder> <title>
+# <folder> <title>
+run_cases() {
   find "$1" -mindepth 1 -maxdepth 1 -type d -name 'case_*' | sort | xargs -P "$J" -I{} bash -c 'one_case {}' > "$1.results" 2>&1
   local ok refused bad
   ok=$(grep -c ': ok$' "$1.results"); refused=$(grep -c ': refused$' "$1.results"); bad=$(grep -vc -e ': ok$' -e ': refused$' "$1.results")

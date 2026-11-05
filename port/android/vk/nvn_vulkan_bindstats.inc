@@ -15,11 +15,13 @@ static int bindstats_on_slow(void) {
 enum { BS_TEXTURE, BS_UNIFORM, BS_STORAGE, BS_TEXEL, BS_KINDS };
 static const char *const bindstats_kind_name[BS_KINDS] = {"textures", "uniform buffers", "storage", "texel buffers"};
 typedef struct { VkDescriptorSetLayout layout; uint64_t *w; size_t n, cap; } bindstats_payload;
-static bindstats_payload bindstats_cur[6], bindstats_prev[6];   /* by shader stage: the payload bind_shader built last, and at the last draw */
+/* by shader stage: the payload bind_shader built last, and at the last draw */
+static bindstats_payload bindstats_cur[6], bindstats_prev[6];
 static struct {
     uint64_t draws, pipeline, rebinds, new_set[2], offsets_only, layout_change[2], preload, dynamic_offsets;
     uint64_t viewport, scissor, unchanged;
-    uint64_t total[BS_KINDS], changed[BS_KINDS];   /* descriptors in the draw's sets; of those in a new set, how many differ */
+    /* descriptors in the draw's sets; of those in a new set, how many differ */
+    uint64_t total[BS_KINDS], changed[BS_KINDS];
     uint64_t presents0;
 } bs;
 enum { BT_DEPTH_ONLY, BT_GBUFFER, BT_FULL_COLOUR, BT_SMALL, BT_CLASSES };

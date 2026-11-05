@@ -1,6 +1,6 @@
-/* The CoreFoundation locale calls MacNativeGames makes (current language, script and region, and the preferred languages),
-   answered from Android's persist.sys.locale property (a BCP-47 tag such as "en-US" or "zh-Hant-TW"); TOTK_LOCALE still
-   overrides in services.c. */
+/* The CoreFoundation locale calls MacNativeGames makes (current language, script and region, and the preferred
+   languages), answered from Android's persist.sys.locale property (a BCP-47 tag such as "en-US" or "zh-Hant-TW");
+   TOTK_LOCALE overrides it in services.c. */
 #pragma once
 #include <ctype.h>
 #include <string.h>

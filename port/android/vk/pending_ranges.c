@@ -1,4 +1,3 @@
-// 保留登记前缀的 AVL 区间树；只回答任意重叠，不回答最新版本或复制覆盖顺序。
 // AVL interval trees retain registration prefixes; answer only any-overlap, never latest-version or copy-overlay ordering.
 #include "pending_ranges.h"
 #include <errno.h>
@@ -49,7 +48,6 @@ static dm_pending_range_node *node_new(dm_pending_ranges *ranges,uintptr_t start
     ranges->live_nodes++;return node;
 }
 
-// 旋转产生新节点，不修改旧前缀使用的节点；未成功的插入不发布新根。
 // Rotations create new nodes without changing nodes used by earlier prefixes; failed insertion never publishes its new root.
 static dm_pending_range_node *rotate_right(dm_pending_ranges *ranges,const dm_pending_range_node *node) {
     const dm_pending_range_node *left=node->left;
@@ -118,7 +116,6 @@ int dm_pending_ranges_overlap(const dm_pending_ranges *ranges,dm_pending_kind ki
     if(!valid_range(ranges,kind,address,size))return -1;
     if(!size||!before_order)return 0;
     const dm_pending_range_collection *collection=&ranges->collections[kind];
-    // ALL 直接使用最新已发布根，避免每次普通预检重复二分前缀表。
     // ALL uses the latest published root directly, avoiding repeated prefix-table searches for ordinary preflight.
     size_t low=before_order==DM_PENDING_ORDER_ALL?collection->count:0,high=collection->count;
     while(low<high) {
@@ -130,7 +127,6 @@ int dm_pending_ranges_overlap(const dm_pending_ranges *ranges,dm_pending_kind ki
     while(node&&address<node->max_end&&end>node->min_start) {
         if(visited)(*visited)++;
         if(address<node->end&&node->start<end)return 1;
-        // 若左子树末端超过起点，则存在可能命中；若其无命中，按起点排序的右子树也不可能命中。
         // If the left subtree ends after the query start it can match; if it does not, ordering by starts rules out a right-side match too.
         if(node->left&&node->left->max_end>address)node=node->left;else node=node->right;
     }

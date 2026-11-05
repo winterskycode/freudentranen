@@ -25,7 +25,7 @@
 #include <cstring>
 #include <vector>
 
-extern "C" int lsfg_debug_dump_images(const char *dir);   // third_party/lsfg_framegen/src/core/debug_dump.cpp
+extern "C" int lsfg_debug_dump_images(const char *dir);
 
 static VkDevice dev;
 static VkPhysicalDevice phys;
@@ -51,7 +51,8 @@ static uint32_t memory_type(uint32_t bits, VkMemoryPropertyFlags want) {
     std::fprintf(stderr, "no memory type\n"); std::exit(1);
 }
 
-static VkImage make_image(uint32_t w, uint32_t h) {   // = the app's lsfg_image (nvn_vulkan_lsfg.inc)
+// matches the app's lsfg_image (nvn_vulkan_lsfg.inc)
+static VkImage make_image(uint32_t w, uint32_t h) {
     VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.imageType = VK_IMAGE_TYPE_2D; ci.format = VK_FORMAT_R8G8B8A8_UNORM; ci.extent = {w, h, 1}; ci.mipLevels = 1; ci.arrayLayers = 1;
     ci.samples = VK_SAMPLE_COUNT_1_BIT; ci.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -236,15 +237,15 @@ int main(int argc, char **argv) {
     if (ctx < 0) return 1;
 
     int frames = env_int("LSFG_TEST_FRAMES", 2) & ~1; if (frames < 2) frames = 2;
-    bool rewrite = env_int("LSFG_TEST_REWRITE", 0) != 0, rewrite_compute = env_int("LSFG_TEST_REWRITE", 0) == 2;   // 2: written by a compute shader
+    bool rewrite = env_int("LSFG_TEST_REWRITE", 0) != 0, rewrite_compute = env_int("LSFG_TEST_REWRITE", 0) == 2;
     std::vector<uint8_t> inverted(prev); for (size_t i = 0; i < inverted.size(); i++) if (i % 4 != 3) inverted[i] = 255 - inverted[i];
     for (int i = 0; i < frames; i++) {
         const int mode = env_int("LSFG_TEST_REWRITE", 0);
-        if (mode == 5) empty_submit(VK_NULL_HANDLE);   // 5: only an empty submission (barriers) and a wait between frames
-        else if (mode == 6) vkQueueWaitIdle(queue);   // 6: only the GPU going idle between frames
-        else if (mode == 8) empty_submit(i % 2 ? in1 : in0);   // 8: only an image barrier on the input
-        else if (mode == 3) transfer(source_dummy(w, h), staging, w, h, true, false);   // 3: a transfer into an unrelated image
-        else if (mode == 7) transfer(i % 2 ? in1 : in0, staging, w, h, false, false);   // 7: our GPU only reads the input
+        if (mode == 5) empty_submit(VK_NULL_HANDLE);
+        else if (mode == 6) vkQueueWaitIdle(queue);
+        else if (mode == 8) empty_submit(i % 2 ? in1 : in0);
+        else if (mode == 3) transfer(source_dummy(w, h), staging, w, h, true, false);
+        else if (mode == 7) transfer(i % 2 ? in1 : in0, staging, w, h, false, false);
         else if (rewrite) {
             const std::vector<uint8_t> &picture = i == frames - 1 ? next : i == frames - 2 ? prev : inverted;
             std::memcpy(staging.mapped, picture.data(), picture.size());
@@ -252,7 +253,8 @@ int main(int argc, char **argv) {
             else if (rewrite_compute) compute_upload(i % 2 ? in1 : in0, staging, w, h); else transfer(i % 2 ? in1 : in0, staging, w, h, true, false);
         }
         if (lsfg_bridge_present(ctx) < 0) return 1;
-        if (i + 1 == env_int("LSFG_TEST_STOP", 0)) break;   // dump after this many frames
+        // dump after this many frames
+        if (i + 1 == env_int("LSFG_TEST_STOP", 0)) break;
     }
     CHECK(vkQueueWaitIdle(queue));
 

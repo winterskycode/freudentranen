@@ -1,4 +1,3 @@
-// 真实设备时间戳报告；samples 的计数仍由 CPU 按序发布，不允许提前 GPU 转发。
 // Real device timestamp reports; samples counts still publish on the CPU in order and cannot be forwarded early to the GPU.
 #include "counter_timestamp_spv.h"
 static VkDescriptorSetLayout counter_gpu_set_layout;
@@ -11,7 +10,6 @@ static void counter_gpu_initialize(void) {
     if(counter_gpu_initialized)return;counter_gpu_initialized=1;
     float period=(float)gpu_timestamp_period;uint32_t bits;memcpy(&bits,&period,sizeof bits);
     unsigned exponent=(bits>>23)&255,shift=exponent<=148?148-exponent:96;
-    // 精确 float32 周期转整数有理数；拒绝无法表示的范围，不能近似或截断高位。
     // Decode the exact float32 period into an integer ratio; reject unsupported ranges rather than approximate or truncate high bits.
     counter_gpu_supported=!(bits>>31)&&exponent&&exponent<=148&&shift<=95&&gpu_timestamp_bits&&gpu_timestamp_bits<=64&&gpu_timestamp_bits+26<=64+shift;
     LOG("[vulkan-counter-gpu] supported=%d timestamp_bits=%u period_bits=%#x period_ns=%.9g CPU_fallback_keeps_wait=1",counter_gpu_supported,gpu_timestamp_bits,bits,(double)period);
@@ -28,7 +26,6 @@ static void counter_gpu_initialize(void) {
     VK_CHECK(vkCreatePipelineLayout(device,&layout_info,NULL,&counter_gpu_pipeline_layout));
     VkShaderModule module;VkShaderModuleCreateInfo module_info={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=DM_VK_COUNTER_TIMESTAMP_SPV_BYTES,.pCode=dm_vk_counter_timestamp_spv};
     VK_CHECK(vkCreateShaderModule(device,&module_info,NULL,&module));
-    // 普通单线程助手不使用游戏 Maxwell warp 的 64 线程适配约束。
     // This ordinary single-invocation helper does not require the game's Maxwell warp adaptation.
     VkComputePipelineCreateInfo pipeline_info={.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_COMPUTE_BIT,.module=module,.pName="main"},.layout=counter_gpu_pipeline_layout};
@@ -75,7 +72,6 @@ static void counter_gpu_convert(post_op *post, post_op *raw, uint32_t query) {
         vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,1,&order,0,NULL);
         vkCmdFillBuffer(command,post->output.buffer,0,8,0);
     }
-    // GPU 完成之外还需明确主机读可见性；后续 GPU 消费由 forward 屏障排序。
     // Completion also needs explicit host-read visibility; forward barriers order later GPU consumers.
     VkBufferMemoryBarrier report_barrier={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT,
         .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=post->output.buffer,.size=16};
@@ -91,7 +87,9 @@ static void counter_gpu_flush(void) {
 static int counter_gpu_record(post_op *post) {
     if(post->value!=NVN_COUNTER_TYPE_TIMESTAMP&&post->value!=NVN_COUNTER_TYPE_TIMESTAMP_TOP&&post->value!=NVN_COUNTER_TYPE_SAMPLES_PASSED){counter_gpu_fallbacks++;return 0;}
     counter_gpu_initialize();async_batch *batch=async_current;
-    static int cpu=-1;if(cpu<0)cpu=exp_env("cpucounter");   /* TOTK_VK_EXP=cpucounter: every report takes the CPU path (A/B: what the GPU timestamps, waiting query copies and conversion dispatches cost) */
+    /* TOTK_VK_EXP=cpucounter: every report takes the CPU path (A/B: what the GPU timestamps, waiting query copies and
+       conversion dispatches cost) */
+    static int cpu=-1;if(cpu<0)cpu=exp_env("cpucounter");
     if(cpu||!counter_gpu_supported||!batch||!batch->counter_queries||batch->counter_used==ASYNC_QUERY_CAPACITY||((uintptr_t)post->destination&7)||!mtl_addr((uintptr_t)post->destination,16,NULL,NULL)){
         counter_gpu_fallbacks++;return 0;
     }

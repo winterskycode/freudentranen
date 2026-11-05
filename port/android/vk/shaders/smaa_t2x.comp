@@ -3,7 +3,7 @@
 // reprojected with the camera's motion (from the depth and the last frame's view-projection: GL clip space, y up, depth
 // not reversed), the last frame's weight lowered where the two frames' motion differs (the reference's velocity
 // weighting, scale 30). The velocity is in texture coordinates; each frame keeps its own length for the next.
-// The motion is the camera's only, so what moves by itself (Link) reprojects wrongly and left a one-frame trace
+// The motion is the camera's only, so what moves by itself (Link) reprojects wrongly and would leave a one-frame trace
 // (stretched into a trail by frame generation): the last frame is not used where the depth says the surface changed,
 // either way: something nearer there last frame than anything in this pixel's 3x3 now (revealed), or this pixel nearer
 // now than anything in the last frame's 3x3 there (covered); 5 % in view depth. The 3x3 on the compared side keeps a
@@ -12,17 +12,24 @@
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
-    mat4 reproj;   // previous view-projection * inverse(current view-projection)
-    vec4 size;     // w, h, 1/w, 1/h
-    vec4 misc;     // reset, clip-space y direction, clamp, no depth test
+    // previous view-projection * inverse(current view-projection)
+    mat4 reproj;
+    // w, h, 1/w, 1/h
+    vec4 size;
+    // reset, clip-space y direction, clamp, no depth test
+    vec4 misc;
 } p;
-layout(set = 0, binding = 0) uniform sampler2D cur;        // this frame's SMAA result
-layout(set = 0, binding = 1) uniform sampler2D prev;       // the last frame's
+// this frame's SMAA result
+layout(set = 0, binding = 0) uniform sampler2D cur;
+// the last frame's
+layout(set = 0, binding = 1) uniform sampler2D prev;
 layout(set = 0, binding = 2) uniform sampler2D depth;
-layout(set = 0, binding = 3) uniform sampler2D vel_prev;   // the last frame's velocity length
+// the last frame's velocity length
+layout(set = 0, binding = 3) uniform sampler2D vel_prev;
 layout(set = 0, binding = 4, r11f_g11f_b10f) uniform writeonly image2D outp;
 layout(set = 0, binding = 5, r16f) uniform writeonly image2D vel_next;
-layout(set = 0, binding = 6) uniform sampler2D depth_prev;            // the last frame's depth
+// the last frame's depth
+layout(set = 0, binding = 6) uniform sampler2D depth_prev;
 layout(set = 0, binding = 7, r32f) uniform writeonly image2D depth_next;
 // view depth goes as 1 / (1 - d): a is nearer than b by more than 5 %
 bool nearer(float a, float b) { return (1.0 - a) > 1.05 * (1.0 - b) + 1e-7; }
@@ -32,7 +39,8 @@ void main() {
     vec2 uv = (vec2(P) + 0.5) * p.size.zw;
     float d = texelFetch(depth, P, 0).r;
     vec4 c = p.reproj * vec4(uv.x * 2.0 - 1.0, p.misc.y * (1.0 - uv.y * 2.0), d * 2.0 - 1.0, 1.0);
-    vec2 mv = vec2(0.0);   // where this pixel was last frame, minus where it is
+    // where this pixel was last frame, minus where it is
+    vec2 mv = vec2(0.0);
     if (c.w > 1e-7) { vec2 n = c.xy / c.w; mv = vec2(n.x * 0.5 + 0.5, 0.5 - 0.5 * p.misc.y * n.y) - uv; }
     vec3 now = texelFetch(cur, P, 0).rgb;
     vec2 puv = uv + mv;

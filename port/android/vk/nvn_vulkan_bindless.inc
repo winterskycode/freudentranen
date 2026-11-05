@@ -1,15 +1,15 @@
-/* TOTK_VK_BINDLESS=1: sampled textures through global descriptor arrays (plan step 2, "bindless").
+/* TOTK_VK_BINDLESS=1: sampled textures through global descriptor arrays.
    The translator's TOTK mode (MacNativeGames totk_xlate patch 0007, TotkBindless) turns every sampled texture whose
    handle the game binds through the texture constant buffer c[2] into an access of one of the global arrays below,
    indexed by the slot word of that texture in a per-draw slot block, constant buffer c[19]: the array slot of the view
    in the low 20 bits, the sampler's slot above them. Those textures are listed in the shader's .meta as kind 5 entries
    (no binding of their own), word k of the block for the k-th. Per draw, bindless_resolve does for each of them what
    bind_shader does for a texture binding (the handle, the texture, uploads and barriers, the view, the sampler), then
-   writes the slots into the stage's block, which uniform_buffer serves as c[19] (a separate block: carried in c[2],
-   the slots made every c[2] rebuild copy them twice, +0.5 ms of translation CPU a frame in the still scene).
+   writes the slots into the stage's block, which uniform_buffer serves as c[19] (a separate block: carried in c[2], the
+   slots would make every c[2] rebuild copy them twice, +0.5 ms of translation CPU a frame in the still scene).
    Slots belong to our views, not to the game's texture ids: the game re-registers ids while older batches that used
-   them are still in flight (TOTK_VK_TEXPROBE, 2026-10-30), but a view never changes, so an array entry is written once
-   when its view first needs it and freed with the view (image_destroy_locked runs after the GPU is done with it).
+   them are still in flight, but a view never changes, so an array entry is written once when its view first needs it
+   and freed with the view (image_destroy_locked runs after the GPU is done with it).
    Samplers are never destroyed: theirs are permanent.
    The global set is set 0 of every pipeline layout (the shaders' own sets are 1 and 2), so it stays bound across
    pipelines; graphics_command_apply binds it once per command buffer, dispatch_compute with every dispatch. */
@@ -23,7 +23,8 @@ static uint32_t *bl_free[BL_KINDS], bl_free_n[BL_KINDS], bl_next[BL_KINDS], bl_l
 static pthread_mutex_t bl_lock = PTHREAD_MUTEX_INITIALIZER;
 typedef struct { VkSampler sampler; uint32_t slot; } bl_sampler_entry;
 static bl_sampler_entry bl_samplers[BL_SAMPLERS * 2]; static uint32_t bl_sampler_next;
-static uint32_t bl_block[6][BL_BLOCK_WORDS]; static unsigned bl_block_words[6];   /* by stage: the slot block of the shader bound last */
+/* by stage: the slot block of the shader bound last */
+static uint32_t bl_block[6][BL_BLOCK_WORDS]; static unsigned bl_block_words[6];
 static uint64_t bl_resolves, bl_writes;
 static int bindless_on(void) {
     if (bl_state < 0) { const char *e = getenv("TOTK_VK_BINDLESS"); bl_state = e && atoi(e) > 0;
@@ -116,7 +117,8 @@ static void bindless_resolve(shader_entry *s) {
         uint32_t handle = shader_handle(b, s->stage, 0);
         texture_descriptor d = descriptor_texture(handle & 0xfffff);
         if (handle && !d.valid) gpu_unregistered_textures++;
-        if (d.valid && !descriptor_type_fits(&d.texture, b->type)) d.valid = 0;   /* the stand-in of the declared type */
+        /* the stand-in of the declared type */
+        if (d.valid && !descriptor_type_fits(&d.texture, b->type)) d.valid = 0;
         image_entry *e = descriptor_image(&d, b->type, 0, shader_pipeline_stage(s), VK_ACCESS_SHADER_READ_BIT);
         cached_image_view *v = descriptor_view_entry(&d, e, b->type, 0);
         uint32_t slots = bl_view_slot(v, kind) | bl_sampler_slot(sampler_get_for_type((handle >> 20) & 0xfff, b->type)) << 20;

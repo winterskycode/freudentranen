@@ -61,7 +61,8 @@ public class GameActivity extends NativeActivity {
         v.vibrate(VibrationEffect.createOneShot(40, v.hasAmplitudeControl() ? amplitude : VibrationEffect.DEFAULT_AMPLITUDE));
     }
 
-    private static android.app.Dialog textDialog;   // the open TextEntry (UI thread), dismissed in onDestroy
+    /** The open TextEntry (UI thread), dismissed in onDestroy. */
+    private static android.app.Dialog textDialog;
 
     /** Called from native code (app.c, the game's software keyboard): shows TextEntry and blocks the calling thread until
         the player confirms (the text, UTF-8) or cancels (null). The game's thread waits in this call, so every way out
@@ -77,7 +78,7 @@ public class GameActivity extends NativeActivity {
             try {
                 textDialog = TextEntry.show(a, new String(prompt, StandardCharsets.UTF_8), new String(initial, StandardCharsets.UTF_8), maxUnits, minUnits, secure, digitsOnly, disabled,
                                             t -> { textDialog = null; text[0] = t; done.countDown(); });
-            } catch (RuntimeException e) { textDialog = null; text[0] = null; done.countDown(); }   // cancelled (a window token gone meanwhile)
+            } catch (RuntimeException e) { textDialog = null; text[0] = null; done.countDown(); }
         });
         try { done.await(); } catch (InterruptedException e) { return null; }
         return text[0] != null ? text[0].getBytes(StandardCharsets.UTF_8) : null;
@@ -95,7 +96,8 @@ public class GameActivity extends NativeActivity {
         Vibrator v = ((VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE)).getDefaultVibrator();
         vibrator = v.hasVibrator() ? v : null;
     }
-    private static boolean filesOpen;   // this process holds the game's descriptors: an activity made again keeps them
+    /** This process holds the game's descriptors: an activity made again keeps them. */
+    private static boolean filesOpen;
 
     @Override protected void onCreate(Bundle state) {
         /* Before super.onCreate, which loads libtotk.so and starts the game. It cannot be skipped, so with a file gone the
@@ -113,14 +115,15 @@ public class GameActivity extends NativeActivity {
         if (Build.VERSION.SDK_INT >= 34) overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, android.R.anim.fade_in, android.R.anim.fade_out);
     }
     @SuppressWarnings("deprecation")
-    @Override public void finish() {   /* ANativeActivity_finish (Quit) calls this */
+    /* ANativeActivity_finish (Quit) calls this */
+    @Override public void finish() {
         super.finish();
         if (Build.VERSION.SDK_INT < 34) overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
     /** Finishing (Quit to startup screen) ends the :game process too: the game has no way back to its start, and a process
         left behind would be resumed by the next Continue, still paused and with the old settings. */
     @Override protected void onDestroy() {
-        if (textDialog != null) textDialog.dismiss();   // answers a waiting textInput (cancelled)
+        if (textDialog != null) textDialog.dismiss();
         boolean finishing = isFinishing();
         super.onDestroy();
         if (finishing) android.os.Process.killProcess(android.os.Process.myPid());

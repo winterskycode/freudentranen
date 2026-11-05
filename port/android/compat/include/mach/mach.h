@@ -52,7 +52,8 @@ typedef struct { vm_prot_t protection, max_protection; vm_inherit_t inheritance;
 #define VM_REGION_BASIC_INFO_64 9
 #define VM_REGION_BASIC_INFO_COUNT_64 ((mach_msg_type_number_t)(sizeof(vm_region_basic_info_data_64_t) / sizeof(int)))
 typedef struct { vm_prot_t protection, max_protection; unsigned int pages_resident, pages_dirtied, pages_swapped_out,
-                 pages_shared_now_private, pages_reusable; boolean_t is_submap; } vm_region_submap_info_data_64_t;   /* is_submap: always 0 here */
+                 /* is_submap: always 0 here */
+                 pages_shared_now_private, pages_reusable; boolean_t is_submap; } vm_region_submap_info_data_64_t;
 #define VM_REGION_SUBMAP_INFO_COUNT_64 ((mach_msg_type_number_t)(sizeof(vm_region_submap_info_data_64_t) / sizeof(int)))
 
 typedef struct { int seconds, microseconds; } time_value_t;
@@ -78,7 +79,8 @@ mach_port_t mach_thread_self(void);
 mach_port_t pthread_mach_thread_np(pthread_t thread);
 kern_return_t mach_port_deallocate(mach_port_t task, mach_port_t name);
 #define MACH_PORT_RIGHT_SEND 0
-kern_return_t mach_port_mod_refs(mach_port_t task, mach_port_t name, int right, int delta);   /* not supported: no port is kept */
+/* not supported: no port is kept */
+kern_return_t mach_port_mod_refs(mach_port_t task, mach_port_t name, int right, int delta);
 kern_return_t thread_info(thread_act_t thread, thread_flavor_t flavor, thread_info_t info, mach_msg_type_number_t *count);
 kern_return_t task_info(task_t task, task_flavor_t flavor, task_info_t info, mach_msg_type_number_t *count);
 kern_return_t task_threads(task_t task, thread_act_array_t *list, mach_msg_type_number_t *count);

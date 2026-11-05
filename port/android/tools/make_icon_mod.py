@@ -33,7 +33,8 @@ def main():
                         str(ROOT/'work/totk/extracted/v143/romfs'), '--version', 'v143', '--style', 'playstation'],
                        cwd=SCRIPTS, check=True)
     import compression.zstd, zlib
-    from port_mod import restbl_read, rstb_key   # the size table as the PC merge tool reads it
+    # the size table as the PC merge tool reads it
+    from port_mod import restbl_read, rstb_key
     _, _, by_crc, by_name = restbl_read(compression.zstd.decompress((raw/RSTB).read_bytes()))
     shutil.rmtree(out, ignore_errors=True)
     rows, total = [], 0

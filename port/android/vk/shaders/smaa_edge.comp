@@ -5,7 +5,8 @@
 // colour, so the point reads return sqrt (gamma 2.0).
 layout(binding = 0) uniform sampler2D colorTex;
 layout(binding = 1, rgba8) uniform writeonly image2D edgesOut;
-layout(binding = 2, r11f_g11f_b10f) uniform writeonly image2D colorCopy;   // the canvas as it is, for pass 3 to read
+// the canvas as it is, for pass 3 to read
+layout(binding = 2, r11f_g11f_b10f) uniform writeonly image2D colorCopy;
 #define SMAASamplePoint(tex, coord) sqrt(max(textureLod(tex, coord, 0.0), vec4(0.0)))
 #include "smaa_common.glsl"
 

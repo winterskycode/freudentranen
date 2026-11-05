@@ -11,7 +11,8 @@
 
 /* Node visits allowed in the exclusive-region check. The game's modules take under a thousand; this stops crafted ones. */
 #define RESERVATION_BUDGET (1ull << 28)
-#define PATCH_ROOM (256u << 10)   /* tokp_rewrite_alloc's first try; 1.4.3 main needs 48 KB */
+/* tokp_rewrite_alloc's first try; 1.4.3 main needs 48 KB */
+#define PATCH_ROOM (256u << 10)
 
 const char *const tokp_kind_names[TOKP_KIND_COUNT] = {"svc", "tpidr_r", "tpidr_w", "tpidrro_r", "cntpct", "cntvct"};
 
@@ -25,10 +26,13 @@ int tokp_fail(char *err, size_t errlen, int code, const char *fmt, ...) {
 
 typedef struct {
     uint8_t *img; uint64_t cap;
-    uint64_t key, patch_off, patch;     /* patch: bytes emitted, counted past cap too */
-    const char *bad;                    /* first encoding that cannot be made */
+    /* patch: bytes emitted, counted past cap too */
+    uint64_t key, patch_off, patch;
+    /* first encoding that cannot be made */
+    const char *bad;
     uint64_t bad_at;
-    tokp_gate *gates; size_t ngates;    /* room for every gate site */
+    /* room for every gate site */
+    tokp_gate *gates; size_t ngates;
     uint32_t slot_refs;
 } Rw;
 
@@ -116,7 +120,8 @@ static uint64_t site_tpidr_write(Rw *r, uint32_t w, uint64_t a) {
     unsigned N = w & 31, T = N == 0 ? 1 : 0, tmp = N == 16 ? 17 : 16;
     uint64_t start = here(r);
     if (N == 18) {
-        const unsigned U = 1, Nf = 32;   /* the first register that is none of T, tmp, N; T is 0 here */
+        /* the first register that is none of T, tmp, N; T is 0 here */
+        const unsigned U = 1, Nf = 32;
         emit(r, SUBI(31, 31, Nf)); emit(r, STP(T, tmp, 31, 0)); emit(r, STRX(U, 31, 2));
         thread_base(r, T, a); emit_slot_addr(r, T, tmp, KTLS);
         thread_base(r, tmp, a); emit_slot_addr(r, tmp, U, K18); emit(r, LDRX(tmp, tmp, 0)); emit(r, STRX(tmp, T, 0));
@@ -211,13 +216,20 @@ static int succ(uint32_t w, int64_t o, int64_t s[2]) {
 /* Work arrays over the words of one function, sized for the largest walked. */
 typedef struct {
     size_t words;
-    uint32_t *mark;      /* == gen: in the forward set */
-    uint32_t *back;      /* == gen: in the backward set */
-    uint32_t *list;      /* the forward set, as word indices */
-    uint32_t *stack;     /* two entries per word */
-    uint32_t *first;     /* per word: first incoming edge + 1 */
-    uint32_t *next, *from;   /* per edge, two per word */
-    uint8_t *site;       /* per word: a site is here */
+    /* == gen: in the forward set */
+    uint32_t *mark;
+    /* == gen: in the backward set */
+    uint32_t *back;
+    /* the forward set, as word indices */
+    uint32_t *list;
+    /* two entries per word */
+    uint32_t *stack;
+    /* per word: first incoming edge + 1 */
+    uint32_t *first;
+    /* per edge, two per word */
+    uint32_t *next, *from;
+    /* per word: a site is here */
+    uint8_t *site;
     uint32_t gen;
     uint64_t visits;
 } Walk;
@@ -301,7 +313,8 @@ static int check_reservations(const uint8_t *img, uint64_t text_end, const uint6
         while (si < nsites && sites[si].off < fa) si++;
         size_t first = si;
         while (si < nsites && sites[si].off < fb) si++;
-        if (first == si || fa % 4) continue;    /* no site here; from an odd start no walk can land on one */
+        /* no site here; from an odd start no walk can land on one */
+        if (first == si || fa % 4) continue;
         size_t words = (size_t)((fb - fa + 3) / 4);
         if (walk_size(&k, words)) { rc = tokp_fail(err, errlen, TOKP_E_NOMEM, "out of memory"); break; }
         memset(k.site, 0, words);

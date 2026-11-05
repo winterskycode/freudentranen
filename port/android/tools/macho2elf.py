@@ -18,7 +18,8 @@ text = re.sub(r'\b_([A-Za-z_]\w*)@PAGE\b', r'\1', text)
 # remaining Mach-O C symbol names (labels, .globl, b/bl targets, .quad data); assembler-local labels start with L or digits
 lines = []
 for line in text.splitlines():
-    if line.lstrip().startswith('#'):   # preprocessor lines keep their names (__ANDROID__ etc.)
+    # preprocessor lines keep their names (__ANDROID__ etc.)
+    if line.lstrip().startswith('#'):
         lines.append(line); continue
     code, sep, comment = line.partition('//')
     code = re.sub(r'(?<![\w.$])_([A-Za-z_]\w*)', r'\1', code)

@@ -27,7 +27,8 @@ ROOT = Path(__file__).resolve().parents[3]
 BENCH = ROOT/'work/android/v143/bench'
 APP = 'dev.tok.totk'
 FILES = f'/data/user/0/{APP}/files'
-DEFAULT_SAVE = BENCH/'save-100/slot_00'   # the 100% save, unpacked by --save-zip (switch_files/totk_save_files_*.zip)
+# the 100% save, unpacked by --save-zip (switch_files/totk_save_files_*.zip)
+DEFAULT_SAVE = BENCH/'save-100/slot_00'
 ORBIT_S, RADIUS, HEIGHT, FOV = 30.0, 60.0, 35.0, 0.85
 # (scene, map point: a LocationMarker name, or "save" for where the save puts Link, hour of the day)
 SCENES = [('Great Sky Island', 'save', 12), ('Lookout Landing', 'ShopGeneral_BaseCamp', 11),
@@ -35,9 +36,11 @@ SCENES = [('Great Sky Island', 'save', 12), ('Lookout Landing', 'ShopGeneral_Bas
           ('Depths', 'MinusField_Rito', 12),
           # --scenes all adds these
           ('Goron City', 'ShopInn_Goron', 20), ('Hateno', 'ShopInn_Hateno', 9), ('Gerudo Town', 'ShopInn_Gerudo', 14)]
-DEFAULT_SCENES = 6   # about 6 minutes of flying: the Odin heats quickly (two laps of one scene took the CPU from 59 to 97 C)
-COOL_C = 60.0        # a run starts once thermal status is 0 and the hottest CPU sensor is below this (idle: 54-58 C, the
-                     # vendor service keeps CPU clock floors up)
+# about 6 minutes of flying: the Odin heats quickly (two laps of one scene took the CPU from 59 to 97 C)
+DEFAULT_SCENES = 6
+# a run starts once thermal status is 0 and the hottest CPU sensor is below this (idle: 54-58 C, the vendor service
+# keeps CPU clock floors up)
+COOL_C = 60.0
 
 
 def adb(*args, check=True, input=None, timeout=120):
@@ -52,7 +55,8 @@ def shell(cmd, **kw):
 
 
 def as_app(cmd, **kw):
-    return adb('exec-out', 'run-as', APP, 'sh', '-c', cmd, **kw)   # exec-out passes each argument as it is
+    # exec-out passes each argument as it is
+    return adb('exec-out', 'run-as', APP, 'sh', '-c', cmd, **kw)
 
 
 def put(path, text):
@@ -112,7 +116,8 @@ def orbit(center, t0=0.0):
         a = 2 * math.pi * i / 12
         pos = (cx + RADIUS * math.cos(a), cy + HEIGHT, cz + RADIUS * math.sin(a))
         f = (cx - pos[0], cy + 5 - pos[1], cz - pos[2]); n = math.sqrt(sum(c * c for c in f)); f = tuple(c / n for c in f)
-        r = (f[2], 0.0, -f[0]); n = math.sqrt(r[0] ** 2 + r[2] ** 2); r = (r[0] / n, 0.0, r[2] / n)   # right = fwd x up(0,1,0)
+        # right = fwd x up(0,1,0)
+        r = (f[2], 0.0, -f[0]); n = math.sqrt(r[0] ** 2 + r[2] ** 2); r = (r[0] / n, 0.0, r[2] / n)
         up = (r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0])
         if up[1] < 0: up = tuple(-c for c in up)
         keys.append((t0 + ORBIT_S * i / 12, pos, f, up))
@@ -151,7 +156,8 @@ def land(tag, point):
     if not done or 'move_done' not in done:
         raise SystemExit(f'{tag}: could not move Link to the point: {done}')
     last = None
-    for i in range(30):   # until he stops falling (the world streams in around him meanwhile)
+    # until he stops falling (the world streams in around him meanwhile)
+    for i in range(30):
         time.sleep(1)
         send(f'survey pos {tag}_g{i}')
         line = wait(rf'\[survey\] tag={tag}_g{i} status=(position|no_player)', 10)
@@ -170,14 +176,16 @@ def stats(frames, a, b):
     if len(dt) < 10:
         return None
     total = sum(dt)
-    def low(p):   # the FPS of the slowest p of the frames, as NX Optimizer reports its lows
+    # the FPS of the slowest p of the frames, as NX Optimizer reports its lows
+    def low(p):
         k = max(1, int(len(dt) * p)); return 1000 * k / sum(dt[-k:])
     return dict(frames=len(dt), seconds=round(total / 1000, 2), avg_fps=round(1000 * len(dt) / total, 1),
                 low1_fps=round(low(0.01), 1), low01_fps=round(low(0.001), 1), worst_ms=round(dt[-1], 1),
                 over33=sum(d > 33.4 for d in dt), p50_ms=round(dt[len(dt) // 2], 2))
 
 
-ACCOUNT = BENCH/'account'   # account.uid + save/<account>/option.sav, for a device without a player profile
+# account.uid + save/<account>/option.sav, for a device without a player profile
+ACCOUNT = BENCH/'account'
 
 
 def profile(save):
@@ -216,7 +224,8 @@ def run(args):
     out.mkdir(parents=True)
     shell('input keyevent KEYCODE_WAKEUP'); shell('wm dismiss-keyguard', check=False)
     shell(f'am force-stop {APP}')
-    for _ in range(120):   # the device cannot cool while the previous run plays; runs compare only from the same start
+    # the device cannot cool while the previous run plays; runs compare only from the same start
+    for _ in range(120):
         st = device_state()
         if st['thermal'] == 0 and (st['cpu_c'] or 0) < COOL_C: break
         time.sleep(5)
@@ -232,16 +241,19 @@ def run(args):
     uncapped = [] if args.as_played else ['TOTK_UNCAPPED_HZ=240', 'TOTK_FRAMEGEN=0']
     env = [f'TOTK_PROFILE_DIR={FILES}/bench-profile', 'TOTK_SURVEY=1', 'TOTK_SLOT_OWNER=claude',
            f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', 'TOTK_VK_FRAMEPROF=1', *uncapped, *args.env]
-    if args.timeline:   # one TOTK_TIMELINE window in each scene's flight, started by files/timeline.tsv.go (totk_timeline.c)
+    # one TOTK_TIMELINE window in each scene's flight, started by files/timeline.tsv.go (totk_timeline.c)
+    if args.timeline:
         env.append(f'TOTK_TIMELINE={FILES}/timeline.tsv:go:{args.timeline}')
-    if args.gputrace:   # Turnip's GPU trace (render passes, compute, copies, command buffers on the GPU clock), kept per scene
+    # Turnip's GPU trace (render passes, compute, copies, command buffers on the GPU clock), kept per scene
+    if args.gputrace:
         env += ['MESA_GPU_TRACES=print_csv', f'MESA_GPU_TRACEFILE={FILES}/gputrace.csv']
     trace_size = lambda: int((as_app('stat -c %s files/gputrace.csv', check=False).strip() or '0'))
     as_app('rm -f files/profile/totk.log files/input.now files/bench-frames.txt files/bench-route-* files/timeline.tsv* files/gputrace.csv')
     put('files/debug.env', '\n'.join(env) + '\n')
     shell(f'am start -W --display 0 -n {APP}/.LauncherActivity')
     time.sleep(3)
-    for _ in range(6):   # the launcher misses a press while it is still getting ready (a first start on the Xperia)
+    # the launcher misses a press while it is still getting ready (a first start on the Xperia)
+    for _ in range(6):
         shell('input -d 0 keyevent KEYCODE_DPAD_CENTER'); time.sleep(4)
         if shell(f'pidof {APP}:game', check=False).strip(): break
     try:
@@ -258,7 +270,8 @@ def run(args):
         else:
             raise SystemExit('the save never loaded')
         here = None
-        for i in range(60):   # the player appears once the world is in (at 0, -0.15, 0 while the save still loads)
+        # the player appears once the world is in (at 0, -0.15, 0 while the save still loads)
+        for i in range(60):
             send(f'survey pos p{i}')
             line = wait(rf'\[survey\] tag=p{i} status=(position|no_player)', 10)
             if line and 'status=position' in line and 'xyz=0.000000,-0.150390,0.000000' not in line:
@@ -268,7 +281,8 @@ def run(args):
             raise SystemExit('the player never appeared in the world')
         time.sleep(3)
         clock_ok = False
-        if args.clock:   # scene hours: world_survey.c's clock search; on Android it picks other timers of the same rate
+        # scene hours: world_survey.c's clock search; on Android it picks other timers of the same rate
+        if args.clock:
             send('survey clockfind')
             clock = wait(r'\[survey\] time of day: ', 150)
             clock_ok = bool(clock) and bool(log_grep(r'\[survey\] clock value at').strip())
@@ -292,12 +306,14 @@ def run(args):
                 if args.timeline:
                     time.sleep(3)
                     put('files/timeline.tsv.go', tag)
-                if args.gputrace:   # 12 s of the flight, from 3 s in; only the trace's pieces that are timed on the GPU
+                # 12 s of the flight, from 3 s in; only the trace's pieces that are timed on the GPU
+                if args.gputrace:
                     if not args.timeline: time.sleep(3)
                     b0 = trace_size(); time.sleep(12); b1 = trace_size()
                     (out/f'gputrace-{tag}.csv').write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'sh', '-c',
                         f'tail -c +{b0 + 1} files/gputrace.csv | head -c {b1 - b0} | grep -a -E ",(start|end)_[a-z_]+,"'], capture_output=True).stdout)
-                length = ORBIT_S * 11 / 12 + 1.5 * ORBIT_S / 12   # T[n-2] + 1.5 (T[n-1] - T[n-2]), world_survey.c route_length
+                # T[n-2] + 1.5 (T[n-1] - T[n-2]), world_survey.c route_length
+                length = ORBIT_S * 11 / 12 + 1.5 * ORBIT_S / 12
                 end = wait(rf'\[survey\] tag={tag} status=(route_done|no_player|invalid_rotation)', length + 60)
                 if not end or 'route_done' not in end:
                     raise SystemExit(f'{name}: the flight did not finish: {end}')
@@ -310,7 +326,8 @@ def run(args):
         (out/'totk.log').write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'cat', 'files/profile/totk.log'], capture_output=True).stdout)
         (out/'frames.txt').write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'cat', 'files/bench-frames.txt'], capture_output=True).stdout)
         if args.timeline:
-            time.sleep(5)   # the last window is written ~(frames + 30) frames after its start
+            # the last window is written ~(frames + 30) frames after its start
+            time.sleep(5)
             for tl in as_app('ls files', check=False).split():
                 if tl.startswith('timeline.tsv-'):
                     (out/tl).write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'cat', f'files/{tl}'], capture_output=True).stdout)
@@ -373,7 +390,7 @@ def main():
     args = ap.parse_args()
     if args.compare:
         return compare(*args.compare)
-    if args.save_zip:   # unpack only
+    if args.save_zip:
         import zipfile
         DEFAULT_SAVE.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(args.save_zip) as z:

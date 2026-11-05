@@ -6,8 +6,8 @@ import android.graphics.Rect;
 import android.view.KeyEvent;
 import android.view.View;
 
-/** A focusable row of a page, drawn by its page (painter), with the canvas's selection when focused. Left / right go to
-    the stepper (a setting's value) instead of moving the focus. */
+/** A focusable row of a page, drawn by its page (painter), with Ui.selection when focused. Left / right go to the stepper
+    (a setting's value) instead of moving the focus. */
 final class Row extends View {
     interface Painter { void paint(Canvas c, Row row, boolean focused); }
     interface Stepper { void step(int by); }
@@ -16,8 +16,10 @@ final class Row extends View {
     final Painter painter;
     Stepper stepper;
     Focus onFocus;
-    Row loopUp, loopDown;   // the first row of a list goes up to its last, and the last down to the first (LauncherActivity.linkLoops)
-    boolean preferred;   // shown selected while the screen is in touch mode (nothing has focus there)
+    // the first row of a list goes up to its last, and the last down to the first (LauncherActivity.linkLoops)
+    Row loopUp, loopDown;
+    // shown selected while the screen is in touch mode (nothing has focus there)
+    boolean preferred;
 
     Row(Context c, Painter painter) {
         super(c);
@@ -42,7 +44,8 @@ final class Row extends View {
 
     @Override public boolean onKeyDown(int code, KeyEvent e) {
         Row to = code == KeyEvent.KEYCODE_DPAD_UP ? loopUp : code == KeyEvent.KEYCODE_DPAD_DOWN ? loopDown : null;
-        if (to != null) { if (e.getRepeatCount() == 0) to.requestFocus(); return true; }   // a fresh press wraps; held, the list stops at its end
+        // a fresh press wraps; held, the list stops at its end
+        if (to != null) { if (e.getRepeatCount() == 0) to.requestFocus(); return true; }
         if (stepper != null && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             stepper.step(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1); invalidate(); return true;
         }

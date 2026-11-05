@@ -12,9 +12,12 @@ for l in open(sys.argv[1]):
 for k in ev: ev[k].sort()
 inj = [(t, b) for t, a, b, _ in ev['input'] if a >> 40]
 reads = [(t, b) for t, a, b, _ in ev['input'] if not a >> 40]
-shown = {a: (t, b) for t, a, b, _ in ev['shown']}                                    # present id -> (on screen, our present)
-pix = sorted((shown[a][1], a, b) for t, a, b, _ in ev['pixels'] if a in shown)       # by our present time
-pres = [t for t, *_ in ev['pres_in']]                                                # the game's presents
+# present id -> (on screen, our present)
+shown = {a: (t, b) for t, a, b, _ in ev['shown']}
+# by our present time
+pix = sorted((shown[a][1], a, b) for t, a, b, _ in ev['pixels'] if a in shown)
+# the game's presents
+pres = [t for t, *_ in ev['pres_in']]
 ms = lambda x: x / 1e6
 rows = []
 for t0, v in inj:

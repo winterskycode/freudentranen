@@ -23,17 +23,18 @@ enum {
     DV_EDS_FRONT, DV_EDS_BIAS_ENABLE,
     DV_BEGIN_COMMAND_BUFFER, DV_END_COMMAND_BUFFER, DV_RESET_COMMAND_BUFFER, DV_QUEUE_SUBMIT,
 };
-typedef struct { uint32_t op, size; VkCommandBuffer cb; } dv_hdr;   /* size: the whole record, 8-byte aligned */
+/* size: the whole record, 8-byte aligned */
+typedef struct { uint32_t op, size; VkCommandBuffer cb; } dv_hdr;
 #define DV_CHUNK_BYTES (64u << 10)
 /* Spin before sleeping, 200 us: each publish to a sleeping worker is a futex wake on
    the translation thread (~68 a frame), and this worker has prime core 6 to itself (fast:1). Still scene, two rounds:
-   0 us 18.5/18.3 ms, 50 us 18.3/18.5, 200 us 17.4/17.9 (p99 ~26 -> ~23.8 ms, translation CPU 10.6 -> 10.1 ms). When it
-   shared both prime cores with translation, spinning took a core from the game's main thread (wake -> submit
-   0.9 -> 1.4 ms), hence 0 before the core split. */
+   0 us 18.5/18.3 ms, 50 us 18.3/18.5, 200 us 17.4/17.9 (p99 ~26 -> ~23.8 ms, translation CPU 10.6 -> 10.1 ms). Sharing
+   both prime cores with translation, spinning would take a core from the game's main thread (wake -> submit
+   0.9 -> 1.4 ms): it needs the core split. */
 #define DV_SPIN_NS 200000ull
 /* The spin buys about 1 ms of frame time for most of this thread's CPU, which only matters running flat out. With a cap of
-   60 or less it is off (2026-11-04, Odin, two pairs each: 40 fps 11.4 vs 12.1 W, 60 fps 19.6 vs 20.2 W, the same frame
-   rate and p99). TOTK_VKREC_SPIN_US forces a value for measurements. */
+   60 or less it is off (Odin: 40 fps 11.4 vs 12.1 W, 60 fps 19.6 vs 20.2 W, the same frame rate and p99).
+   TOTK_VKREC_SPIN_US forces a value for measurements. */
 extern int nvn_frame_cap_get(void) __attribute__((weak));
 static uint64_t dv_spin_ns(void) {
     static int64_t forced = -2;
@@ -41,13 +42,16 @@ static uint64_t dv_spin_ns(void) {
     if (forced >= 0) return (uint64_t)forced;
     return nvn_frame_cap_get && nvn_frame_cap_get() <= 60 ? 0 : DV_SPIN_NS;
 }
-#define DV_PUBLISH_BYTES (8u << 10)   /* hand a chunk over every ~40 draws: often enough for the GPU, few mutex round trips */
+/* hand a chunk over every ~40 draws: often enough for the GPU, few mutex round trips */
+#define DV_PUBLISH_BYTES (8u << 10)
 typedef struct dv_chunk { struct dv_chunk *next; uint32_t used; _Alignas(16) uint8_t data[DV_CHUNK_BYTES]; } dv_chunk;
 static struct {
-    int on;   /* -1 unread */
+    /* -1 unread */
+    int on;
     pthread_mutex_t mu; pthread_cond_t work, idle;
     dv_chunk *head, *tail, *free_list, *cur;
-    uint64_t published, replayed;   /* chunks */
+    /* chunks */
+    uint64_t published, replayed;
     int worker_waiting;
     uint64_t records, bytes, drains, drain_ns;
 } dv = {.on = -1, .mu = PTHREAD_MUTEX_INITIALIZER, .work = PTHREAD_COND_INITIALIZER, .idle = PTHREAD_COND_INITIALIZER};
@@ -89,7 +93,8 @@ static int dv_enabled_slow(void) {
     LOG("[vulkan-defer] command recording on %s", dv.on ? "a worker thread (TOTK_VK_DEFER=0: inline)" : "the calling thread");
     return dv.on;
 }
-static void dv_publish_locked(void) {   /* holding dv.mu */
+/* holding dv.mu */
+static void dv_publish_locked(void) {
     dv_chunk *c = dv.cur; if (!c || !c->used) return;
     dv.cur = NULL; c->next = NULL; if (dv.tail) dv.tail->next = c; else __atomic_store_n(&dv.head, c, __ATOMIC_RELEASE); dv.tail = c; dv.published++;
     if (dv.worker_waiting) pthread_cond_signal(&dv.work);

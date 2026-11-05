@@ -5,7 +5,7 @@
    "slow:N" = the N highest-numbered cores outside "fast" (every core when there are not more than N of them),
    "all" = every core (undoes a mask inherited from the creating thread), "slow-if-flat" = "slow" on an SoC whose slowest core
    runs at 75% or more of its fastest (the Odin 3's 3.53 / 4.32 GHz: no little cores, so the game's threads lose little
-   by leaving the two prime cores to the translation and recording threads: still scene 75 -> 83 fps, 2026-10-31) and
+   by leaving the two prime cores to the translation and recording threads: still scene 75 -> 83 fps) and
    "all" elsewhere (a device with little cores keeps its game threads free to use the big ones), or a list of cores and
    ranges like "0-5" or "6,7". Unset: dflt. */
 #pragma once
@@ -38,11 +38,13 @@ static inline int totk_pin_self(const char *env, const char *dflt) {
             fclose(f); if (freq[c] > best) best = freq[c];
         }
         int fast = e[0] == 'f', pick = e[4] == ':' ? atoi(e + 5) : -1;
-        if (!fast && pick > 0) {   /* "slow:N": the N highest-numbered cores outside the fast set; fewer than N+1 such cores -> every core */
+        /* "slow:N": the N highest-numbered cores outside the fast set; fewer than N+1 such cores -> every core */
+        if (!fast && pick > 0) {
             int slow = 0; for (int c = 0; c < 64; c++) if (best && freq[c] && freq[c] != best) slow++;
             if (slow <= pick) return totk_pin_self(env, "all");
             for (int c = 63; c >= 0 && n < pick; c--) if (best && freq[c] && freq[c] != best) { CPU_SET(c, &set); n++; }
-        } else if (fast && pick >= 0) {   /* the pick-th fastest core: rank by max frequency, the higher-numbered first among equals */
+        /* the pick-th fastest core: rank by max frequency, the higher-numbered first among equals */
+        } else if (fast && pick >= 0) {
             int order[64], m = 0;
             for (int c = 63; c >= 0; c--) if (freq[c]) order[m++] = c;
             for (int i = 1; i < m; i++) { int c = order[i], j = i; while (j > 0 && freq[order[j - 1]] < freq[c]) { order[j] = order[j - 1]; j--; } order[j] = c; }

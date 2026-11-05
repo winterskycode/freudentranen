@@ -2,16 +2,16 @@
    player's first sessions otherwise do in the background of play -- every shader of the game translated (the shader
    setup, nvn_vulkan_shader_setup.inc) and built once for the GPU as a pipeline library (nvn_vulkan_gpl.inc) -- done in
    one go before play: the game stays paused at its first frame (overlay_prepare), a progress panel shows, the
-   pipeline cache is saved and the app returns to the startup screen. During play the device then stays cool: on
-   2026-11-03 the library build in the background of play took the Odin to 100 C. <files>/prepared.txt records it for
+   pipeline cache is saved and the app returns to the startup screen. During play the device then stays cool: the library
+   build in the background of play can take the Odin to 100 C. <files>/prepared.txt records it for
    the startup screen (dropped when the pipeline cache it went into is not the one in use, prepare_check). */
-void dm_android_quit(void) __attribute__((weak));   /* host/app.c */
-void overlay_prepare(int active, const char *stage, const char *detail, float fraction);   /* overlay.h */
+void dm_android_quit(void) __attribute__((weak));
+void overlay_prepare(int active, const char *stage, const char *detail, float fraction);
 static int prepare_mode(void) { static int v = -1; if (v < 0) { const char *e = getenv("TOTK_PREPARE"); v = e && atoi(e) > 0; } return v; }
 static _Atomic int prepare_stage, prepare_finished;
 static uint64_t prepare_begin;
 /* The libraries' shape: a change that alters what the prepare step builds (layouts, shader patches) bumps it, so the
-   startup screen offers the step again. v2 (2026-11-03): fragment shaders' uniform buffers static with libraries. */
+   startup screen offers the step again. */
 enum { PREPARE_FORMAT = 2 };
 static void prepared_path(char *path, size_t n) { const char *f = getenv("TOTK_FILES_DIR"); snprintf(path, n, "%s/prepared.txt", f ? f : "."); }
 static void *prepare_progress_main(void *unused) {
@@ -38,7 +38,8 @@ static void *prepare_main(void *unused) {
     prepare_begin = dm_android_clock_ns(CLOCK_MONOTONIC);
     overlay_prepare(1, "Starting", "", -1);
     { pthread_t t; if (!pthread_create(&t, NULL, prepare_progress_main, NULL)) pthread_detach(t); }
-    if (!getenv("TOTK_SHADER_SETUP_JOBS")) setenv("TOTK_SHADER_SETUP_JOBS", "4", 1);   /* nothing else runs: more translators than in play */
+    /* nothing else runs: more translators than in play */
+    if (!getenv("TOTK_SHADER_SETUP_JOBS")) setenv("TOTK_SHADER_SETUP_JOBS", "4", 1);
     atomic_store(&prepare_stage, 1); setup_thread(NULL);
     LOG("[prepare] shaders translated (%.0f s)", (dm_android_clock_ns(CLOCK_MONOTONIC) - prepare_begin) / 1e9);
     atomic_store(&prepare_stage, 3);
@@ -48,7 +49,8 @@ static void *prepare_main(void *unused) {
     while (atomic_load_explicit(&pso_warm_running, memory_order_acquire)) { atomic_store(&prepare_stage, 5); struct timespec ts = {0, 200000000}; nanosleep(&ts, NULL); }
     atomic_store(&prepare_stage, 4);
     pipeline_disk_save();
-    { struct timespec ts = {3, 0}; nanosleep(&ts, NULL); }   /* Mesa writes its disk cache from a queue of its own: let it drain */
+    /* Mesa writes its disk cache from a queue of its own: let it drain */
+    { struct timespec ts = {3, 0}; nanosleep(&ts, NULL); }
     char path[600]; prepared_path(path, sizeof path); FILE *f = fopen(path, "w");
     if (f) { fprintf(f, "cache %s\nformat %d\nshaders %zu\nlibraries %zu\nseconds %.0f\n", pipeline_disk_name, PREPARE_FORMAT, gpl_warm_count, (size_t)atomic_load(&gpl_warm_built), (dm_android_clock_ns(CLOCK_MONOTONIC) - prepare_begin) / 1e9); fclose(f); }
     LOG("[prepare] done in %.0f s: %zu shaders, %zu libraries; back to the startup screen", (dm_android_clock_ns(CLOCK_MONOTONIC) - prepare_begin) / 1e9, gpl_warm_count, (size_t)atomic_load(&gpl_warm_built));
@@ -57,7 +59,7 @@ static void *prepare_main(void *unused) {
     return NULL;
 }
 static void prepare_start(void) { pthread_t t; if (!pthread_create(&t, NULL, prepare_main, NULL)) pthread_detach(t); }
-/* Outside prepare mode: a prepared.txt for another pipeline cache (another driver, a cleared cache) no longer holds. */
+/* Outside prepare mode: a prepared.txt for another pipeline cache (another driver, a cleared cache) is dropped. */
 static void prepare_check(void) {
     if (prepare_mode()) return;
     char path[600]; prepared_path(path, sizeof path); char *have = totk_read_text(path); if (!have) return;

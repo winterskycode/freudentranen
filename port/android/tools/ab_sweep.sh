@@ -17,7 +17,8 @@ for spec in "$@"; do
     i=$((i + 1)); status "$name" running
     # APK=<path> in a variant's env: install that build first (A/B between builds; the token is not a debug.env line)
     apk=""; rest=""; gfx=""; for e in $env; do case "$e" in APK=*) apk=${e#APK=};; GFX=*) gfx="$gfx${gfx:+;}$(echo "${e#GFX=}" | tr '_' ' ')";; *) rest="$rest $e";; esac; done
-    env=${rest# }   # GFX=gfxpoke_<addr>_u_3: a gfx* command (underscores for spaces) sent after the save loads (profile.sh GFX_CMD)
+    # GFX=gfxpoke_<addr>_u_3: a gfx* command (underscores for spaces) sent after the save loads (profile.sh GFX_CMD)
+    env=${rest# }
     if [ -n "$apk" ]; then adb install -r "$apk" >/dev/null 2>&1 || echo "install of $apk failed" >&2; fi
     adb shell run-as dev.tok.totk rm -f files/timeline.tsv
     # $env is split on purpose: each ENV=value becomes one debug.env line

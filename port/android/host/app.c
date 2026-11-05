@@ -40,7 +40,7 @@ void runtime_prompts_set(const uint8_t *field, int swap_faces, const uint16_t *t
 #define TAG "totk"
 void android_vi_set_window(void *window);
 void *android_vi_override(const char *name);
-int main(int argc, char **argv);   /* runtime/loader.c */
+int main(int argc, char **argv);
 
 /* ---- logging: stdout/stderr -> logcat and <profile>/totk.log ---- */
 static int log_file = -1;
@@ -108,8 +108,9 @@ static int spirv_has_gather(const char *path) {
     fseek(f, 0, SEEK_END); long bytes = ftell(f); fseek(f, 0, SEEK_SET);
     uint32_t *w = bytes >= 20 ? malloc((size_t)bytes) : NULL; size_t n = w ? fread(w, 4, (size_t)bytes / 4, f) : 0; fclose(f);
     int found = 0;
-    for (size_t i = 5; i < n && !found;) { uint32_t count = w[i] >> 16, op = w[i] & 0xffff;   /* instructions after the header */
-        found = op == 96 || op == 97;   /* OpImageGather, OpImageDrefGather */
+    for (size_t i = 5; i < n && !found;) { uint32_t count = w[i] >> 16, op = w[i] & 0xffff;
+        /* OpImageGather, OpImageDrefGather */
+        found = op == 96 || op == 97;
         if (!count) break; i += count; }
     free(w); return found;
 }
@@ -125,12 +126,12 @@ static void shader_cache_revision(const char *dir) {
     while ((e = readdir(d))) {
         if (strlen(e->d_name) != 20 || strcmp(e->d_name + 16, ".spv")) continue;
         snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-        if (have < 2 && spirv_has_gather(path)) {   /* revision 2 */
+        if (have < 2 && spirv_has_gather(path)) {
             if (nkeys == cap) { cap = cap ? 2 * cap : 256; keys = realloc(keys, cap * 16); if (!keys) break; }
             memcpy(keys[nkeys++], e->d_name, 16); } }
     /* each variant's .deps goes first (a variant without one is not in the cache), then its other files, named in a
-       second pass and removed after it: a directory read while its entries are removed may skip some, which left a
-       .deps whose .meta was gone and stopped the game ("Missing Vulkan shader", 2026-10-28) */
+       second pass and removed after it: a directory read while its entries are removed may skip some, and a .deps left
+       without its .meta stops the game ("Missing Vulkan shader") */
     char (*names)[64] = NULL; size_t nnames = 0, ncap = 0;
     if (keys && nkeys) { qsort(keys, nkeys, 16, key_compare);
         for (size_t i = 0; i < nkeys; i++) { snprintf(path, sizeof path, "%s/%.16s.deps", dir, keys[i]); unlink(path); }
@@ -165,14 +166,16 @@ static void start_game(ANativeActivity *activity) {
     snprintf(env, sizeof env, "%s/launch.env", activity->internalDataPath);
     load_env(env);
     frame_settings();
-    snprintf(env, sizeof env, "%s/debug.env", activity->internalDataPath); load_env(env);   /* developer switches (adb run-as), kept across launches */
-    /* The allocator keeps freed memory mapped for a while (Android's default releases it at once): our large snapshots
-       and staging copies were mapped afresh each time, 760 MB of churn and the matching page faults in 50 s of the Zora
-       Domain scene (2026-11-01). TOTK_MALLOC_DECAY=1 enables it (A/B 2026-11-01: no change in the Zora Domain hitches; the churn is not what hurts). */
-    { const char *d = getenv("TOTK_MALLOC_DECAY"); if (d) mallopt(M_DECAY_TIME, atoi(d)); }   /* measured no change in the hitches: left at Android's default unless set */
+    /* developer switches (adb run-as), kept across launches */
+    snprintf(env, sizeof env, "%s/debug.env", activity->internalDataPath); load_env(env);
+    /* TOTK_MALLOC_DECAY=1 makes the allocator keep freed memory mapped for a while (Android's default releases it at
+       once). Large snapshots and staging copies are mapped afresh each time, 760 MB of churn and the matching page
+       faults in 50 s of the Zora Domain scene, but an A/B shows no change in the hitches there: it stays at Android's
+       default unless set. */
+    { const char *d = getenv("TOTK_MALLOC_DECAY"); if (d) mallopt(M_DECAY_TIME, atoi(d)); }
     /* a freeze-frame flag (frz.sh on) left by a run that died while frozen would freeze this launch's first frame (a black screen) */
     snprintf(env, sizeof env, "%s/freeze", activity->internalDataPath); unlink(env);
-    const char *v = getenv("TOTK_VERSION_DIR") ? getenv("TOTK_VERSION_DIR") : TOTK_GAME_DIR;   /* game_version.h: v143, botw160, ... */
+    const char *v = getenv("TOTK_VERSION_DIR") ? getenv("TOTK_VERSION_DIR") : TOTK_GAME_DIR;
     snprintf(data_root, sizeof data_root, "%s/%s", getenv("TOTK_DATA_ROOT") ? getenv("TOTK_DATA_ROOT") : "/sdcard/tok", v);
     snprintf(rewritten_dir, sizeof rewritten_dir, "%s/rewritten", data_root);
     /* From the player's own files nothing the PC made is read: the index the game writes is private, no overlays are loaded,
@@ -185,14 +188,19 @@ static void start_game(ANativeActivity *activity) {
     snprintf(path, sizeof path, "%s/romfs", data_root); default_env("TOTK_ROMFS", path);
     snprintf(path, sizeof path, "%s/romfs-patches", data_root); default_env("TOTK_ROMFS_PATCHES", path);
     snprintf(path, sizeof path, "%s/romfs-patches-out", data_root); default_env("TOTK_ROMFS_PATCHES_OUT", path);
-    snprintf(path, sizeof path, "%s/game-data", data_root); default_env("TOTK_GAME_DATA", path);   /* tables made from the game files (tools/gen_runtime.py) */
-    snprintf(path, sizeof path, "%s/aoc", data_root); default_env("TOTK_AOC", path);   /* Breath of the Wild: the add-on content volumes <index>/ (runtime/aoc_romfs.c) */
-    default_env("TOTK_FILES_DIR", activity->internalDataPath);   /* the in-game menu's overlay.env */
-    snprintf(path, sizeof path, "%s/actions.txt", activity->internalDataPath); default_env("TOTK_CONTROLS", path);   /* the field controls (actions_parse; the launcher and the in-game menu write it) */
+    /* tables made from the game files (tools/gen_runtime.py) */
+    snprintf(path, sizeof path, "%s/game-data", data_root); default_env("TOTK_GAME_DATA", path);
+    /* Breath of the Wild: the add-on content volumes <index>/ (runtime/aoc_romfs.c) */
+    snprintf(path, sizeof path, "%s/aoc", data_root); default_env("TOTK_AOC", path);
+    /* the in-game menu's overlay.env */
+    default_env("TOTK_FILES_DIR", activity->internalDataPath);
+    /* the field controls (actions_parse; the launcher and the in-game menu write it) */
+    snprintf(path, sizeof path, "%s/actions.txt", activity->internalDataPath); default_env("TOTK_CONTROLS", path);
     default_env("TOTK_SHARED_FONTS", "/sdcard/tok/fonts");
     default_env("TOTK_PROFILE_DIR", profile);
     default_env("TOTK_OPERATION_MODE", "handheld");
-    { Dl_info info; if (dladdr((void *)default_env, &info) && info.dli_fname) {   /* the APK's native library folder: adrenotools hooks for a custom GPU driver */
+    /* the APK's native library folder: adrenotools hooks for a custom GPU driver */
+    { Dl_info info; if (dladdr((void *)default_env, &info) && info.dli_fname) {
         snprintf(path, sizeof path, "%s", info.dli_fname); char *slash = strrchr(path, '/'); if (slash) { *slash = 0; default_env("DM_ANDROID_LIBDIR", path); } } }
     /* The GPU driver (the launcher's GPU driver page, TOTK_GPU_DRIVER): the bundled Turnip (Mesa) when the APK carries it and
        the GPU is an Adreno (Qualcomm's kernel driver, /dev/kgsl-3d0), the system's driver, or one the player installed from
@@ -205,23 +213,35 @@ static void start_game(ANativeActivity *activity) {
           snprintf(path, sizeof path, "%s/shader-cache-turnip", activity->internalDataPath); mkdir(path, 0700); default_env("DM_VK_SHADERS", path);
           snprintf(lib, sizeof lib, "%s/host-subgroup-size.txt", path);
           if (access(lib, F_OK)) { FILE *f = fopen(lib, "w"); if (f) { fputs("128\n", f); fclose(f); } } } }
-    snprintf(path, sizeof path, "%s/shader-cache", activity->internalDataPath); default_env("DM_VK_SHADERS", path);   /* Vulkan shader variants */
-    shader_cache_revision(path);   /* both drivers' caches: translations from an older translator */
+    snprintf(path, sizeof path, "%s/shader-cache", activity->internalDataPath); default_env("DM_VK_SHADERS", path);
+    /* both drivers' caches: translations from an older translator */
+    shader_cache_revision(path);
     snprintf(path, sizeof path, "%s/shader-cache-turnip", activity->internalDataPath); shader_cache_revision(path);
     /* Compiled pipelines survive the session: the backend's VkPipelineCache file and the list of pipelines it rebuilds
        while the next session loads (nvn_vulkan_pipeline_cache.inc, nvn_vulkan_warm.inc; files named per device and
-       driver), and Mesa's own shader cache for Turnip. Without them every pipeline compiled again in each session. */
+   driver), and Mesa's own shader cache for Turnip. Without them every pipeline compiles again in each session. */
     snprintf(path, sizeof path, "%s/pipeline-cache", activity->internalDataPath); mkdir(path, 0700); default_env("DM_VK_PIPELINE_CACHE_DIR", path);
     snprintf(path, sizeof path, "%s/mesa-cache", activity->internalDataPath); mkdir(path, 0700); default_env("MESA_SHADER_CACHE_DIR", path);
-    default_env("MESA_SHADER_CACHE_DISABLE", "false");   /* Mesa keeps it off on Android by default: the pipeline libraries the prepare step builds live there (vk/nvn_vulkan_gpl.inc) */
-    default_env("TOTK_ASYNC_REPLAY", "1");   /* translation thread: the game's submit call returns before the replay */
-    default_env("TOTK_UNCAPPED_INTERVAL", "1");   /* pace by the 120 Hz cap, not the game's present interval (it chose 3 = 25 ms in the cave: 40 -> 51 fps); the real-time frame step keeps game speed */
-    default_env("TOTK_VK_ZEROCOPY", "1");        /* memory pools of 64 KiB and up are exported Vulkan memory (dma-buf over the guest pages; Turnip) */
-    default_env("TOTK_VK_ZEROCOPY_BIND", "1");   /* ... and draws read them in place instead of snapshots */
-    default_env("TOTK_VK_UBO_COMPOSE", "1");     /* uniforms with pending GPU writes are assembled on the GPU, no completion wait */
-    default_env("TOTK_OUTPUT_RES", "0");     /* the panel is 1920x1080: no 2560x1440 output (it cost ~5 ms of GPU a frame) */
-    snprintf(path, sizeof path, "%s/tmp", activity->internalDataPath); mkdir(path, 0700); default_env("TMPDIR", path);   /* the translator's .NET runtime */
-    default_env("TOTK_HEADLESS", "1");   /* runtime_front_run: the Android UI thread is the activity's; the game owns its thread */
+    /* Mesa keeps it off on Android by default: the pipeline libraries the prepare step builds live there
+       (vk/nvn_vulkan_gpl.inc) */
+    default_env("MESA_SHADER_CACHE_DISABLE", "false");
+    /* translation thread: the game's submit call returns before the replay */
+    default_env("TOTK_ASYNC_REPLAY", "1");
+    /* pace by the 120 Hz cap, not the game's present interval (it chooses 3 = 25 ms in the cave: 40 -> 51 fps); the
+       real-time frame step keeps game speed */
+    default_env("TOTK_UNCAPPED_INTERVAL", "1");
+    /* memory pools of 64 KiB and up are exported Vulkan memory (dma-buf over the guest pages; Turnip) */
+    default_env("TOTK_VK_ZEROCOPY", "1");
+    /* draws read those pools in place instead of snapshots */
+    default_env("TOTK_VK_ZEROCOPY_BIND", "1");
+    /* uniforms with pending GPU writes are assembled on the GPU, no completion wait */
+    default_env("TOTK_VK_UBO_COMPOSE", "1");
+    /* the panel is 1920x1080: a 2560x1440 output costs ~5 ms of GPU a frame */
+    default_env("TOTK_OUTPUT_RES", "0");
+    /* for the translator's .NET runtime */
+    snprintf(path, sizeof path, "%s/tmp", activity->internalDataPath); mkdir(path, 0700); default_env("TMPDIR", path);
+    /* runtime_front_run: the Android UI thread is the activity's; the game owns its thread */
+    default_env("TOTK_HEADLESS", "1");
     pthread_attr_t a; pthread_attr_init(&a); pthread_attr_setstacksize(&a, 16u << 20);
     pthread_t t; pthread_create(&t, &a, game_thread, NULL); pthread_attr_destroy(&a); pthread_detach(t);
 }
@@ -250,7 +270,8 @@ static pthread_mutex_t pad_lock = PTHREAD_MUTEX_INITIALIZER;
 static RuntimeGamepadState pad_state;
 static uint64_t pressed_edges, physical;
 static uint16_t controller_map[CONTROLLER_BUTTONS];
-static int8_t action_buttons[GAME_ACTIONS];   /* the physical button (controller_map.h index) of each action, -1 none */
+/* the physical button (controller_map.h index) of each action, -1 none */
+static int8_t action_buttons[GAME_ACTIONS];
 static float axis_lx, axis_ly, axis_rx, axis_ry, axis_lt, axis_rt, hat_x, hat_y;
 static int pad_connected, face_by_label;
 /* TOTK_BUTTON_STYLE: the letters the prompts show for a face button, by its place on the device: xbox (the printed ones on
@@ -263,7 +284,8 @@ static int style_switch, style_playstation;
    it differs from the Switch's own. By position the keys sit at the Switch layout's places; by label the printed A
    (bottom) presses the Switch's A. */
 static int faces_swapped(void) { return style_switch ? face_by_label : !face_by_label; }
-static _Atomic int controls_loaded;   /* load_controller_map done (dm_android_prompt_places waits for it) */
+/* load_controller_map done (dm_android_prompt_places waits for it) */
+static _Atomic int controls_loaded;
 
 static int32_t stick_axis(float value) {
     const float deadzone = 0.12f; float magnitude = fabsf(value);
@@ -275,11 +297,13 @@ static int32_t stick_axis(float value) {
 /* The physical button that presses Switch button b in the Switch layout (east A, south B, north X, west Y, the rest by
    index), and back */
 static int physical_of_switch(int b) { return game_physical_of_switch(b); }
-static int switch_of_physical(int p) { return p < 0 || p >= CONTROLLER_SWITCH_BUTTONS ? -1 : game_physical_of_switch(p); }   /* the swap is its own inverse */
+/* the swap is its own inverse */
+static int switch_of_physical(int p) { return p < 0 || p >= CONTROLLER_SWITCH_BUTTONS ? -1 : game_physical_of_switch(p); }
 static void actions_default(int8_t phys[GAME_ACTIONS]) { for (int i = 0; i < GAME_ACTIONS; i++) phys[i] = (int8_t)physical_of_switch(game_actions[i].button); }
 /* The button prompts for these controls: the field guides and text icons show the button each action is on, and the
    face letters of the button style at the keys' places (faces_swapped) */
-static void prompts_apply(const int8_t *buttons) {   /* buttons: Switch button per action, NULL = the game's own */
+/* buttons: Switch button per action, NULL = the game's own */
+static void prompts_apply(const int8_t *buttons) {
     static uint8_t field[GAME_GLYPHS]; static uint16_t text[64]; int swap = faces_swapped();
     if (buttons) game_actions_glyphs(buttons, field);
     game_text_icon_chars(buttons ? field : NULL, swap, text);
@@ -325,7 +349,8 @@ static int actions_parse(const char *text, int8_t phys[GAME_ACTIONS]) {
 }
 static void load_controller_map(void) {
     uint8_t modes[CONTROLLER_BUTTONS]; controller_map_default(controller_map, modes);
-    const char *e = getenv("TOTK_FACE_BUTTONS"); face_by_label = !e || strcmp(e, "position");   /* by label unless asked: what is printed on the key */
+    /* by label unless asked: what is printed on the key */
+    const char *e = getenv("TOTK_FACE_BUTTONS"); face_by_label = !e || strcmp(e, "position");
     e = getenv("TOTK_BUTTON_STYLE"); style_playstation = e && !strcmp(e, "playstation"); style_switch = style_playstation || (e && !strcmp(e, "switch"));
     actions_default(action_buttons);
     const char *path = getenv("TOTK_CONTROLS"); FILE *f = path && *path ? fopen(path, "rb") : NULL;
@@ -346,16 +371,21 @@ static void load_controller_map(void) {
    Read when the game opens those files (at its start: a change of the controls shows from the next start). */
 int dm_android_prompt_glyphs(void) { return style_playstation; }
 int dm_android_prompt_places(int8_t places[4], uint16_t *ability_char, char letters[4]) {
-    for (int i = 0; i < 500 && !atomic_load(&controls_loaded); i++) usleep(10000);   /* the input thread reads the controls */
-    static const int8_t group_action[4] = {GA_INTERACT, GA_SPRINT, GA_JUMP, GA_ATTACK};   /* the diamonds A, B, X, Y */
-    static const int8_t key_place[4] = {1, 0, 3, 2};      /* key A bottom, B right, X left, Y top */
+    /* the input thread reads the controls */
+    for (int i = 0; i < 500 && !atomic_load(&controls_loaded); i++) usleep(10000);
+    /* the diamonds A, B, X, Y */
+    static const int8_t group_action[4] = {GA_INTERACT, GA_SPRINT, GA_JUMP, GA_ATTACK};
+    /* key A bottom, B right, X left, Y top */
+    static const int8_t key_place[4] = {1, 0, 3, 2};
     pthread_mutex_lock(&pad_lock); int8_t phys[GAME_ACTIONS]; memcpy(phys, action_buttons, sizeof phys); int label = face_by_label, swap = faces_swapped(); pthread_mutex_unlock(&pad_lock);
-    memcpy(letters, style_switch ? "ABXY" : "BAYX", 4);   /* right, bottom, top, left */
+    /* right, bottom, top, left */
+    memcpy(letters, style_switch ? "ABXY" : "BAYX", 4);
     int used = 0;
     for (int g = 0; g < 4; g++) {
-        int b = switch_of_physical(phys[group_action[g]]);   /* the Switch button the action is on */
+        int b = switch_of_physical(phys[group_action[g]]);
         if (b < 0 || b > 3) return 0;
-        int key = label ? b : (b ^ 1);   /* by position the keys press the Switch layout's (A <-> B, X <-> Y) */
+        /* by position the keys press the Switch layout's (A <-> B, X <-> Y) */
+        int key = label ? b : (b ^ 1);
         if (used & (1 << key)) return 0;
         used |= 1 << key; places[g] = key_place[key];
     }
@@ -382,14 +412,17 @@ void dm_android_controls(int8_t phys[GAME_ACTIONS], int set) {
     actions_apply(phys);
 }
 static _Atomic int pending_face = -1;
-static _Atomic int pending_unfocus;   /* focus lost (UI thread): the input thread lets go of every button and stick */
+/* focus lost (UI thread): the input thread lets go of every button and stick */
+static _Atomic int pending_unfocus;
 /* TOTK_FACE_BUTTONS from the in-game menu: which Android key is which physical face button. */
 void dm_android_face_buttons(int by_label) { atomic_store(&pending_face, by_label != 0); }
-static void take_pending_layout(void) {   /* input thread */
+/* input thread */
+static void take_pending_layout(void) {
     int face = atomic_exchange(&pending_face, -1);
     if (face >= 0 && face != face_by_label) { face_by_label = face; physical &= ~0xfull; fprintf(stderr, "[totk-input] face buttons by %s\n", face ? "label" : "position");
         pthread_mutex_lock(&pad_lock); int8_t phys[GAME_ACTIONS]; memcpy(phys, action_buttons, sizeof phys); pthread_mutex_unlock(&pad_lock);
-        actions_apply(phys); }   /* the prompts' printed letters */
+        /* the prompts' printed letters */
+        actions_apply(phys); }
 }
 /* ---- the in-game overlay (vk/overlay.h): the system's Back key, or a tap on the top-right corner ----
    Neither is a button the game uses. While the overlay is open the game sees a neutral controller. */
@@ -398,10 +431,13 @@ extern void overlay_touch(float x, float y, int down) __attribute__((weak));
 static uint16_t script_buttons(void);
 extern void overlay_toggle(void) __attribute__((weak));
 extern int overlay_open(void) __attribute__((weak));
-static int window_width = 1920;   /* the game window's width (on_window_created): the overlay's touch corner */
-static void pad_tick(void) {   /* input thread: after every input event and at least every 20 ms: the overlay's controller */
+/* the game window's width (on_window_created): the overlay's touch corner */
+static int window_width = 1920;
+/* input thread: after every input event and at least every 20 ms: the overlay's controller */
+static void pad_tick(void) {
     pthread_mutex_lock(&pad_lock);
-    uint64_t nav = pad_state.buttons | script_buttons(); int32_t lx = pad_state.lx, ly = pad_state.ly;   /* input.now presses reach the menu too */
+    /* input.now presses reach the menu too */
+    uint64_t nav = pad_state.buttons | script_buttons(); int32_t lx = pad_state.lx, ly = pad_state.ly;
     /* the in-game menu follows the system's face buttons (BUTTON_A confirms): with the game's face buttons by position
        the keys press the Switch button at their place, A <-> B and X <-> Y from the printed ones */
     if (!face_by_label) nav = (nav & ~0xfull) | (nav & 1) << 1 | (nav & 2) >> 1 | (nav & 4) << 1 | (nav & 8) >> 1;
@@ -421,7 +457,8 @@ static void refresh_pad(void) {
     if (hat_y < -0.5f) phys |= 1ULL << 13;
     if (hat_x > 0.5f) phys |= 1ULL << 14;
     if (hat_y > 0.5f) phys |= 1ULL << 15;
-    next.lx = stick_axis(axis_lx); next.ly = stick_axis(-axis_ly);   /* Android: y grows downward */
+    /* Android: y grows downward */
+    next.lx = stick_axis(axis_lx); next.ly = stick_axis(-axis_ly);
     next.rx = stick_axis(axis_rx); next.ry = stick_axis(-axis_ry);
     next.buttons = controller_map_apply(controller_map, phys);
     pthread_mutex_lock(&pad_lock);
@@ -453,7 +490,7 @@ static int script_axis_index(const char *name) { return !strcmp(name, "lx") ? 0 
 static uint16_t script_buttons(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); uint64_t now = (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
     if (!script_start) {
-        script_start = now; const char *dir = getenv("DM_VK_SHADERS");   /* <files>/shader-cache[-turnip] */
+        script_start = now; const char *dir = getenv("DM_VK_SHADERS");
         if (dir) { snprintf(script_dir, sizeof script_dir, "%s", dir); char *slash = strrchr(script_dir, '/'); if (slash) *slash = 0; }
         char path[1100]; snprintf(path, sizeof path, "%s/input.script", script_dir); FILE *f = script_dir[0] ? fopen(path, "r") : NULL;
         if (f) { char line[128];
@@ -471,7 +508,7 @@ void dm_android_quit(void);
 void dm_android_report(int start, const char *details, char *out, size_t size);
 /* input.now, polled on the input thread (the game reads no input while its menu is open, and "menu" must still close
    it). The presses and stick holds it sets are under pad_lock, which the game's read takes. */
-void totk_tl(int kind, uint64_t a, uint64_t b) __attribute__((weak));   /* totk_timeline.c (TOTK_TIMELINE) */
+void totk_tl(int kind, uint64_t a, uint64_t b) __attribute__((weak));
 void runtime_diag_gfx(const char *line) __attribute__((weak));
 static void script_poll_now(void) {
     static uint64_t polled; static char path[1100];
@@ -479,24 +516,28 @@ static void script_poll_now(void) {
     if (now - polled < 250000000ULL) return;
     polled = now;
     if (!path[0]) {
-        const char *dir = getenv("DM_VK_SHADERS"); if (!dir) return;   /* <files>/shader-cache[-turnip] */
+        const char *dir = getenv("DM_VK_SHADERS"); if (!dir) return;
         snprintf(path, sizeof path, "%s", dir); char *slash = strrchr(path, '/'); if (slash) *slash = 0;
         strncat(path, "/input.now", sizeof path - strlen(path) - 1);
     }
     FILE *f = fopen(path, "r"); if (!f) return;
     char line[1200]; int toggle = 0, quit = 0, report = 0, kbtest = 0;
-    char survey[4][1200]; int nsurvey = 0;   /* "survey ..." lines (runtime/world_survey.c: benchmark route, positions), run after the lock */
+    /* "survey ..." lines (runtime/world_survey.c: benchmark route, positions), run after the lock */
+    char survey[4][1200]; int nsurvey = 0;
     pthread_mutex_lock(&pad_lock);
     while (fgets(line, sizeof line, f)) { char name[32]; unsigned hold = 0; int value = 0, ms = 500;
         if (sscanf(line, "%31s %d %d", name, &value, &ms) >= 2 && script_axis_index(name) >= 0) {
             int a = script_axis_index(name); script_axis[a].value = value; script_axis[a].until = now + (uint64_t)(ms > 0 ? ms : 500) * 1000000ULL;
-            if (totk_tl) totk_tl(TL_INPUT, TL_INPUT_SCRIPTED | (unsigned)a, (uint64_t)(int64_t)value);   /* scripted: when the stick moved */
+            /* scripted: when the stick moved */
+            if (totk_tl) totk_tl(TL_INPUT, TL_INPUT_SCRIPTED | (unsigned)a, (uint64_t)(int64_t)value);
             fprintf(stderr, "[totk-input] input.now %s %d for %d ms\n", name, value, ms); continue; }
         if (!strncmp(line, "survey ", 7)) { if (nsurvey < 4) { line[strcspn(line, "\n")] = 0; snprintf(survey[nsurvey++], sizeof survey[0], "%s", line); } continue; }
-        if (!strncmp(line, "gfx", 3)) { line[strcspn(line, "\n")] = 0; if (runtime_diag_gfx) runtime_diag_gfx(line); continue; }   /* graphics lever hunt (game_patches_v143.c) */
+        /* graphics lever hunt (game_patches_v143.c) */
+        if (!strncmp(line, "gfx", 3)) { line[strcspn(line, "\n")] = 0; if (runtime_diag_gfx) runtime_diag_gfx(line); continue; }
         if (sscanf(line, "%31s", name) == 1 && !strcmp(name, "menu")) { toggle ^= 1; continue; }
         if (sscanf(line, "%31s", name) == 1 && !strcmp(name, "quit")) { quit = 1; continue; }
-        if (sscanf(line, "%31s", name) == 1 && !strcmp(name, "kbtest")) { kbtest = 1; continue; }   /* the game's keyboard the way it names a horse (swkbd_host.c) */
+        /* the game's keyboard the way it names a horse (swkbd_host.c) */
+        if (sscanf(line, "%31s", name) == 1 && !strcmp(name, "kbtest")) { kbtest = 1; continue; }
         if (sscanf(line, "%31s", name) == 1 && !strcmp(name, "report")) { report = strstr(line, "capture") ? 2 : 1; continue; }
         if (sscanf(line, "%31s %u", name, &hold) >= 1 && script_bit(name)) { script_press(script_bit(name), hold, now); fprintf(stderr, "[totk-input] input.now %s\n", name); } }
     pthread_mutex_unlock(&pad_lock);
@@ -518,7 +559,8 @@ void runtime_gamepad_read(RuntimeGamepadState *out) {
       int32_t *axes[4] = {&out->lx, &out->ly, &out->rx, &out->ry};
       for (int i = 0; i < 4; i++) if (now < script_axis[i].until) *axes[i] = script_axis[i].value; }
     pthread_mutex_unlock(&pad_lock);
-    if (totk_tl) totk_tl(TL_INPUT, out->buttons, (uint64_t)(int64_t)out->rx);   /* input-to-screen latency: the game read the controller */
+    /* input-to-screen latency: the game read the controller */
+    if (totk_tl) totk_tl(TL_INPUT, out->buttons, (uint64_t)(int64_t)out->rx);
 }
 void runtime_gamepad_clear(void) {
     pthread_mutex_lock(&pad_lock); pad_state = (RuntimeGamepadState){0}; pressed_edges = 0; pthread_mutex_unlock(&pad_lock);
@@ -528,7 +570,8 @@ void runtime_gamepad_clear(void) {
    GameActivity.rumble, which re-arms a 40 ms pulse while the value stays above zero. While nothing rumbles the thread
    sleeps until a change (rumble_wake) or 500 ms, when it reads the screen rotation. */
 static _Atomic float rumble_amp[2];
-static _Atomic int display_rotation;   /* Surface.ROTATION_* (0..3), from GameActivity.displayRotation */
+/* Surface.ROTATION_* (0..3), from GameActivity.displayRotation */
+static _Atomic int display_rotation;
 static pthread_mutex_t rumble_lock = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t rumble_wake = PTHREAD_COND_INITIALIZER;
 void runtime_rumble_set(unsigned side, float amp_low, float freq_low, float amp_high, float freq_high) {
     (void)freq_low; (void)freq_high;
@@ -549,7 +592,8 @@ static void *rumble_thread(void *arg) {
     float sent = 0; unsigned quiet = 0, failures = 0; uint64_t rotation_at = 0;
     for (;;) {
         struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now); uint64_t now_ns = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
-        if (rotation && now_ns >= rotation_at) {   /* the screen's rotation, for the motion sensors' axes (on_sensors) */
+        /* the screen's rotation, for the motion sensors' axes (on_sensors) */
+        if (rotation && now_ns >= rotation_at) {
             rotation_at = now_ns + 500000000ull;
             int r = (*env)->CallStaticIntMethod(env, game_class, rotation);
             if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
@@ -607,7 +651,8 @@ static void *text_input_thread(void *arg) {
         jbyte *bytes = text ? (*env)->GetByteArrayElements(env, text, NULL) : NULL;
         if (bytes) {
             size_t n = (size_t)(*env)->GetArrayLength(env, text);
-            if (n >= c->out_size) { n = c->out_size - 1; while (n > 0 && ((unsigned char)bytes[n] & 0xc0) == 0x80) n--; }   /* cut at a character */
+            /* cut at a character boundary */
+            if (n >= c->out_size) { n = c->out_size - 1; while (n > 0 && ((unsigned char)bytes[n] & 0xc0) == 0x80) n--; }
             memcpy(c->out, bytes, n); c->out[n] = 0; c->confirmed = 1;
             (*env)->ReleaseByteArrayElements(env, text, bytes, JNI_ABORT);
         }
@@ -661,12 +706,14 @@ static int handle_input(AInputEvent *e) {
     int from_pad = (source & AINPUT_SOURCE_GAMEPAD) == AINPUT_SOURCE_GAMEPAD || (source & AINPUT_SOURCE_JOYSTICK) == AINPUT_SOURCE_JOYSTICK || (source & AINPUT_SOURCE_DPAD) == AINPUT_SOURCE_DPAD;
     if (type == AINPUT_EVENT_TYPE_KEY) {
         int32_t key = AKeyEvent_getKeyCode(e), action = AKeyEvent_getAction(e);
-        if (key == AKEYCODE_BACK) {   /* the in-game menu (the system's Back key: the Odin's own, a controller's, or the back gesture) */
+        /* the in-game menu (the system's Back key: the Odin's own, a controller's, or the back gesture) */
+        if (key == AKEYCODE_BACK) {
             if (action == AKEY_EVENT_ACTION_DOWN && !AKeyEvent_getRepeatCount(e) && overlay_toggle) overlay_toggle();
             return 1;
         }
         int p = physical_of_key(key);
-        if (p < 0) return key == AKEYCODE_BUTTON_MODE;   /* the home button: kept from the system for now */
+        /* the home button: kept from the system */
+        if (p < 0) return key == AKEYCODE_BUTTON_MODE;
         if (action == AKEY_EVENT_ACTION_DOWN) physical |= 1ULL << p; else if (action == AKEY_EVENT_ACTION_UP) physical &= ~(1ULL << p);
         if (!pad_connected && from_pad) { pad_connected = 1; fprintf(stderr, "[totk-input] controller connected (device %d)\n", AInputEvent_getDeviceId(e)); }
         refresh_pad();
@@ -677,7 +724,7 @@ static int handle_input(AInputEvent *e) {
         float x = AMotionEvent_getX(e, 0), y = AMotionEvent_getY(e, 0);
         int down = action != AMOTION_EVENT_ACTION_UP && action != AMOTION_EVENT_ACTION_CANCEL;
         if (overlay_open && overlay_open()) { if (overlay_touch) overlay_touch(x, y, down); return 1; }
-        if (action == AMOTION_EVENT_ACTION_DOWN && overlay_toggle && x > window_width - 160 && y < 160) { overlay_toggle(); return 1; }   /* the corner */
+        if (action == AMOTION_EVENT_ACTION_DOWN && overlay_toggle && x > window_width - 160 && y < 160) { overlay_toggle(); return 1; }
         return 0;
     }
     if (type == AINPUT_EVENT_TYPE_MOTION && (source & AINPUT_SOURCE_JOYSTICK) == AINPUT_SOURCE_JOYSTICK) {
@@ -704,7 +751,8 @@ static AInputQueue *input_queue;
 static ASensorEventQueue *sensor_queue;
 static const ASensor *gyro, *accel;
 static double last_acc[3] = {0, 0, 1};
-static volatile int motion_on = -1;   /* TOTK_MOTION=off: the game sees a still controller (the overlay changes it live) */
+/* TOTK_MOTION=off: the game sees a still controller (the overlay changes it live) */
+static volatile int motion_on = -1;
 void dm_android_motion(int on) { motion_on = on != 0; }
 static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -757,7 +805,8 @@ static void *input_thread(void *arg) {
     input_looper = ALooper_prepare(0);
     ALooper_acquire(input_looper);
     load_controller_map();
-    char package[128] = {0}; { FILE *f = fopen("/proc/self/cmdline", "r"); if (f) { if (fgets(package, sizeof package, f)) package[strcspn(package, ":")] = 0; fclose(f); } }   /* this app's, without :game */
+    /* this app's package, without :game */
+    char package[128] = {0}; { FILE *f = fopen("/proc/self/cmdline", "r"); if (f) { if (fgets(package, sizeof package, f)) package[strcspn(package, ":")] = 0; fclose(f); } }
     ASensorManager *sm = ASensorManager_getInstanceForPackage(package);
     gyro = ASensorManager_getDefaultSensor(sm, ASENSOR_TYPE_GYROSCOPE);
     accel = ASensorManager_getDefaultSensor(sm, ASENSOR_TYPE_ACCELEROMETER);
@@ -773,7 +822,7 @@ static void *input_thread(void *arg) {
 }
 
 /* ---- activity callbacks ---- */
-void mtl_screen_attach(struct ANativeWindow *window);   /* the Vulkan backend (vk/nvn_vulkan.c) */
+void mtl_screen_attach(struct ANativeWindow *window);
 void mtl_screen_detach(void);
 /* The window callbacks suspend graphics (nvn_vulkan.c mtl_screen_attach / mtl_screen_detach) and leave the release to
    us: presenting resumes once the activity is resumed, whichever of onResume and the new window comes last. */
@@ -824,7 +873,8 @@ void dm_android_quit(void) {
 __attribute__((visibility("default"))) void ANativeActivity_onCreate(ANativeActivity *activity, void *saved, size_t saved_size) {
     the_activity = activity;
     (void)saved; (void)saved_size;
-    if (getenv("TOTK_SETUP_STOP")) return;   /* a picked file is gone (GameActivity): no game, and the activity finishes */
+    /* a picked file is gone (GameActivity): no game, and the activity finishes */
+    if (getenv("TOTK_SETUP_STOP")) return;
     activity->callbacks->onNativeWindowCreated = on_window_created;
     activity->callbacks->onNativeWindowDestroyed = on_window_destroyed;
     activity->callbacks->onInputQueueCreated = on_queue_created;
@@ -832,6 +882,7 @@ __attribute__((visibility("default"))) void ANativeActivity_onCreate(ANativeActi
     activity->callbacks->onWindowFocusChanged = on_focus;
     activity->callbacks->onPause = on_pause;
     activity->callbacks->onResume = on_resume;
-    start_game(activity);   /* first: the input thread reads the field controls settings from launch.env */
+    /* first: the input thread reads the field controls settings from launch.env */
+    start_game(activity);
     static int threads; if (!threads) { threads = 1; pthread_t t; pthread_create(&t, NULL, input_thread, NULL); pthread_detach(t); start_rumble(activity); }
 }

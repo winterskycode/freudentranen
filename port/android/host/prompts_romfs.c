@@ -1,4 +1,4 @@
-/* The "A Grab" bubble and the HUD's ability key (2026-10-27): fixed art the game draws with the Switch's buttons, so it is
+/* The "A Grab" bubble and the HUD's ability key: fixed art the game draws with the Switch's buttons, so it is
    rewritten as the game opens its files (runtime/romfs.c generator) to show the key that does the action on this device
    (dm_android_prompt_places, host/app.c). All edits are in place (same sizes: the resource size table stays right).
    - The command bubble (UI layout DoCommand_00 in UI/LayoutArchive/Common.Product.140.Nin_NX_NVN.blarc.zs) has one
@@ -21,17 +21,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define ZSTD_STATIC_LINKING_ONLY   /* ZSTD_BLOCKSIZE_MAX */
+/* for ZSTD_BLOCKSIZE_MAX */
+#define ZSTD_STATIC_LINKING_ONLY
 #include <zstd.h>
 
 /* host/app.c: per diamond A, B, X, Y the place (0 right, 1 bottom, 2 top, 3 left) of the key that does its action, and
    the button-font character of the abilities' key (0: the game's); 0 = leave the art as it is */
 int dm_android_prompt_places(int8_t places[4], uint16_t *ability_char, char letters[4]);
-int dm_android_prompt_glyphs(void);   /* 1: the style has symbols, not letters (PlayStation) */
+/* 1: the style has symbols, not letters (PlayStation) */
+int dm_android_prompt_glyphs(void);
 
 enum { RIGHT, BOTTOM, TOP, LEFT };
-static const float kKeyAt[4][2] = {{39, 0}, {0, -39}, {0, 39}, {-39, 0}};      /* the key containers' places in a diamond */
-static const float kRingAt[4][2] = {{39, 1}, {2, -39}, {1, 39}, {-38, 0}};     /* the ring letters' */
+/* the key containers' places in a diamond */
+static const float kKeyAt[4][2] = {{39, 0}, {0, -39}, {0, 39}, {-39, 0}};
+/* the ring letters' places in a diamond */
+static const float kRingAt[4][2] = {{39, 1}, {2, -39}, {1, 39}, {-38, 0}};
 static int switch_place(char letter) { return letter == 'A' ? RIGHT : letter == 'B' ? BOTTOM : letter == 'X' ? TOP : LEFT; }
 static int group_index(char letter) { return letter == 'A' ? 0 : letter == 'B' ? 1 : letter == 'X' ? 2 : letter == 'Y' ? 3 : -1; }
 
@@ -40,7 +44,8 @@ static int group_index(char letter) { return letter == 'A' ? 0 : letter == 'B' ?
    vertex colours and its material; txt1 with buffer / string lengths, material, font and its alignment. A material
    (mat1 entry) has its name, flags (bits 0-1: how many texture maps) and colours before its first texture map. */
 enum {
-    PANE_ORIGIN = 0x09,   /* bits 0-1: horizontal anchor, 1 left / 2 right (0 centre) */
+    /* bits 0-1: horizontal anchor, 1 left / 2 right (0 centre) */
+    PANE_ORIGIN = 0x09,
     PANE_NAME = 0x0c, PANE_NAME_LEN = 24, PANE_X = 0x2c, PANE_Y = 0x30, PANE_ROT_Z = 0x40, PANE_SCALE_X = 0x44, PANE_END = 0x54,
     PIC_MATERIAL = 0x64, PIC_END = 0x66, TXT_ALIGN = 0x5c, TXT_END = 0x5d,
     MAT_FLAGS = 0x1c, MAT_TEXTURE0 = 0x2c, MAT_END = 0x2e,
@@ -92,7 +97,8 @@ static uint8_t *open_archive(const uint8_t *data, uint64_t size, uint8_t **sarc,
     ZSTD_DDict *dict = dictionary(); if (!dict) { fprintf(stderr, "[totk-prompts] no zstd dictionary: the art stays\n"); return NULL; }
     unsigned long long m = ZSTD_getFrameContentSize(data, size);
     if (m == ZSTD_CONTENTSIZE_UNKNOWN || m == ZSTD_CONTENTSIZE_ERROR || m > (1ull << 30)) return NULL;
-    uint64_t skip = RAW_FRAME_HEAD + RAW_BLOCK_HEAD * raw_blocks(m);   /* room for the headers finish_raw_frame writes */
+    /* room for the headers finish_raw_frame writes */
+    uint64_t skip = RAW_FRAME_HEAD + RAW_BLOCK_HEAD * raw_blocks(m);
     uint8_t *frame = malloc(skip + m); if (!frame) return NULL;
     ZSTD_DCtx *dctx = ZSTD_createDCtx(); size_t r = ZSTD_decompress_usingDDict(dctx, frame + skip, m, data, size, dict); ZSTD_freeDCtx(dctx);
     if (ZSTD_isError(r) || r != m) { free(frame); return NULL; }
@@ -101,10 +107,12 @@ static uint8_t *open_archive(const uint8_t *data, uint64_t size, uint8_t **sarc,
 /* The archive as one zstd frame of raw blocks, built in place before its bytes; its size */
 static uint64_t finish_raw_frame(uint8_t *frame, uint64_t n) {
     uint64_t blocks = raw_blocks(n);
-    frame[0] = 0x28; frame[1] = 0xb5; frame[2] = 0x2f; frame[3] = 0xfd; frame[4] = 0xe0;   /* single segment, 8-byte content size, no dictionary */
+    /* single segment, 8-byte content size, no dictionary */
+    frame[0] = 0x28; frame[1] = 0xb5; frame[2] = 0x2f; frame[3] = 0xfd; frame[4] = 0xe0;
     for (int i = 0; i < 8; i++) frame[5 + i] = (uint8_t)(n >> (8 * i));
     uint8_t *o = frame + RAW_FRAME_HEAD; const uint8_t *src = frame + RAW_FRAME_HEAD + RAW_BLOCK_HEAD * blocks;
-    for (uint64_t b = 0; b < blocks; b++) {   /* each block lands before its source: moving left is safe */
+    /* each block lands before its source: moving left is safe */
+    for (uint64_t b = 0; b < blocks; b++) {
         uint64_t left = n - b * ZSTD_BLOCKSIZE_MAX, len = left < ZSTD_BLOCKSIZE_MAX ? left : ZSTD_BLOCKSIZE_MAX; uint32_t h = (uint32_t)(len << 3) | (b + 1 == blocks);
         o[0] = (uint8_t)h; o[1] = (uint8_t)(h >> 8); o[2] = (uint8_t)(h >> 16);
         memmove(o + RAW_BLOCK_HEAD, src, len); o += RAW_BLOCK_HEAD + len; src += len;
@@ -119,18 +127,21 @@ static const char *ancestor(const layout_ctx *c, const char *prefix) {
     for (int i = c->depth - 1; i >= 0; i--) if (!strncmp(c->stack[i], prefix, strlen(prefix))) return c->stack[i];
     return NULL;
 }
-static int pane_group(const layout_ctx *c) {   /* the diamond (N_A_00 ...) the pane is in, or -1 */
+/* the diamond (N_A_00 ...) the pane is in, or -1 */
+static int pane_group(const layout_ctx *c) {
     for (int i = 0; i < c->depth; i++) { const char *s = c->stack[i];
         if (s[0] == 'N' && s[1] == '_' && s[3] == '_' && !strcmp(s + 4, "00") && group_index(s[2]) >= 0) return group_index(s[2]); }
     return -1;
 }
 static int in_key_container(const layout_ctx *c) { return ancestor(c, "N_Btn") || ancestor(c, "N_CompanionBtn"); }
-static void set_key_texture(layout_ctx *c, uint8_t *pane, uint64_t size, int g) {   /* a key picture: the letter at the diamond's new place */
+/* a key picture: the letter at the diamond's new place */
+static void set_key_texture(layout_ctx *c, uint8_t *pane, uint64_t size, int g) {
     if (!c->mat1 || size < PIC_END || c->mat1_size < 12) return;
     unsigned index = rd16(pane + PIC_MATERIAL); if (index >= rd16(c->mat1 + 8) || 12 + 4 * (uint64_t)index + 4 > c->mat1_size) return;
     uint64_t at = rd32(c->mat1 + 12 + 4 * index); if (at + MAT_END > c->mat1_size) return;
     uint8_t *q = c->mat1 + at;
-    if (!(rd32(q + MAT_FLAGS) & 3)) return;   /* no texture map */
+    /* no texture map */
+    if (!(rd32(q + MAT_FLAGS) & 3)) return;
     int t = rd16(q + MAT_TEXTURE0), letter = c->letters[c->places[g]];
     if (t != c->tex[0] && t != c->tex[1] && t != c->tex[2] && t != c->tex[3]) return;
     wr16(q + MAT_TEXTURE0, (uint16_t)c->tex[group_index((char)letter)]); c->keys++;
@@ -174,27 +185,33 @@ static void layout_section(uint8_t *s, uint64_t size, const char *m, layout_ctx 
     int from = switch_place("ABXY"[g]), to = c->places[g], mir = mirror_group(c, g);
     const char *parent = c->depth ? c->stack[c->depth - 1] : "";
     int ring_parent = !strncmp(parent, "N_Loop", 6) || !strncmp(parent, "N_Stop", 6);
-    if (!strcmp(m, "pic1") && (strstr(name, "Key") != NULL)) set_key_texture(c, s, size, g);   /* P_Key*, P_CaptureKey* */
+    /* P_Key*, P_CaptureKey* */
+    if (!strcmp(m, "pic1") && (strstr(name, "Key") != NULL)) set_key_texture(c, s, size, g);
     if (!strcmp(m, "pic1") && !strncmp(name, "P_Base", 6) && ring_parent) { set_backdrop(c, s, size, to); return; }
-    if (ring_parent && (!strncmp(name, "N_Btn", 5) || !strncmp(name, "N_CompanionBtn", 14))) {   /* the key with its verb box */
+    /* the key with its verb box */
+    if (ring_parent && (!strncmp(name, "N_Btn", 5) || !strncmp(name, "N_CompanionBtn", 14))) {
         wrf(s + PANE_X, kKeyAt[to][0]); wrf(s + PANE_Y, kKeyAt[to][1]); c->moved++; return;
     }
-    if (ring_parent && !strcmp(m, "txt1") && name[0] == 'T' && name[1] == '_' && name[3] == '_' && group_index(name[2]) >= 0) {   /* a ring letter */
+    /* a ring letter */
+    if (ring_parent && !strcmp(m, "txt1") && name[0] == 'T' && name[1] == '_' && name[3] == '_' && group_index(name[2]) >= 0) {
         int at = switch_place(name[2]); if (at == to) at = from;
         wrf(s + PANE_X, kRingAt[at][0]); wrf(s + PANE_Y, kRingAt[at][1]); return;
     }
-    if (!strncmp(name, "N_Rush", 6) || !strncmp(name, "N_Hold", 6)) {   /* effects beside the key: moved and mirrored as a whole */
+    /* effects beside the key: moved and mirrored as a whole */
+    if (!strncmp(name, "N_Rush", 6) || !strncmp(name, "N_Hold", 6)) {
         float sx = mir ? -1.0f : 1.0f;
         wrf(s + PANE_X, kKeyAt[to][0] - sx * kKeyAt[from][0]); wrf(s + PANE_Y, kKeyAt[to][1] - kKeyAt[from][1]);
         wrf(s + PANE_SCALE_X, sx * rdf(s + PANE_SCALE_X)); return;
     }
-    if (mir && in_key_container(c)) {   /* the verb box on the other side of the key, as the Y diamond draws it */
+    /* the verb box on the other side of the key, as the Y diamond draws it */
+    if (mir && in_key_container(c)) {
         float x = rdf(s + PANE_X);
         if (!strcmp(m, "txt1")) {
             if (size < TXT_END) return;
             wrf(s + PANE_X, to == LEFT ? -x - 2 : -x + 2);
-            uint8_t h = s[PANE_ORIGIN] & 3; if (h == 1 || h == 2) s[PANE_ORIGIN] = (uint8_t)((s[PANE_ORIGIN] & ~3) | (3 - h));   /* anchored on the other side */
-            uint8_t a = s[TXT_ALIGN]; if (a == 1 || a == 2) s[TXT_ALIGN] = (uint8_t)(3 - a);                                     /* aligned to it */
+            /* anchored and aligned on the other side */
+            uint8_t h = s[PANE_ORIGIN] & 3; if (h == 1 || h == 2) s[PANE_ORIGIN] = (uint8_t)((s[PANE_ORIGIN] & ~3) | (3 - h));
+            uint8_t a = s[TXT_ALIGN]; if (a == 1 || a == 2) s[TXT_ALIGN] = (uint8_t)(3 - a);
         } else {
             wrf(s + PANE_X, -x);
             if (!strcmp(m, "wnd1")) wrf(s + PANE_SCALE_X, -rdf(s + PANE_SCALE_X));
@@ -206,7 +223,8 @@ static int edit_layout(uint8_t *f, uint64_t size, const int8_t places[4], const 
     if (size < 0x14 || rd16(f + 4) != 0xfeff) return 0;
     layout_ctx c = {.tex = {-1, -1, -1, -1}, .base = {-1, -1}}; memcpy(c.places, places, 4); memcpy(c.letters, letters, 4);
     uint64_t p = rd16(f + 6); unsigned n = rd16(f + 0x10);
-    for (unsigned i = 0; i < n && p + 8 <= size; i++) {   /* the texture list first: materials refer to it */
+    /* the texture list first: materials refer to it */
+    for (unsigned i = 0; i < n && p + 8 <= size; i++) {
         uint64_t s = rd32(f + p + 4); if (s < 8 || p + s > size) return 0;
         if (!memcmp(f + p, "txl1", 4)) layout_section(f + p, s, "txl1", &c);
         p += s;
@@ -230,7 +248,8 @@ static uint16_t *msbt_text(uint8_t *b, uint64_t size, const char *label, unsigne
     for (unsigned k = 0; k < nsec && p + 0x10 <= size; k++) {
         uint64_t s = rd32(b + p + 4); uint8_t *body = b + p + 0x10;
         if (p + 0x10 + s > size) return NULL;
-        if (!memcmp(b + p, "LBL1", 4) && s >= 4) {   /* groups of {count, offset}, each a run of {length, name, index} */
+        /* groups of {count, offset}, each a run of {length, name, index} */
+        if (!memcmp(b + p, "LBL1", 4) && s >= 4) {
             uint64_t groups = rd32(body);
             for (uint64_t i = 0; i < groups && index < 0 && 4 + 8 * i + 8 <= s; i++) {
                 uint64_t cnt = rd32(body + 4 + 8 * i), q = rd32(body + 8 + 8 * i);
@@ -402,7 +421,8 @@ static int generate(const char *path, const uint8_t *data, uint64_t size, uint8_
     if (!layout && !messages) return 0;
     int8_t places[4]; uint16_t ability = 0; char letters[4];
     int prompts = dm_android_prompt_places(places, &ability, letters);
-    if (!prompts && !layout) return 0;   /* the layout still has the capture timing */
+    /* the layout still has the capture timing */
+    if (!prompts && !layout) return 0;
     if (!data) return 1;
     uint8_t *sarc; uint64_t n; uint8_t *frame = open_archive(data, size, &sarc, &n);
     if (!frame) { fprintf(stderr, "[totk-prompts] %s did not decompress: unchanged\n", path); return 0; }

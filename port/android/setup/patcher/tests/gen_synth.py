@@ -14,7 +14,8 @@ import lz4.block
 SVC, MRS_TPIDR, MSR_TPIDR, MRS_TPIDRRO, MRS_CNTPCT, MRS_CNTVCT = 0xD4000001, 0xD53BD040, 0xD51BD040, 0xD53BD060, 0xD53BE020, 0xD53BE040
 LDX = (0x885F7C20, 0xC85FFC20, 0xC87F0820, 0x085F7C20, 0x485FFC20, 0x887F0820)
 STX = (0x88027C20, 0xC802FC20, 0xC8220C20, 0x08027C20, 0x4802FC20)
-OTHER_EXCLUSIVE_SHAPE = (0x08A07C20, 0x48E07C20, 0x08207C20, 0x08607C20)   # bit 31 clear, bit 21 set: not exclusive for the rule
+# bit 31 clear, bit 21 set: not exclusive for the rule
+OTHER_EXCLUSIVE_SHAPE = (0x08A07C20, 0x48E07C20, 0x08207C20, 0x08607C20)
 CLREX = 0xD503305F
 PLAIN = (0xD503201F, 0x91000400, 0xF9400020, 0xB9000020, 0x94000010, 0xD63F0200)
 RET, BR = 0xD65F03C0, 0xD61F0200
@@ -66,9 +67,11 @@ def build(words, starts, rng, compress=None, tail=0, bss=None):
     """Text from the words, with the MOD0 header and .eh_frame_hdr in .rodata."""
     text = bytearray(struct.pack(f'<{len(words)}I', *words)) + rng.randbytes(tail)
     ro_mem = align(len(text), 0x1000)
-    struct.pack_into('<I', text, 4, ro_mem)             # the MOD0 offset, in the module's second word
+    # the MOD0 offset, in the module's second word
+    struct.pack_into('<I', text, 4, ro_mem)
     mod0 = bytearray(b'MOD0' + bytes(28))
-    struct.pack_into('<i', mod0, 16, 0x40)              # .eh_frame_hdr, from MOD0
+    # .eh_frame_hdr, from MOD0
+    struct.pack_into('<i', mod0, 16, 0x40)
     ro = bytes(mod0) + bytes(0x20) + eh_hdr(ro_mem + 0x40, starts, rng)
     data = rng.randbytes(rng.choice((0, 8, 0x100, 0x1234)))
     return nso(text, ro, data, rng.randrange(0, 0x9000) if bss is None else bss, rng.random() < .8 if compress is None else compress, rng)
@@ -115,12 +118,14 @@ def random_cfg(rng):
             words.append(rng.choice(LDX + STX + OTHER_EXCLUSIVE_SHAPE + (CLREX,)))
         elif r < site_rate + excl_rate + .2: words.append(branch(rng, i, size))
         else: words.append(rng.choice(PLAIN))
-    if rng.random() < .3: words[0] = site(rng)          # a site at offset 0, reachable by a branch back
+    # a site at offset 0, reachable by a branch back
+    if rng.random() < .3: words[0] = site(rng)
     starts = sorted(rng.sample(range(8, size * 4, 4), rng.randrange(0, min(30, size // 2))))
-    if rng.random() < .3: starts += [rng.randrange(8, size * 4) for _ in range(rng.randrange(1, 6))]   # odd starts
-    if rng.random() < .2 and starts: starts.append(rng.choice(starts))              # a duplicate
-    if rng.random() < .3: rng.shuffle(starts)                                       # out of order
-    if rng.random() < .1: starts.append(size * 4 + 0x40)                            # past the text
+    # bad starts: odd ones, a duplicate, out of order, past the text
+    if rng.random() < .3: starts += [rng.randrange(8, size * 4) for _ in range(rng.randrange(1, 6))]
+    if rng.random() < .2 and starts: starts.append(rng.choice(starts))
+    if rng.random() < .3: rng.shuffle(starts)
+    if rng.random() < .1: starts.append(size * 4 + 0x40)
     return build(words, starts, rng, tail=rng.choice((0, 0, 1, 2, 3)))
 
 

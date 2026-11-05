@@ -1,10 +1,10 @@
 /* Graphics pipeline libraries (VK_EXT_graphics_pipeline_library; TOTK_VK_GPL=1 on, 0 off).
-   A pipeline the warm-up did not build used to be compiled whole on the translation thread when a draw first needed it:
-   on the user's first playthrough (2026-11-02) 1,830 of them, 18.5 s, 33 ms each typically and up to ~150 ms, the
-   biggest cause of hitches a new player meets. Here such a pipeline is linked from four libraries instead -- vertex
-   input, vertex shader (pre-rasterization), fragment shader, fragment output -- each built once and kept, so a new
-   combination of known shaders and state costs a fast link, and the whole optimized pipeline is built on the pipeline
-   threads and swapped in when it is ready (the fast-linked one is destroyed once the GPU is past it).
+   A pipeline the warm-up did not build would otherwise be compiled whole on the translation thread when a draw first
+   needs it, 33 ms typically and up to ~150 ms: the biggest cause of hitches a new player meets. Such a pipeline is
+   linked from four libraries instead -- vertex input, vertex shader (pre-rasterization), fragment shader, fragment
+   output -- each built once and kept, so a new combination of known shaders and state costs a fast link, and the whole
+   optimized pipeline is built on the pipeline threads and swapped in when it is ready (the fast-linked one is destroyed
+   once the GPU is past it).
    - Libraries come from graphics_pipeline_build with a part: the same derivation as a whole pipeline.
    - Their key is the state each one is built from (gpl_library_finish), not the pipeline key: a fragment shader library
      serves every vertex layout, blend state and vertex shader it meets.
@@ -15,16 +15,20 @@
      linked pipelines bind the same descriptor sets. Bindless (a third set) keeps whole pipelines only. */
 /* gpl_state (nvn_vulkan.c): 1 with the extension, the feature and TOTK_VK_GPL, set at device creation */
 static int gpl_on(void) { return gpl_state > 0 && !bl_set; }
+/* the libraries were prepared for this pipeline cache (prepare_check, nvn_vulkan_prepare.inc) */
 static int gpl_prepared;
-static int gpl_exp_full(void){static int v=-1;if(v<0){const char *e=getenv("TOTK_VK_GPL_FULL");v=e&&atoi(e);}return v;}   /* diagnostic: libraries with the full layout */
-static int gpl_exp_lto(void){static int v=-1;if(v<0){const char *e=getenv("TOTK_VK_GPL_LTO");v=e&&atoi(e);}return v;}   /* diagnostic: link-time optimized links */   /* the libraries were prepared for this pipeline cache (prepare_check, nvn_vulkan_prepare.inc) */
+/* diagnostic: libraries with the full layout */
+static int gpl_exp_full(void){static int v=-1;if(v<0){const char *e=getenv("TOTK_VK_GPL_FULL");v=e&&atoi(e);}return v;}
+/* diagnostic: link-time optimized links */
+static int gpl_exp_lto(void){static int v=-1;if(v<0){const char *e=getenv("TOTK_VK_GPL_LTO");v=e&&atoi(e);}return v;}
 enum { GPL_VI = VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT, GPL_PR = VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT,
        GPL_FS = VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT, GPL_FO = VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT };
 static unsigned gpl_index(unsigned part) { return part == GPL_VI ? 0 : part == GPL_PR ? 1 : part == GPL_FS ? 2 : 3; }
 static const char *const gpl_names[4] = {"vertex input", "vertex shader", "fragment shader", "fragment output"};
 static _Atomic uint64_t gpl_hits[4], gpl_misses[4], gpl_miss_ns[4], gpl_links, gpl_link_ns, gpl_link_failed, gpl_upgraded, gpl_destroyed;
 
-static __thread int gpl_warming;   /* gpl_warm_main's threads */
+/* gpl_warm_main's threads */
+static __thread int gpl_warming;
 typedef struct { uint8_t b[1536]; size_t n; } gpl_blob;
 static void gb_put(gpl_blob *g, const void *p, size_t n) { if (g->n + n > sizeof g->b) die("pipeline library key overflow"); memcpy(g->b + g->n, p, n); g->n += n; }
 #define GB(g, v) do { __typeof__(v) gb_v_ = (v); gb_put((g), &gb_v_, sizeof gb_v_); } while (0)
@@ -60,8 +64,8 @@ static VkPipelineLayout gpl_half_layout(VkDescriptorSetLayout set0, VkDescriptor
 static void gb_multisample(gpl_blob *g, const VkPipelineMultisampleStateCreateInfo *m) {
     GB(g, m->rasterizationSamples); GB(g, m->sampleShadingEnable); GB(g, m->minSampleShading); GB(g, m->alphaToCoverageEnable); GB(g, m->alphaToOneEnable); GB(g, m->pSampleMask != NULL);
 }
-/* graphics_pipeline_build's library ending: the part's state into a library create info, its key from that state, and
-   the library from the cache or made now. */
+/* graphics_pipeline_build's library ending: the part's state into a library create info, its key from that state,
+   and the library from the cache or made here. */
 static VkResult gpl_library_finish(unsigned part, VkGraphicsPipelineCreateInfo *pi, const pipeline_key *key, shader_entry *vs, shader_entry *fs, graphics_pass_entry *pass,
     const VkPipelineVertexInputStateCreateInfo *vertex, const VkPipelineInputAssemblyStateCreateInfo *assembly, const VkPipelineRasterizationStateCreateInfo *raster,
     const VkPipelineMultisampleStateCreateInfo *multi, const VkPipelineDepthStencilStateCreateInfo *ds, const VkPipelineColorBlendStateCreateInfo *color,
@@ -103,9 +107,10 @@ static VkResult gpl_library_finish(unsigned part, VkGraphicsPipelineCreateInfo *
     default: die("pipeline library part %#x", part);
     }
     uint64_t hash = graphics_hash(g.b, g.n); unsigned b = hash & 4095, x = gpl_index(part);
-    if (gpl_warming) {   /* the library warm-up: only the driver's compiled shader is wanted (gpl_warm_main). No pipeline cache:
-                            Turnip then keeps it in Mesa's disk cache alone (read back on first use), not in ours, which is held in
-                            memory whole and would have grown by 338 MB (2026-11-03) */
+    /* the library warm-up: only the driver's compiled shader is wanted (gpl_warm_main). No pipeline cache: Turnip
+       then keeps it in Mesa's disk cache alone (read back on first use), not in ours, which is held in memory whole
+       and would grow by 338 MB */
+    if (gpl_warming) {
         VkPipeline made = VK_NULL_HANDLE; VkResult r = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &li, NULL, &made);
         if (r == VK_SUCCESS) vkDestroyPipeline(device, made, NULL);
         *pipeline = VK_NULL_HANDLE; return r; }
@@ -122,7 +127,8 @@ static VkResult gpl_library_finish(unsigned part, VkGraphicsPipelineCreateInfo *
     gpl_lib *e = malloc(sizeof *e + g.n); if (!e) die("pipeline library allocation");
     e->hash = hash; e->n = g.n; e->lib = made; memcpy(e->blob, g.b, g.n);
     pthread_mutex_lock(&gpl_lock);
-    for (gpl_lib *o = gpl_libs[b]; o; o = o->next) if (o->hash == hash && o->n == g.n && !memcmp(o->blob, g.b, g.n)) {   /* another thread made it meanwhile */
+    /* another thread made it meanwhile */
+    for (gpl_lib *o = gpl_libs[b]; o; o = o->next) if (o->hash == hash && o->n == g.n && !memcmp(o->blob, g.b, g.n)) {
         pthread_mutex_unlock(&gpl_lock); vkDestroyPipeline(device, made, NULL); free(e); *pipeline = o->lib; return VK_SUCCESS; }
     e->next = gpl_libs[b]; gpl_libs[b] = e; pthread_mutex_unlock(&gpl_lock);
     *pipeline = made; return VK_SUCCESS;
@@ -149,14 +155,16 @@ static void gpl_retire(VkPipeline p) {
     gpl_retired *r = malloc(sizeof *r); if (!r) die("pipeline retire allocation");
     pthread_mutex_lock(&gpl_retired_lock); *r = (gpl_retired){gpl_retired_new, p, 0}; gpl_retired_new = r; pthread_mutex_unlock(&gpl_retired_lock);
 }
-static void gpl_retire_poll(void) {   /* translation thread, once a frame */
+/* translation thread, once a frame */
+static void gpl_retire_poll(void) {
     pthread_mutex_lock(&gpl_retired_lock); gpl_retired *n = gpl_retired_new; gpl_retired_new = NULL; pthread_mutex_unlock(&gpl_retired_lock);
     uint64_t ticket = mtl_last_fence() + 1;
     while (n) { gpl_retired *next = n->next; n->ticket = ticket; n->next = gpl_retired_wait; gpl_retired_wait = n; n = next; }
     int destroyed = 0;
     for (gpl_retired **link = &gpl_retired_wait; *link;) { gpl_retired *r = *link;
         if (mtl_wait(r->ticket, 0)) { vkDestroyPipeline(device, r->pipeline, NULL); *link = r->next; free(r); destroyed++; } else link = &r->next; }
-    if (destroyed) { graphics_command_reset(); atomic_fetch_add(&gpl_destroyed, (uint64_t)destroyed); }   /* a new pipeline may reuse a destroyed handle */
+    /* a new pipeline may reuse a destroyed handle */
+    if (destroyed) { graphics_command_reset(); atomic_fetch_add(&gpl_destroyed, (uint64_t)destroyed); }
 }
 static void gpl_report(void) {
     if (!gpl_on() || !presents || presents % 600) return;
@@ -169,13 +177,13 @@ static void gpl_report(void) {
         (unsigned long long)l, l ? atomic_load(&gpl_link_ns) / 1e6 / l : 0.0, (unsigned long long)atomic_load(&gpl_link_failed), (unsigned long long)atomic_load(&gpl_upgraded), (unsigned long long)atomic_load(&gpl_destroyed), t);
 }
 
-/* The library warm-up: one library of every translated shader (vertex shaders as pre-rasterization libraries, fragment
-   shaders as fragment shader libraries), built in the background with neutral state and thrown away. What stays is the
-   driver's compiled shader in Mesa's disk cache: Turnip's key for a library shader is the shader, its one-sided layout
-   and a shader key that none of our state changes, so the first real library of that shader, with whatever state, is
-   a cache hit (median 0.00 ms against 3.6 ms, p90 27 ms, measured 2026-11-03), and a pipeline never met before is a
-   link. Shaders not loaded this session are built privately and freed (shader_load_private). TOTK_VK_GPL_WARM: worker
-   threads (default 3, 0 off), at nice 10 like the pipeline threads. */
+/* The library warm-up: one library of every translated shader (vertex shaders as pre-rasterization libraries,
+   fragment shaders as fragment shader libraries), built in the background with neutral state and thrown away. What
+   stays is the driver's compiled shader in Mesa's disk cache: Turnip's key for a library shader is the shader, its
+   one-sided layout and a shader key that none of our state changes, so the first real library of that shader, with
+   whatever state, is a cache hit (median 0.00 ms against 3.6 ms, p90 27 ms), and a pipeline never met before is a
+   link. Shaders not loaded this session are built privately and freed (shader_load_private). TOTK_VK_GPL_WARM:
+   worker threads. */
 static char (*gpl_warm_keys)[17]; static size_t gpl_warm_count; static _Atomic size_t gpl_warm_next, gpl_warm_done, gpl_warm_built;
 static _Atomic uint64_t gpl_warm_begin, gpl_warm_ns; static _Atomic int gpl_warm_left;
 static void gpl_warm_one(const char *key) {
@@ -188,7 +196,8 @@ static void gpl_warm_one(const char *key) {
             .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE, .initialLayout = VK_IMAGE_LAYOUT_GENERAL, .finalLayout = VK_IMAGE_LAYOUT_GENERAL}};
         static const VkAttachmentReference color = {0, VK_IMAGE_LAYOUT_GENERAL}, depth = {1, VK_IMAGE_LAYOUT_GENERAL};
         graphics_pass_entry *pass = graphics_pass_get(graphics_pass_key_make(2, 1, attachments, &color, depth), attachments, &color, depth, 0);
-        static shader_entry no_vertex = {.stage = 0};   /* a fragment library needs no vertex shader: its stage is not used */
+        /* a fragment library needs no vertex shader: its stage is not used */
+        static shader_entry no_vertex = {.stage = 0};
         shader_entry *vs = s->stage == 0 ? s : &no_vertex, *fs = s->stage == 0 ? graphics_empty_shader() : s;
         pipeline_key k = {.vs = vs, .fs = fs, .colors = 1, .primitive = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
         VkPipeline lib;
@@ -197,7 +206,8 @@ static void gpl_warm_one(const char *key) {
     if (priv) shader_entry_free_private(s);
 }
 static void *gpl_warm_main(void *unused) {
-    (void)unused; pthread_setname_np(pthread_self(), "totk-libwarm"); totk_pin_self("TOTK_GPL_WARM_CPUS", "slow");   /* off the prime cores: they ran it at 105 C */
+    /* off the prime cores: they ran it at 105 C */
+    (void)unused; pthread_setname_np(pthread_self(), "totk-libwarm"); totk_pin_self("TOTK_GPL_WARM_CPUS", "slow");
     resource_create_quiet = 1; pipeline_create_background = 1; gpl_warming = 1;
     for (size_t i; (i = atomic_fetch_add(&gpl_warm_next, 1)) < gpl_warm_count;) {
         gpl_warm_one(gpl_warm_keys[i]);
@@ -208,8 +218,9 @@ static void *gpl_warm_main(void *unused) {
         LOG("[vulkan-gpl-warm] done: %zu shaders, %zu libraries built in %.1f s", gpl_warm_count, (size_t)atomic_load(&gpl_warm_built), (dm_android_clock_ns(CLOCK_MONOTONIC) - atomic_load(&gpl_warm_begin)) / 1e9); }
     return NULL;
 }
-/* from_prepare: prepare mode's call (nvn_vulkan_prepare.inc, 4 threads); in play only with TOTK_VK_GPL_WARM=<threads> set:
-   in the background of play it heated the device to 100 C. 1 when the threads started. */
+/* from_prepare: prepare mode's call (nvn_vulkan_prepare.inc, 4 threads); in play only with
+   TOTK_VK_GPL_WARM=<threads> set: in the background of play it heats the device to 100 C. 1 when the threads
+   started. */
 static int gpl_warm_start(int from_prepare) {
     const char *e = getenv("TOTK_VK_GPL_WARM"); int threads = e ? atoi(e) : from_prepare ? 4 : 0; if (threads <= 0) return 0; if (threads > 6) threads = 6;
     static _Atomic int started; if (!gpl_on() || atomic_exchange(&started, 1)) return 0;

@@ -1,24 +1,25 @@
-// 采样器由实际有效参数共享缓存持有；槽号只保存引用，重登记不销毁在途对象。
 // Shared sampler objects are owned by effective parameter keys; slots retain references, and re-registration never destroys in-flight objects.
 typedef struct {
     uint32_t mag,min,mip,u,v,w,compare,compare_op,border;
-    float bias,min_lod,max_lod,aniso;   /* aniso: 0 = off */
+    /* aniso: 0 = off */
+    float bias,min_lod,max_lod,aniso;
 } sampler_key;
 typedef struct sampler_cache_entry { sampler_key key;VkSampler sampler;struct sampler_cache_entry *next; } sampler_cache_entry;
 static sampler_cache_entry *sampler_cache[256];
-static float sampler_aniso=-1;   /* TOTK_ANISO (sampler_key_make) */
+/* TOTK_ANISO (sampler_key_make) */
+static float sampler_aniso=-1;
 static uint64_t sampler_creations,sampler_reuses;
 static void sampler_resolved_locked(int id,sampler_descriptor *descriptor,VkSampler sampler) {
     if(descriptor)descriptor->sampler=sampler;
     if(descriptor&&id>=0&&id<4096)atomic_store_explicit(&sampler_fast[id],(uintptr_t)sampler,memory_order_release);
 }
-static void sampler_forget_all_locked(void) {   /* TOTK_ANISO changed: every id resolves again through the new key */
+/* TOTK_ANISO changed: every id resolves again through the new key */
+static void sampler_forget_all_locked(void) {
     for(int i=0;i<sampler_capacity;i++)sampler_descriptors[i].sampler=VK_NULL_HANDLE;
     for(int i=0;i<4096;i++)atomic_store_explicit(&sampler_fast[i],0,memory_order_relaxed);
 }
 static VkBorderColor sampler_border(const samp_par *p) {
-    // 和原 Metal 一样只支持三种标准边界色；任意 NVN 自定义边界色仍有限制。
-    // Match the original Metal backend's three standard border colors; arbitrary NVN custom colors remain limited.
+    // Match the Metal backend's three standard border colors; arbitrary NVN custom colors remain limited.
     return p->border[3]>.5f?(p->border[0]>.5f?VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE:VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK):VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 }
 static sampler_key sampler_key_make(const samp_par *p) {
@@ -28,15 +29,14 @@ static sampler_key sampler_key_make(const samp_par *p) {
     if(p->minf>=2){key.min_lod=p->lod_min>0?p->lod_min:0;key.max_lod=p->lod_max>=key.min_lod?p->lod_max:key.min_lod;}
     if(key.u!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER&&key.v!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER&&key.w!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER)key.border=VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
     if(key.bias==0)key.bias=0;
-    /* NVN min/max reduction (1 MIN, 2 MAX) is not applied yet: count the samplers that ask for it */
+    /* NVN min/max reduction (1 MIN, 2 MAX) is not applied: count the samplers that ask for it */
     { static unsigned reduction_notes;if(p->reduction&&reduction_notes<16){reduction_notes++;
         LOG("[vulkan-sampler] reduction %u requested (ignored): min %u mag %u wrap %u,%u,%u compare %u",(unsigned)p->reduction,(unsigned)p->minf,(unsigned)p->magf,(unsigned)p->ws,(unsigned)p->wt,(unsigned)p->wr,(unsigned)p->cmp_mode);} }
-    // 镜像钳制/各向异性仍沿用现有能力限制；不能使用未启用的 Vulkan 特性。
     // Mirror-clamp/anisotropy retain the existing capability limits; never use Vulkan features that were not enabled.
-    /* Anisotropic filtering: the game's own level (TOTK asks for 2x on some samplers; it was dropped before 2026-10-24),
-       clamped to the device. TOTK_ANISO=<n> forces n on trilinear samplers only (NVN LINEAR_MIPMAP_LINEAR), as Ryujinx
-       forces its setting, so post-processing and UI samplers keep what the game set; 1 turns those off, 0 = the game's.
-       The in-game menu changes it live (sampler_aniso): the level is part of the key, so the next lookups make new samplers. */
+    /* Anisotropic filtering: the game's own level (TOTK asks for 2x on some samplers), clamped to the device.
+       TOTK_ANISO=<n> forces n on trilinear samplers only (NVN LINEAR_MIPMAP_LINEAR), as Ryujinx forces its setting,
+       so post-processing and UI samplers keep what the game set; 1 turns those off, 0 = the game's. The in-game menu
+       changes it live (sampler_aniso): the level is part of the key, so the next lookups make new samplers. */
     { if(sampler_aniso<0){const char *x=getenv("TOTK_ANISO");sampler_aniso=x?(float)atof(x):0;}
       float forced=sampler_aniso,level=p->aniso;if(forced>=1&&p->minf==5)level=forced;
       if(level>1&&gpu_features.samplerAnisotropy)key.aniso=level<gpu_limits.maxSamplerAnisotropy?level:gpu_limits.maxSamplerAnisotropy; }

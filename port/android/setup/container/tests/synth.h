@@ -7,13 +7,18 @@
 #include <stdint.h>
 
 typedef enum {
-    SY_ROOT_TABLE,     /* PFS0 or HFS0 tables of the file */
+    /* PFS0 or HFS0 tables of the file */
+    SY_ROOT_TABLE,
     SY_TICKET,
-    SY_NCA_HEADER,     /* the plain 0xC00 bytes, any NCA */
+    /* the plain 0xC00 bytes, any NCA */
+    SY_NCA_HEADER,
     SY_CNMT,
-    SY_META_PFS,       /* the PFS0 around the content meta */
-    SY_EXEFS,          /* the update's ExeFS */
-    SY_HASH_TABLE,     /* its SHA-256 blocks */
+    /* the PFS0 around the content meta */
+    SY_META_PFS,
+    /* the update's ExeFS */
+    SY_EXEFS,
+    /* the SHA-256 blocks of the update's ExeFS */
+    SY_HASH_TABLE,
     SY_BKTR_REL,
     SY_BKTR_SUB,
     SY_ROMFS_HEADER,
@@ -27,10 +32,14 @@ typedef void (*sy_hook)(void *user, sy_region r, uint8_t *data, size_t size);
 
 typedef struct {
     uint64_t seed;
-    uint32_t pieces;       /* ranges of the patched section; > 818 gives a second relocation bucket */
-    uint32_t subsections;  /* > 1023 gives a second subsection bucket */
-    int xci;               /* base as an XCI with a key area instead of a ticket */
-    int base_version;      /* content meta versions, for the error tests */
+    /* ranges of the patched section; > 818 gives a second relocation bucket */
+    uint32_t pieces;
+    /* > 1023 gives a second subsection bucket */
+    uint32_t subsections;
+    /* base as an XCI with a key area instead of a ticket */
+    int xci;
+    /* content meta versions, for the error tests */
+    int base_version;
     int update_version;
     uint64_t base_title, update_title;
     sy_hook hook;
@@ -42,8 +51,10 @@ typedef struct { uint8_t *data; size_t size; } sy_file;
 typedef struct {
     sy_file base, update;
     char *keys_text; size_t keys_size;
-    uint8_t *image; size_t image_size;      /* what the merged RomFS must read as */
-    uint8_t *index; size_t index_size;      /* what its index must be */
+    /* what the merged RomFS must read as */
+    uint8_t *image; size_t image_size;
+    /* what its index must be */
+    uint8_t *index; size_t index_size;
     uint8_t *module[3]; size_t module_size[3];
 } sy_game;
 

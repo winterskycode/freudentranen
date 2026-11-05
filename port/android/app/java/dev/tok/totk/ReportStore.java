@@ -82,7 +82,8 @@ final class ReportStore {
             muxer = new MediaMuxer(out.getPath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             for (File f : segments) {
                 byte[] bytes = Files.readAllBytes(f.toPath());
-                ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN), whole = ByteBuffer.wrap(bytes);   // whole: MediaMuxer reads array() from info.offset
+                // whole: MediaMuxer reads array() from info.offset
+                ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN), whole = ByteBuffer.wrap(bytes);
                 if (b.remaining() < 16) continue;
                 byte[] magic = new byte[8]; b.get(magic);
                 if (!new String(magic, "US-ASCII").equals("TOTKREC1")) continue;
@@ -101,7 +102,8 @@ final class ReportStore {
                         continue;
                     }
                     if (track < 0 || pts <= last) continue;
-                    if (samples == 0 && (flags & 1) == 0) continue;   // start at a key frame
+                    // start at a key frame
+                    if (samples == 0 && (flags & 1) == 0) continue;
                     MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
                     info.set(at, size, pts, (flags & 1) != 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0);
                     muxer.writeSampleData(track, whole, info); last = pts; samples++;
@@ -120,7 +122,8 @@ final class ReportStore {
     /** The SPS and PPS NAL units (with their start codes) of the encoder's configuration. */
     private static ByteBuffer[] parameterSets(ByteBuffer config) {
         byte[] d = new byte[config.remaining()]; config.duplicate().get(d);
-        List<int[]> units = new ArrayList<>();   // start of the start code, start of the NAL
+        // start of the start code, start of the NAL
+        List<int[]> units = new ArrayList<>();
         for (int i = 0; i + 3 <= d.length; i++)
             if (d[i] == 0 && d[i + 1] == 0 && (d[i + 2] == 1 || (i + 4 <= d.length && d[i + 2] == 0 && d[i + 3] == 1))) {
                 int nal = d[i + 2] == 1 ? i + 3 : i + 4; units.add(new int[] {i, nal}); i = nal - 1;

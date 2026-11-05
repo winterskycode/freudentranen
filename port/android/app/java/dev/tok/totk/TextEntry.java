@@ -78,7 +78,8 @@ final class TextEntry {
                     if (allowed(c, disabled, digitsOnly)) { if (kept != null) kept.append(c); }
                     else if (kept == null) kept = new StringBuilder(src.subSequence(start, i));
                 }
-                return kept;   /* null keeps the source as it is */
+                /* null keeps the source as it is */
+                return kept;
             },
             new InputFilter.LengthFilter(Math.max(1, maxUnits)) });
         field.setText(initial);
@@ -119,8 +120,9 @@ final class TextEntry {
         ok.setOnClickListener(v -> confirm.run());
         cancel.setOnClickListener(v -> d.cancel());
         field.setOnEditorActionListener((v, action, event) -> { if (action == EditorInfo.IME_ACTION_DONE) { confirm.run(); return true; } return false; });
-        d.setOnDismissListener(x -> answer.accept(null));   /* cancel, Back, B, or the activity finishing */
-        /* B cancels at once: left to its fallback (Back), the first press only hid the on-screen keyboard */
+        /* cancel, Back, B, or the activity finishing */
+        d.setOnDismissListener(x -> answer.accept(null));
+        /* B cancels at once: left to its fallback (Back), the first press would only hide the on-screen keyboard */
         d.setOnKeyListener((x, code, event) -> {
             if (code != KeyEvent.KEYCODE_BUTTON_B) return false;
             if (event.getAction() == KeyEvent.ACTION_UP) d.cancel();

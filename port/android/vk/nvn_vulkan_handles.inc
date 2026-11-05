@@ -1,4 +1,3 @@
-// Ryujinx 的 OR 两输入可交换；读取实际 driver words 后合成，不能按输入位置猜贴图/采样器。
 // Ryujinx's OR operands can be swapped; combine real driver words instead of inferring texture/sampler from operand order.
 static unsigned shader_handle_bank(const shader_binding *binding,unsigned operand) {
     if(binding->cb_slot==UINT32_MAX)return 2;unsigned primary=binding->cb_slot&0xffff,secondary=binding->cb_slot>>16;
@@ -6,8 +5,7 @@ static unsigned shader_handle_bank(const shader_binding *binding,unsigned operan
 }
 static uint32_t shader_handle_word(unsigned stage,unsigned bank,unsigned offset) {
     if(stage>=6)die("Vulkan texture-handle stage %u",stage);
-    // 当前全部 6,931 个游戏 shader 均从 c2 取句柄；其他常量银行不允许静默错绑。
-    // All current 6,931 game shaders fetch handles from c2; other banks must not silently bind incorrect resources.
+    // The game's shaders all fetch handles from c2; other banks must not silently bind incorrect resources.
     if(bank!=2)die("Vulkan texture-handle bank %u is unsupported",bank);
     if(offset&7)return 0;
     /* TOTK (NVN 55): combined handles bound with BindTexture(s) live at c2+0x20, 32 slots of 8 bytes; they share the
@@ -33,7 +31,7 @@ static int shader_texture_slot(const shader_binding *binding,unsigned element) {
     unsigned offsets[2]={(binding->handle&0x3fff)*4,((binding->handle>>14)&0x3fff)*4},count=(binding->handle>>28)==1||((binding->handle>>28)==2)?2:1;
     for(unsigned i=0;i<count;i++){unsigned offset=offsets[i]+8*element;if(shader_handle_bank(binding,i)!=2||(offset&7))continue;
         if(offset>=0x168&&offset<0x568)return (offset-0x168)/8;
-        if(offset>=0x20&&offset<0x120)return (offset-0x20)/8;   /* TOTK combined handles */
+        if(offset>=0x20&&offset<0x120)return (offset-0x20)/8;
     }
     return -1;
 }

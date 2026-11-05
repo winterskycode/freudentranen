@@ -8,7 +8,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define GENERATION 0x0e   /* stored as this + 1 */
+/* stored as this + 1 */
+#define GENERATION 0x0e
 #define NODE 0x4000u
 
 typedef struct { uint8_t *p; size_t n; } buf;
@@ -138,7 +139,8 @@ static buf make_romfs(sy_game *g, const sy_spec *s, uint64_t *rng) {
 /* ---- NCA ---- */
 typedef struct {
     uint8_t fs[0x200];
-    uint8_t *plain;       /* the section, not encrypted */
+    /* the section, not encrypted */
+    uint8_t *plain;
     size_t size;
     int encrypted_by_caller;
 } section;
@@ -216,7 +218,8 @@ static buf make_meta(const sy_spec *s, uint64_t title, uint64_t other, uint32_t 
     hook(s, SY_CNMT, cnmt, sizeof cnmt);
     part e = {"0123abcd.cnmt", cnmt, sizeof cnmt};
     sy_spec quiet = *s;
-    quiet.hook = NULL;   /* a table of its own: damaged through SY_META_PFS */
+    /* a table of its own: damaged through SY_META_PFS */
+    quiet.hook = NULL;
     buf pfs = make_part(&quiet, "PFS0", 24, &e, 1);
     section c;
     memset(&c, 0, sizeof c);
@@ -297,7 +300,8 @@ void sy_make(sy_game *g, const sy_spec *s) {
     }
     size_t tables_at = align(update_data ? update_data : 16, 16);
     uint32_t rel_buckets = (pieces + 817) / 818, sub_count = s->subsections ? s->subsections : 1;
-    if (sub_count > tables_at / 2) sub_count = (uint32_t)(tables_at / 2);   /* a little update has room for few */
+    /* a little update has room for few */
+    if (sub_count > tables_at / 2) sub_count = (uint32_t)(tables_at / 2);
     uint32_t sub_buckets = (sub_count + 1022) / 1023;
     size_t rel_size = (size_t)NODE * (rel_buckets + 1), sub_size = (size_t)NODE * (sub_buckets + 1);
     size_t section_size = align(tables_at + rel_size + sub_size, 0x200);
@@ -410,7 +414,8 @@ void sy_make(sy_game *g, const sy_spec *s) {
     uint8_t tik[2][0x2c0], cert[0x300] = {0};
     make_ticket(s, tik[0], base_rights, base_key);
     make_ticket(s, tik[1], update_rights, update_key);
-    wr32(cert, 0x10000); strcpy((char *)cert + 0x240, "Root-CA00000003");   /* looks like a ticket until its issuer */
+    /* looks like a ticket until its issuer */
+    wr32(cert, 0x10000); strcpy((char *)cert + 0x240, "Root-CA00000003");
     static const uint8_t xml[] = "<?xml version=\"1.0\"?><ContentMeta></ContentMeta>";
 
     part ue[5] = {{"0a.cert", cert, sizeof cert}, {"0b.tik", tik[1], 0x2c0}, {"0c.nca", update_program.p, update_program.n}, {"0d.cnmt.nca", update_meta.p, update_meta.n}, {"0e.cnmt.xml", xml, sizeof xml}};

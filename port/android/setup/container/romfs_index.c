@@ -5,8 +5,10 @@
 #include <stdlib.h>
 
 #define MAX_TABLE (256u << 20)
-#define MAX_STRINGS (120u << 20)   /* the runtime refuses an index of 128 MB */
-#define MAX_PATH 4096u             /* and paths that do not fit its buffers */
+/* the runtime refuses an index of 128 MB */
+#define MAX_STRINGS (120u << 20)
+/* the runtime also refuses paths that do not fit its buffers */
+#define MAX_PATH 4096u
 #define NONE 0xffffffffu
 
 typedef struct { const char *path; uint64_t offset, size; size_t arena_off; } row;

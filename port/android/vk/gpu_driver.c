@@ -1,4 +1,3 @@
-// 可选Turnip加载和统一Vulkan分发。默认系统驱动；不更改其他应用的配置。
 // Optional Turnip loading and unified Vulkan dispatch. System by default; never change another app's configuration.
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -53,7 +52,6 @@ static void reset_subgroup_policy(dm_vk_driver *d) {
     memset(&d->subgroup_features,0,sizeof d->subgroup_features);
 }
 static int configure(dm_vk_driver *d) {
-    // 严格环境标志先解析，配置语法错误也不能悄悄退回系统。
     // Parse strict environment policy first so malformed configuration cannot silently fall back.
     const char *required=getenv("DM_VK_DRIVER_REQUIRE");
     if(required){d->require_custom=strcmp(required,"0")!=0;if(strcmp(required,"0")&&strcmp(required,"1"))return driver_error(d,"DM_VK_DRIVER_REQUIRE must be 0 or 1");}
@@ -63,12 +61,10 @@ static int configure(dm_vk_driver *d) {
     driver_log("driver configuration lookup: DM_VK_DRIVER_CONFIG=%s DM_TEMP=%s",config?config:"(unset)",temporary?temporary:"(unset)");
     if(!config&&temporary){if(snprintf(path,sizeof path,"%s/gpu-driver.conf",temporary)>=(int)sizeof path)return driver_error(d,"driver configuration path is too long");config=path;}
     if(config){FILE *file=fopen(config,"r");if(!file){if(errno!=ENOENT)return driver_error(d,"cannot open driver configuration: %s",strerror(errno));
-            // 配置缺失会让严格请求静默退回系统驱动；必须记下实际尝试的路径与来源。
             // A missing configuration would silently drop a strict request back to the system driver, so record the
             // path actually tried and where it came from.
             else driver_log("driver configuration not found: %s (DM_VK_DRIVER_CONFIG=%s DM_TEMP=%s)",config,getenv("DM_VK_DRIVER_CONFIG")?getenv("DM_VK_DRIVER_CONFIG"):"(unset)",temporary?temporary:"(unset)");}
         else{d->requested_custom=1;char line[2048],first_error[512]={0};int ok=1,driver_keys=0,subgroup_keys=0;
-            // 即使前面的行有错，也读完整policy；后置require_custom=1不能被忽略。
             // Read the complete policy even after an earlier error; do not ignore a later require_custom=1.
             while(fgets(line,sizeof line,file)){
                 int line_ok=1;
@@ -129,7 +125,6 @@ static int open_system(dm_vk_driver *d) {
     DM_VK_DEVICE_FUNCTIONS(DM_VK_CLEAR)
 #undef DM_VK_CLEAR
 #ifdef __ANDROID__
-    // 只用所选handle的GIPA，不调用链接到全局系统loader的Vk入口。
     // Use only the selected handle's GIPA, never a globally linked system Vulkan entry point.
     adreno_open_fn open=d->adrenotools?(adreno_open_fn)dlsym(d->adrenotools,"adrenotools_open_libvulkan"):NULL;
     if(open)d->library=open(RTLD_NOW,0,NULL,d->hook_directory,NULL,NULL,NULL,NULL);
@@ -175,7 +170,6 @@ static int is_wsi_function(const char *name) {
 }
 int dm_vk_driver_load_instance(dm_vk_driver *d,VkInstance instance,int needs_surface) {
     d->needs_surface=needs_surface;
-    // destroy先取，后续缺函数时仍可由调用者安全释放新instance。
     // Resolve destroy first so the caller can safely release the new instance if another function is missing.
     d->vkDestroyInstance=(PFN_vkDestroyInstance)d->vkGetInstanceProcAddr(instance,"vkDestroyInstance");
     if(!d->vkDestroyInstance)return driver_error(d,"selected instance has no vkDestroyInstance");
@@ -213,7 +207,6 @@ static int has_device_extension(dm_vk_driver *d,VkPhysicalDevice physical,const 
 static int validate_subgroup_policy(dm_vk_driver *d,VkPhysicalDevice physical) {
     d->effective_shader_subgroup_size=d->subgroup_size;
     if(!d->requested_subgroup_size)return 1;
-    // 调用者仍用API1.1，因而明确启用EXT路径，不偷用未启用的1.3核心功能。
     // Callers still use API1.1: explicitly enable the EXT path rather than unenabled1.3 core functionality.
     if(!has_device_extension(d,physical,VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME))
         return driver_error(d,"explicit subgroup policy requires VK_EXT_subgroup_size_control for API1.1");
@@ -280,7 +273,8 @@ static int profile_matches(dm_vk_driver *d,const char *directory) {
     char path[1200];if(snprintf(path,sizeof path,"%s/host-subgroup-size.txt",directory)>=(int)sizeof path)return driver_error(d,"shader profile path is too long");
     FILE *file=fopen(path,"r");
     if(!file){if(errno!=ENOENT)return driver_error(d,"custom game requires shader subgroup profile: %s",strerror(errno));
-        driver_log("shader folder %s has no subgroup profile yet: its first translation writes it (subgroup %u)",directory,d->effective_shader_subgroup_size);return 1;}   /* a driver installed from a zip starts with an empty folder */
+        /* a driver installed from a zip starts with an empty folder */
+        driver_log("shader folder %s has no subgroup profile yet: its first translation writes it (subgroup %u)",directory,d->effective_shader_subgroup_size);return 1;}
     char text[32];size_t n=fread(text,1,sizeof text-1,file);int extra=fgetc(file),error=ferror(file);fclose(file);text[n]=0;
     errno=0;char *end;unsigned long size=strtoul(text,&end,10);while(isspace((unsigned char)*end))end++;
     if(error||extra!=EOF||errno||end==text||*end||(size!=32&&size!=64&&size!=128))return driver_error(d,"invalid shader subgroup profile");

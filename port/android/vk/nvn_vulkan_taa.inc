@@ -8,21 +8,30 @@
     - motion: the camera's only, from the G-buffer depth and this and the previous frame's view-projection (the camera
       block frame generation reads, fg_after_pass);
     - history: reset on the first frame, a size change, a camera cut (fg's rule: 8 units in a frame) and any frame after
-      one where it did not run (menus, loading).
-   Snapdragon GSR 2, the first method tried here (2026-10-27), was replaced by ASR. */
+      one where it did not run (menus, loading). */
 #define TAA_PHASES 16
 static struct {
-    int on;   /* -1 unread; 2 Arm ASR, 3 SMAA T2x */
-    int cur, hist_ok, ran;           /* ran: this frame */
+    /* -1 unread; 2 Arm ASR, 3 SMAA T2x */
+    int on;
+    /* ran: this frame */
+    int cur, hist_ok, ran;
     uint32_t rw, rh;
-    unsigned jit_i; float jx, jy;    /* this frame's jitter, render pixels (x right, y down) */
-    int t2x_sub;                     /* mode 3 (SMAA T2x): this frame's jitter position */
-    float pjx, pjy;                  /* the last frame's, as its matrices carried it (0: none) */
-    int jittered;                    /* this frame's uniform blocks carried the jitter */
-    float px, py;                    /* the camera's projection scales (last compose): what taa_uniform matches */
-    float vw, vh;                    /* the G-buffer viewport (last frame): pixels to clip space */
-    const image_entry *gdepth;       /* this frame's G-buffer depth: the first G-buffer-shaped pass's (taa_viewport) */
-    image_entry *target; const void *target_mem;   /* compose's target, not yet resolved this frame (taa_before_draw) */
+    /* this frame's jitter, render pixels (x right, y down) */
+    unsigned jit_i; float jx, jy;
+    /* mode 3 (SMAA T2x): this frame's jitter position */
+    int t2x_sub;
+    /* the last frame's, as its matrices carried it (0: none) */
+    float pjx, pjy;
+    /* this frame's uniform blocks carried the jitter */
+    int jittered;
+    /* the camera's projection scales (last compose): what taa_uniform matches */
+    float px, py;
+    /* the G-buffer viewport (last frame): pixels to clip space */
+    float vw, vh;
+    /* this frame's G-buffer depth: the first G-buffer-shaped pass's (taa_viewport) */
+    const image_entry *gdepth;
+    /* compose's target, not yet resolved this frame (taa_before_draw) */
+    image_entry *target; const void *target_mem;
     double prev_vp[16]; int prev_ok; float prev_pos[3];
     uint64_t done, resets, skipped;
 } taa = {.on = -1};
@@ -31,7 +40,8 @@ static int taa_enabled_slow(void);
 static inline int taa_enabled(void) { return taa.on >= 0 ? taa.on : taa_enabled_slow(); }
 static int taa_enabled_slow(void) {
     if (taa.on < 0) { const char *e = getenv("TOTK_TAA"); taa.on = e && !strcmp(e, "asr") ? 2 : 0;
-        if (!taa.on) {   /* SMAA T2x (TOTK_AA=smaat2x, docked): the two-position jitter, mode 3 */
+        /* SMAA T2x (TOTK_AA=smaat2x, docked): the two-position jitter, mode 3 */
+        if (!taa.on) {
             const char *a = getenv("TOTK_AA"), *m = getenv("TOTK_OPERATION_MODE");
             if (a && !strcmp(a, "smaat2x") && m && !strcmp(m, "docked")) taa.on = 3; }
         LOG("[taa] temporal anti-aliasing (TOTK_TAA): %s", taa.on == 3 ? "SMAA T2x's two jitter positions" : taa.on == 2 ? "Arm ASR" : "off"); }
@@ -47,7 +57,8 @@ static void taa_aa_mode(int t2x) {
 static double taa_halton(unsigned i, unsigned base) { double f = 1, r = 0; while (i) { f /= base; r += f * (i % base); i /= base; } return r; }
 
 static int taa_tracing(void) { static int t = -1; if (t < 0) { const char *e = getenv("TOTK_TAA_TRACE"); t = e ? atoi(e) : 0; if (t == 1) t = 1500; }
-    return t > 0 && presents >= (uint64_t)t && presents < (uint64_t)t + 3; }   /* TOTK_TAA_TRACE=<frame>: three frames from it (1: 1500) */
+    /* TOTK_TAA_TRACE=<frame>: three frames from it (1: 1500) */
+    return t > 0 && presents >= (uint64_t)t && presents < (uint64_t)t + 3; }
 /* Every draw's viewport (draw_graphics_inner): the G-buffer pass's size, for the jitter's step in clip space. The frame's
    G-buffer depth is the depth of its first G-buffer-shaped pass (D32F the size of colour target 0, three or more colour
    targets). TOTK_TAA_TRACE=<frame>: the draws on a D32F depth in three frames from it, logged. */
@@ -62,10 +73,10 @@ static void taa_viewport(const VkViewport *viewport, const image_entry *depth, u
             vs ? vs->game_id : "-", fs && fs->module ? fs->game_id : "-", colors, c0 ? c0->d.width : 0, c0 ? c0->d.height : 0, depth->texture.d.width, depth->texture.d.height, viewport->width, -viewport->height);
 }
 
-static void smaa_scene_mark(int done);   /* nvn_vulkan_smaa.inc */
+static void smaa_scene_mark(int done);
 static int smaa_t2x_apply(image_entry *target, image_entry *depth, int sub, const double *reproj, int reset);
 static int taa_camera(uint32_t w, uint32_t h, double m[16]);
-static int asr_upscale_draw(const shader_entry *fs);   /* nvn_vulkan_asr.inc */
+static int asr_upscale_draw(const shader_entry *fs);
 /* The compose draw (draw_graphics_inner, before its bindings): note its target. */
 static void taa_compose(const shader_entry *fs) {
     (void)fs;
@@ -87,7 +98,8 @@ static void taa_before_draw(const shader_entry *fs) {
     }
     if (!reads) return;
     image_entry *t = taa.target; taa.target = NULL;
-    if (taa.on == 3) {   /* SMAA T2x on compose's output */
+    /* SMAA T2x on compose's output */
+    if (taa.on == 3) {
         if (!fg.depth || !fg.cam_ok) { taa.skipped++; return; }
         double m[16]; int reset = taa_camera(t->texture.d.width, t->texture.d.height, m);
         if (smaa_t2x_apply(t, fg.depth, taa.t2x_sub, m, reset)) { smaa_scene_mark(1); taa.cur ^= 1; taa.hist_ok = 1; taa.ran = 1; taa.done++; }
@@ -114,7 +126,8 @@ static int taa_camera(uint32_t w, uint32_t h, double m[16]) {
     else for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) { double s = 0; for (int k = 0; k < 4; k++) s += taa.prev_vp[r * 4 + k] * ic[k * 4 + c]; m[r * 4 + c] = s; }
     for (int i = 0; i < 16; i++) taa.prev_vp[i] = vc[i];
     taa.prev_pos[0] = fg.cam[47]; taa.prev_pos[1] = fg.cam[51]; taa.prev_pos[2] = fg.cam[55]; taa.prev_ok = 1;
-    taa.px = fabsf(fg.cam[28]); taa.py = fabsf(fg.cam[33]);   /* the projection's scales: what taa_uniform matches next frame */
+    /* the projection's scales: what taa_uniform matches next frame */
+    taa.px = fabsf(fg.cam[28]); taa.py = fabsf(fg.cam[33]);
     taa.rw = w; taa.rh = h;
     return reset;
 }
@@ -123,7 +136,7 @@ static int taa_camera(uint32_t w, uint32_t h, double m[16]) {
    -z axis, rows 0 and 1 as long as the projection's x and y scales; the shadow cameras are orthographic) gets the
    jitter, row 0 += dx * row 3 and row 1 += dy * row 3 (clip-space x right, y up: the viewport flip turns a step down in
    pixels into -y). The camera block (2368 bytes: view-projection at float 12, projection at 28) carries the last
-   frame's at 96 and 112 (checked in a pan, 2026-10-28): those get the last frame's jitter, so the game's own reprojection
+   frame's at 96 and 112: those get the last frame's jitter, so the game's own reprojection
    matches what it drew. Copies of this frame's: 64-byte (view-projection at 0), 144 (projection at 12), 224/256 (view-
    projection at 0), 496/512 (projection at 16, view-projection at 32), 704 (projection at 40 and 120). TOTK_TAA_TRACE:
    the matrices found in three frames, logged. */
@@ -156,12 +169,15 @@ static void taa_frame_end(void) {
     if (taa.on <= 0) { taa.target = NULL; return; }
     if (!taa.ran) taa.hist_ok = 0;
     taa.pjx = taa.jittered ? taa.jx : 0; taa.pjy = taa.jittered ? taa.jy : 0;
-    if (taa.target) { taa.skipped++; taa.target = NULL; }   /* nothing read compose's target this frame */
+    /* nothing read compose's target this frame */
+    if (taa.target) { taa.skipped++; taa.target = NULL; }
     int ran = taa.ran;
     taa.ran = 0; taa.gdepth = NULL; taa.jittered = 0;
     taa.jit_i = (taa.jit_i + 1) % TAA_PHASES;
-    float k = ran ? 1.0f : 0.0f;   /* not resolved this frame (menus, loading): the next one is drawn unjittered, nothing would average it */
-    if (taa.on == 3) {   /* SMAA T2x: (0.25, -0.25) and (-0.25, 0.25) with y up in the reference, x right / y down here */
+    /* not resolved this frame (menus, loading): the next one is drawn unjittered, nothing would average it */
+    float k = ran ? 1.0f : 0.0f;
+    /* SMAA T2x: (0.25, -0.25) and (-0.25, 0.25) with y up in the reference, x right / y down here */
+    if (taa.on == 3) {
         taa.t2x_sub = taa.jit_i & 1; taa.jx = taa.jy = (taa.t2x_sub ? -0.25f : 0.25f) * k;
         return;
     }

@@ -1,4 +1,3 @@
-// 不可变索引快照的最大值缓存；activation 区分同一 VkBuffer backing 的每次重新使用。
 // Cache maxima of immutable index snapshots; activation distinguishes every reuse of one VkBuffer backing.
 typedef struct index_maximum_entry {
     uint64_t activation,size,used;
@@ -10,7 +9,6 @@ static uint32_t index_buffer_maximum_table(vk_buffer buffer,unsigned width,uint6
 static uint32_t index_buffer_maximum(vk_buffer buffer,unsigned width) {
     if(!buffer.owner||!buffer.owner->activation||!buffer.mapped||!buffer.size||(width!=1&&width!=2&&width!=4)||buffer.size%width)
         die("Vulkan index snapshot contract");
-    // 只存整数身份/结果，不持 owner 或 VkBuffer 指针，旧 backing 销毁、缓存复用后无需失效回调。
     // Retain only integer identities/results, never owner or VkBuffer pointers; destruction/cache reuse needs no invalidation callback.
     /* the dependency pass and the draw ask about the same snapshot back to back: the last answer, before the 512 KiB table */
     static index_maximum_entry last;uint64_t activation=buffer.owner->activation;

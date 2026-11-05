@@ -8,14 +8,16 @@ struct Progress { JNIEnv *env; jobject target; jmethodID at; };
 void on_progress(void *user, int done, int total) {
     auto *p = static_cast<Progress *>(user);
     p->env->CallVoidMethod(p->target, p->at, done, total);
-    if (p->env->ExceptionCheck()) p->env->ExceptionClear();   // the translation goes on: only the display missed a step
+    // the translation goes on: only the display missed a step
+    if (p->env->ExceptionCheck()) p->env->ExceptionClear();
 }
 }
 
 // null, or what went wrong in words for the player
 extern "C" JNIEXPORT jstring JNICALL Java_dev_tok_totk_Lsfg_translate(JNIEnv *env, jclass, jstring dll, jstring out_dir, jobject progress) {
     Progress p = {env, progress, env->GetMethodID(env->GetObjectClass(progress), "at", "(II)V")};
-    if (!p.at) return nullptr;   // NoSuchMethodError is pending
+    // NoSuchMethodError is pending
+    if (!p.at) return nullptr;
     const char *from = env->GetStringUTFChars(dll, nullptr), *to = env->GetStringUTFChars(out_dir, nullptr);
     std::string error = from && to ? lsfg_translate(from, to, on_progress, &p) : "The file could not be opened.";
     if (from) env->ReleaseStringUTFChars(dll, from);

@@ -72,7 +72,8 @@ JNIEXPORT jbyteArray JNICALL Java_dev_tok_totk_Zstd_decompress(JNIEnv *env, jcla
         size_t got = out ? ZSTD_decompressDCtx(dctx, out, size, in, (size_t)n) : 0;
         if (out && !ZSTD_isError(got) && got == size) result = out_array(env, out, got);
         free(out);
-    } else {   /* no size in the header: stream into a growing buffer */
+    } else {
+        /* no size in the header: stream into a growing buffer */
         size_t cap = (size_t)n * 4 + 65536, used = 0; char *out = malloc(cap);
         ZSTD_inBuffer ib = {in, (size_t)n, 0}; size_t r = 1;
         while (out && r != 0) {

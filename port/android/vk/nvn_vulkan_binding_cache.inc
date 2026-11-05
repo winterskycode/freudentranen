@@ -1,4 +1,3 @@
-// 同批只读内容版本与真实描述符 payload 缓存；reset 必须在该批 GPU 完成之后。
 // Cache read-only content versions and actual descriptor payloads within a batch; reset only after its GPU completes.
 typedef struct uniform_version {
     uintptr_t address;
@@ -6,7 +5,8 @@ typedef struct uniform_version {
     const uint8_t *mapped;
     VkDescriptorBufferInfo info;
     struct uniform_version *next;
-    uint64_t capture_serial, capture_order;   /* nonzero serial: these bytes came wholly from that submission's capture, read at post_write_order capture_order */
+    /* nonzero serial: these bytes came wholly from that submission's capture, read at post_write_order capture_order */
+    uint64_t capture_serial, capture_order;
 } uniform_version;
 typedef struct uniform_version_chunk {
     uniform_version entries[64];
@@ -39,10 +39,12 @@ static uint64_t *descriptor_payload;
 static size_t descriptor_payload_words,descriptor_payload_capacity;
 static uint64_t descriptor_payload_hash;
 
-static uint64_t uniform_version_reuse_hits;   /* served from an earlier read in the same submission */
+/* served from an earlier read in the same submission */
+static uint64_t uniform_version_reuse_hits;
 static uint64_t uniform_version_hits,uniform_version_misses,uniform_version_read_bytes,uniform_version_compare_bytes,uniform_version_copy_bytes;
 static uint64_t descriptor_version_hits,descriptor_version_misses,descriptor_memo_hits;
-static uint64_t binding_cache_generation;   /* advances with every reset: per-shader descriptor memos (shader_entry.dmemo_*) hold sets of one generation */
+/* advances with every reset: per-shader descriptor memos (shader_entry.dmemo_*) hold sets of one generation */
+static uint64_t binding_cache_generation;
 static void binding_cache_reset(void) {
     binding_cache_generation++;
     memset(uniform_versions,0,sizeof uniform_versions);memset(descriptor_versions,0,sizeof descriptor_versions);
@@ -59,31 +61,35 @@ static uniform_version *uniform_version_new(void) {
    thread); the replay reads uniforms from that capture. A range the GPU is still writing at replay time is read from
    memory after the dependency wait instead. (Port of the Metal backend's mtl_sub_capture_ubos.) */
 typedef struct { uint64_t lo, hi; } ucap_range;
-/* The capture is made in GPU-visible memory (buf) and a uniform block it wholly holds is bound there (ucap_bind) instead
-   of being read, compared and copied into the uniform arena at replay: 6% less translation CPU in the still scene
-   (2026-10-30). TOTK_VK_UCAPBIND=0 turns it off, =2 also checks each bound block against the arena path's bytes.
-   Each range keeps its address's offset alignment, and 64 KiB of slack follows the last one (a dynamic uniform
-   descriptor spans 64 KiB). */
+/* The capture is made in GPU-visible memory (buf) and a uniform block it wholly holds is bound there (ucap_bind)
+   instead of being read, compared and copied into the uniform arena at replay: 6% less translation CPU in the still
+   scene. TOTK_VK_UCAPBIND=0 turns it off, =2 also checks each bound block against the arena path's bytes. Each range
+   keeps its address's offset alignment, and 64 KiB of slack follows the last one (a dynamic uniform descriptor spans
+   64 KiB). */
 /* dirty[i]: a GPU write (a copy or a shader output) was pending over range i when the capture was installed, or one was
    registered since: the capture's bytes are not that block's, so it takes the arena path. Decided once per range at
    install and kept up to date by pp_add (ucap_mark_dirty), in place of two pending-page queries on every bind. A write
    that publishes later leaves the flag set: the capture was taken before that write landed, so the arena is right. */
 typedef struct { int n; ucap_range *r; size_t *off; uint8_t *bytes; uint8_t *dirty; vk_buffer buf; uint64_t borrowed;
-    _Atomic int copied, waiters; } ucap;   /* copied: the bytes are in (mtl_sub_capture_copy, on the game thread, after the submission was queued) */
+    /* copied: the bytes are in (mtl_sub_capture_copy, on the game thread, after the submission was queued) */
+    _Atomic int copied, waiters; } ucap;
 static ucap *ucap_current;
 static int ucap_bind_state = -1;
 static int ucap_bind_on_slow(void);
 static inline int ucap_bind_on(void) { return ucap_bind_state >= 0 ? ucap_bind_state : ucap_bind_on_slow(); }
 static int ucap_bind_on_slow(void) { int *onp = &ucap_bind_state; int on = -1; if (on < 0) { const char *e = getenv("TOTK_VK_UCAPBIND"); on = !e ? 1 : atoi(e) > 0 ? atoi(e) : 0; LOG("[vulkan] uniform blocks bound from the submit capture: %s", on == 2 ? "on, checked against the arena path" : on ? "on (TOTK_VK_UCAPBIND=0: off)" : "off"); } *onp = on; return on; }
 static uint64_t ucap_bound, ucap_bound_bytes;
-static uint64_t ucap_serial;          /* advances with every installed capture */
-static int uniform_read_from_capture;  /* the last uniform_read_current was served wholly from the capture */
-/* The same few hundred ranges are bound thousands of times per submission: an open-addressed set of the ranges seen so
-   far keeps the list (and the sort after it, which ran in the game's submit call on the frame's critical path) to the
+/* advances with every installed capture */
+static uint64_t ucap_serial;
+/* the last uniform_read_current was served wholly from the capture */
+static int uniform_read_from_capture;
+/* The same few hundred ranges are bound thousands of times per submission: an open-addressed set of the ranges seen
+   so far keeps the list (and the sort after it, in the game's submit call on the frame's critical path) to the
    distinct ones. Slots carry the submission's generation, so the table is never cleared. */
 typedef struct { uint64_t lo, hi; uint32_t gen, pad; } ucap_slot;
 static __thread ucap_slot *ucap_set; static __thread uint32_t ucap_set_mask, ucap_gen;
-static int ucap_insert(uint64_t lo, uint64_t hi) {   /* 1 = already in the set */
+/* 1 = already in the set */
+static int ucap_insert(uint64_t lo, uint64_t hi) {
     for (uint32_t i = (uint32_t)((lo ^ hi * 0x9E3779B97F4A7C15ull) * 0xBF58476D1CE4E5B9ull >> 40) & ucap_set_mask;; i = (i + 1) & ucap_set_mask) {
         ucap_slot *s = &ucap_set[i];
         if (s->gen != ucap_gen) { *s = (ucap_slot){lo, hi, ucap_gen, 0}; return 0; }
@@ -91,8 +97,10 @@ static int ucap_insert(uint64_t lo, uint64_t hi) {   /* 1 = already in the set *
     }
 }
 static int ucap_seen(const ucap_range *r, int n, uint64_t lo, uint64_t hi) {
-    { static int off = -1; if (off < 0) off = exp_env("noucapdedup"); if (off) return 0; }   /* A/B: every bind kept, as before */
-    if (!ucap_set || (uint32_t)n * 2 >= ucap_set_mask) {   /* grow, then put back this submission's ranges (r holds them, distinct) */
+    /* A/B: every bind kept */
+    { static int off = -1; if (off < 0) off = exp_env("noucapdedup"); if (off) return 0; }
+    /* grow, then put back this submission's ranges (r holds them, distinct) */
+    if (!ucap_set || (uint32_t)n * 2 >= ucap_set_mask) {
         uint32_t size = ucap_set ? (ucap_set_mask + 1) * 2 : 8192;
         free(ucap_set); ucap_set = calloc(size, sizeof *ucap_set); if (!ucap_set) die("uniform capture set");
         ucap_set_mask = size - 1;
@@ -100,8 +108,9 @@ static int ucap_seen(const ucap_range *r, int n, uint64_t lo, uint64_t hi) {
     }
     return ucap_insert(lo, hi);
 }
-int dm_android_read_ranges(int n, const uint64_t *ranges, uint8_t *base, const size_t *off);   /* host_posix.c */
-extern const uint32_t *nvn_copy_op_index(uint64_t handle, uint32_t *n) __attribute__((weak));   /* hle_nvn.c: the ops EndRecording indexed */
+int dm_android_read_ranges(int n, const uint64_t *ranges, uint8_t *base, const size_t *off);
+/* hle_nvn.c: the ops EndRecording indexed */
+extern const uint32_t *nvn_copy_op_index(uint64_t handle, uint32_t *n) __attribute__((weak));
 /* hle_nvn.c: the recording's distinct uniform ranges, sorted (its ubo_range_t has this {lo, hi} layout), and its OP_CALL count */
 extern const ucap_range *nvn_copy_ubo_ranges(uint64_t handle, uint32_t *n, uint32_t *calls) __attribute__((weak));
 static void ucap_add(ucap_range **r, int *n, int *cap, const p_bind_buf *b) {
@@ -113,14 +122,16 @@ static void ucap_add(ucap_range **r, int *n, int *cap, const p_bind_buf *b) {
 static void ucap_collect(ucap_range **r, int *n, int *cap, const uint8_t *p, int depth) {
     uint32_t nx; const uint32_t *ix = nvn_copy_op_index ? nvn_copy_op_index((uint64_t)(uintptr_t)p, &nx) : NULL;
     { uint32_t nr, ncall; const ucap_range *list = ix && nvn_copy_ubo_ranges ? nvn_copy_ubo_ranges((uint64_t)(uintptr_t)p, &nr, &ncall) : NULL;
-      if (list) {   /* the list EndRecording made (distinct, sorted); the merge below handles overlaps between recordings */
+      /* the list EndRecording made (distinct, sorted); the merge below handles overlaps between recordings */
+      if (list) {
           if (*n + (int)nr > *cap) { *cap = *n + (int)nr + 4096; *r = realloc(*r, (size_t)*cap * sizeof **r); if (!*r) die("uniform capture ranges"); }
           memcpy(*r + *n, list, (size_t)nr * sizeof **r); *n += (int)nr;
           if (ncall && depth < 16) for (uint32_t i = 0; i < nx && ncall; i++) {
               const uint8_t *q = p + ix[i]; op_hdr h; memcpy(&h, q, sizeof h);
               if (h.op == OP_CALL) { uint64_t t; memcpy(&t, q + 8, 8); ucap_collect(r, n, cap, (const uint8_t *)(uintptr_t)t, depth + 1); ncall--; } }
           return; } }
-    if (ix) {   /* only the indexed ops, not the whole recording */
+    /* only the indexed ops, not the whole recording */
+    if (ix) {
         for (uint32_t i = 0; i < nx; i++) {
             const uint8_t *q = p + ix[i]; op_hdr h; memcpy(&h, q, sizeof h);
             if (h.op == OP_CALL) { uint64_t t; memcpy(&t, q + 8, 8); if (depth < 16) ucap_collect(r, n, cap, (const uint8_t *)(uintptr_t)t, depth + 1); }
@@ -138,8 +149,8 @@ static void ucap_collect(ucap_range **r, int *n, int *cap, const uint8_t *p, int
         p += h.size;
     }
 }
-/* Sort ranges by lo: an LSD radix sort over the 40 address bits (5 passes of 8), in place of qsort with a comparator
-   callback, which took 0.25 ms of the submit call (on the game thread, ahead of translation) for a few thousand ranges. */
+/* Sort ranges by lo: an LSD radix sort over the 40 address bits (5 passes of 8). qsort with a comparator callback
+   takes 0.25 ms of the submit call (on the game thread, ahead of translation) for a few thousand ranges. */
 static void ucap_sort(ucap_range *r, int n) {
     static __thread ucap_range *tmp; static __thread int tmp_cap;
     if (n < 2) return;
@@ -160,7 +171,8 @@ static struct { uint64_t n, collect_ns, sort_ns, alloc_ns, copy_ns, ranges, byte
 void *mtl_sub_capture_ubos(const uint64_t *h, int n) {
     ucap_range *r = NULL; int count = 0, cap = 0;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC), t1 = t0, t2 = t0, t3 = t0;
-    if (!++ucap_gen) ucap_gen = 1;   /* 0 marks a never-used slot */
+    /* 0 marks a never-used slot */
+    if (!++ucap_gen) ucap_gen = 1;
     for (int i = 0; i < n; i++) ucap_collect(&r, &count, &cap, (const uint8_t *)(uintptr_t)h[i], 0);
     t1 = dm_android_clock_ns(CLOCK_MONOTONIC);
     ucap *c = calloc(1, sizeof *c); if (!c) die("uniform capture");
@@ -181,27 +193,30 @@ void *mtl_sub_capture_ubos(const uint64_t *h, int n) {
         c->n = k + 1; size_t total = 0; int gpu = ucap_bind_on();
         uint64_t align = gpu && gpu_limits.minUniformBufferOffsetAlignment ? gpu_limits.minUniformBufferOffsetAlignment : 1;
         c->off = malloc(sizeof *c->off * (size_t)(c->n ? c->n : 1)); if (!c->off) die("uniform capture");
-        for (int i = 0; i < c->n; i++) { total += (size_t)((r[i].lo - total) % align); c->off[i] = total; total += (size_t)(r[i].hi - r[i].lo); }   /* offset = address (mod align) */
+        /* offset = address (mod align) */
+        for (int i = 0; i < c->n; i++) { total += (size_t)((r[i].lo - total) % align); c->off[i] = total; total += (size_t)(r[i].hi - r[i].lo); }
         t2 = dm_android_clock_ns(CLOCK_MONOTONIC);
         if (gpu) { c->buf = buffer_create(total + 65536); c->bytes = c->buf.mapped; }
         else { c->bytes = malloc(total ? total : 1); if (!c->bytes) die("uniform capture bytes"); }
         t3 = dm_android_clock_ns(CLOCK_MONOTONIC);
-        c->r = r; ucap_prof.ranges += (uint64_t)c->n; ucap_prof.bytes += total;   /* the bytes follow in mtl_sub_capture_copy */
+        /* the bytes follow in mtl_sub_capture_copy */
+        c->r = r; ucap_prof.ranges += (uint64_t)c->n; ucap_prof.bytes += total;
     } else { free(r); atomic_store(&c->copied, 1); }
     ucap_prof.collect_ns += t1 - t0; ucap_prof.sort_ns += t2 - t1; ucap_prof.alloc_ns += t3 - t2;
     return c;
 }
 /* The bytes of the capture, read on the game thread after the submission was handed to the translation thread (the
    translation of the first draws, ~0.25 ms, overlaps this ~0.2 ms copy; the submit call still returns only once the
-   bytes are in, so the game's rewriting of its pools after the call is as safe as before). The translation thread
-   waits for the bytes only where it reads them (ucap_wait: the CPU paths) and before a command buffer that may read
-   them reaches the GPU (every vkQueueSubmit). */
+   bytes are in, so the game may rewrite its pools after the call). The translation thread waits for the bytes only
+   where it reads them (ucap_wait: the CPU paths) and before a command buffer that may read them reaches the GPU
+   (every vkQueueSubmit). */
 #include <linux/futex.h>
 #include <sys/syscall.h>
 void mtl_sub_capture_copy(void *cap) {
     ucap *c = cap; if (!c || atomic_load(&c->copied)) return;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
-    dm_android_read_ranges(c->n, (const uint64_t *)c->r, c->bytes, c->off);   /* {lo, hi} pairs, as ucap_range lays them out */
+    /* {lo, hi} pairs, as ucap_range lays them out */
+    dm_android_read_ranges(c->n, (const uint64_t *)c->r, c->bytes, c->off);
     atomic_store_explicit(&c->copied, 1, memory_order_release);
     if (atomic_load(&c->waiters)) syscall(SYS_futex, &c->copied, FUTEX_WAKE_PRIVATE, INT_MAX, NULL, NULL, 0);
     ucap_prof.copy_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
@@ -222,13 +237,17 @@ static void ucap_wait(const ucap *cc) {
 }
 static void ucap_wait_current(void) { ucap_wait(ucap_current); }
 static void ucap_free(ucap *c) { if (c) { free(c->r); free(c->off); free(c->dirty); if (c->buf.buffer) buffer_destroy(&c->buf); else free(c->bytes); free(c); } }
-static int ucap_first(const ucap *c, uint64_t address) {   /* the first range ending after address */
+/* the first range ending after address */
+static int ucap_first(const ucap *c, uint64_t address) {
     int lo = 0, hi = c->n; while (lo < hi) { int m = (lo + hi) / 2; if (c->r[m].hi <= address) lo = m + 1; else hi = m; } return lo;
 }
 void mtl_sub_snapshot_ubos_cap(const uint64_t *h, int n, void *cap) {
     (void)h; (void)n;
-    ucap_free(ucap_current); ucap_current = cap; ucap_serial++;   /* kept until the next submission's replay (the queue lock serializes replays) */
-    game_sync_epoch++; sl.piece = 0; sl.submission++;   /* the game's submission boundary: a sync point (the game waits on its fences) and the start of the piece ordinals (census) */
+    /* kept until the next submission's replay (the queue lock serializes replays) */
+    ucap_free(ucap_current); ucap_current = cap; ucap_serial++;
+    /* the game's submission boundary: a sync point (the game waits on its fences) and the start of the piece
+       ordinals (census) */
+    game_sync_epoch++; sl.piece = 0; sl.submission++;
     ucap *c = cap;
     if (c && c->n) { c->dirty = calloc((size_t)c->n, 1); if (!c->dirty) die("uniform capture flags");
         for (int i = 0; i < c->n; i++) { uint64_t size = c->r[i].hi - c->r[i].lo; c->dirty[i] = async_unknown(c->r[i].lo, size) || async_copy_pending(c->r[i].lo, size); } }
@@ -259,7 +278,8 @@ static void ucap_miss(int why, uint32_t size) { ucap_missed[why]++; ucap_missed_
 /* the same blocks are bound draw after draw: remember each address's range for this capture */
 static struct { uint64_t address, serial; int index; } ucap_memo[1024];
 static int ucap_range_of(const ucap *c, uint64_t address, ucap_memo_entry *m) {
-    if (m) { if (m->serial == ucap_serial && m->address == address) return m->index;   /* this binding's block, as in the last draw */
+    /* this binding's block, as in the last draw */
+    if (m) { if (m->serial == ucap_serial && m->address == address) return m->index;
         /* a new capture: the same block is usually at the same index (the range lists differ little frame to frame) */
         int lo = m->address == address && m->index < c->n && c->r[m->index].lo <= address && address < c->r[m->index].hi ? m->index : ucap_first(c, address);
         *m = (ucap_memo_entry){address, ucap_serial, lo}; return lo; }
@@ -267,7 +287,8 @@ static int ucap_range_of(const ucap *c, uint64_t address, ucap_memo_entry *m) {
     if (ucap_memo[slot].serial == ucap_serial && ucap_memo[slot].address == address) return ucap_memo[slot].index;
     int lo = ucap_first(c, address); ucap_memo[slot].address = address; ucap_memo[slot].serial = ucap_serial; ucap_memo[slot].index = lo; return lo;
 }
-static int ucap_bind(uintptr_t address, uint32_t size, uint32_t range, VkDescriptorBufferInfo *info, ucap_memo_entry *m) {   /* range: the descriptor's (65536, or the exact bound bytes under robustBufferAccess2) */
+/* range: the descriptor's (65536, or the exact bound bytes under robustBufferAccess2) */
+static int ucap_bind(uintptr_t address, uint32_t size, uint32_t range, VkDescriptorBufferInfo *info, ucap_memo_entry *m) {
     ucap *c = ucap_current; if (!c || !c->n || !c->buf.buffer) { ucap_miss(UCAP_NO_CAPTURE, size); return 0; }
     int lo = ucap_range_of(c, address, m);
     if (lo >= c->n || c->r[lo].lo > address || c->r[lo].hi < (uint64_t)address + size) { ucap_miss(UCAP_NOT_COVERED, size); return 0; }
@@ -276,7 +297,8 @@ static int ucap_bind(uintptr_t address, uint32_t size, uint32_t range, VkDescrip
     if (c->dirty[lo]) { ucap_miss(UCAP_GPU_PENDING, size); return 0; }
     if (c->borrowed != post_batch_serial) { post_new(3)->source = buffer_borrow(c->buf); c->borrowed = post_batch_serial; }
     ucap_bound++; ucap_bound_bytes += size;
-    if (ucap_bind_on() == 2) { static uint64_t checked, differ; checked++;   /* TOTK_VK_UCAPBIND=2: what the arena path would have read */
+    /* TOTK_VK_UCAPBIND=2: what the arena path would have read */
+    if (ucap_bind_on() == 2) { static uint64_t checked, differ; checked++;
         if (ucap_wait(c), !uniform_read_current(address, size) && memcmp(uniform_read_scratch, c->bytes + offset, size)) { differ++;
             if (differ <= 50) LOG("[vulkan] uniform capture bind differs from the arena path: %#llx+%u (%llu of %llu checked)", (unsigned long long)address, size, (unsigned long long)differ, (unsigned long long)checked); } }
     { static uint64_t last, b0, n0; if (presents >= last + 600) { if (last) { LOG("[vulkan] uniform blocks bound from the submit capture: %.0f a frame, %.2f MB a frame", (ucap_bound - n0) / 600.0, (ucap_bound_bytes - b0) / 600.0 / 1048576);
@@ -293,7 +315,8 @@ static void inplace_check(uintptr_t address, uint32_t size, ucap_memo_entry *m) 
     int lo = ucap_range_of(c, address, m);
     if (lo >= c->n || c->r[lo].lo > address || c->r[lo].hi < (uint64_t)address + size) return;
     uint64_t off = c->off[lo] + (address - c->r[lo].lo); inplace_checked++;
-    if (async_current && c->buf.buffer) {   /* for the check at completion: the entry, and the capture kept alive by this batch */
+    /* for the check at completion: the entry, and the capture kept alive by this batch */
+    if (async_current && c->buf.buffer) {
         async_batch *b = async_current; if (b->ipp_n == b->ipp_cap) { b->ipp_cap = b->ipp_cap ? b->ipp_cap * 2 : 4096; b->ipp = realloc(b->ipp, b->ipp_cap * sizeof *b->ipp); if (!b->ipp) die("in-place probe"); }
         b->ipp[b->ipp_n++] = (struct ipp_entry){address, size, c->bytes + off};
         if (c->borrowed != post_batch_serial) { post_new(3)->source = buffer_borrow(c->buf); c->borrowed = post_batch_serial; } }
@@ -314,10 +337,10 @@ static int ucap_covers(uintptr_t address, uint32_t size) {
     int lo = 0, hi = c->n; while (lo < hi) { int m = (lo + hi) / 2; if (c->r[m].hi <= address) lo = m + 1; else hi = m; }
     return lo < c->n && c->r[lo].lo <= address && c->r[lo].hi >= (uint64_t)address + size;
 }
-static int uniform_read_class; static uint64_t uniform_read_calls;   /* uboprobe: where the last read's bytes came from (UBOPROBE_*) */
+/* uboprobe: where the last read's bytes came from (UBOPROBE_*) */
+static int uniform_read_class; static uint64_t uniform_read_calls;
 static int uniform_read_current(uintptr_t address,uint32_t size) {
     uniform_read_from_capture=0;uniform_read_calls++;uniform_read_class=UBOPROBE_KNOWN_COPY;
-    // 目的仅为 queue-owned scratch：从不交给 GPU，也不别名 guest 或 arena；完整范围已由调用方检查。
     // The destination is only queue-owned scratch, never passed to the GPU or aliased with guest/arena memory; the caller checks the full range.
     if(async_read_known_full_copy(address,uniform_read_scratch,size)){
         uniform_read_stats.known_calls++;uniform_read_stats.known_bytes+=size;
@@ -325,36 +348,39 @@ static int uniform_read_current(uintptr_t address,uint32_t size) {
         int unknown=ucap_current?async_unknown(address,size):1;
         uniform_read_from_capture=!unknown&&ucap_covers(address,size);
         uniform_read_class=unknown?UBOPROBE_GPU_PENDING:uniform_read_from_capture?UBOPROBE_CAPTURE:UBOPROBE_MEMORY;
-        if(uniform_read_from_capture)ucap_apply(address,uniform_read_scratch,size);   /* wholly captured at the submit call: no guest read */
+        /* wholly captured at the submit call: no guest read */
+        if(uniform_read_from_capture)ucap_apply(address,uniform_read_scratch,size);
         else{
         uniform_read_stats.safe_calls++;uniform_read_stats.safe_requested_bytes+=size;
         if(dm_android_read_memory(address,uniform_read_scratch,size)){uniform_read_stats.safe_errors++;return -1;}
-        if(!unknown)ucap_apply(address,uniform_read_scratch,size);   /* as of the submit call */
+        /* as of the submit call */
+        if(!unknown)ucap_apply(address,uniform_read_scratch,size);
         }
-        // 仍按原 FIFO 顺序覆盖所有已知在途复制。
         // Overlay every known pending copy in the original FIFO order.
         async_overlay_copies(address,uniform_read_scratch,size);
     }
     snapshot_read_account(size);return 0;
 }
 static VkDescriptorBufferInfo uniform_read_cached_read(uintptr_t address,uint32_t size);
-static void taa_uniform(uintptr_t address,uint32_t size,uint8_t *data);   /* nvn_vulkan_taa.inc: the camera's jitter (our copy only) */
+/* nvn_vulkan_taa.inc: the camera's jitter (our copy only) */
+static void taa_uniform(uintptr_t address,uint32_t size,uint8_t *data);
 static VkDescriptorBufferInfo uniform_read_cached(uintptr_t address,uint32_t size) {
     uint64_t calls=uniform_read_calls,phase=dm_cpu_phase_begin();VkDescriptorBufferInfo info=uniform_read_cached_read(address,size);dm_cpu_phase_end(DM_CPU_PHASE_UBO,phase);
     if(uboprobe_on()){uniform_version *e=uniform_versions[read_bucket(address,size)&2047];while(e&&(e->address!=address||e->size!=size))e=e->next;
-        int c=calls==uniform_read_calls?UBOPROBE_CAPTURE:uniform_read_class;   /* no read: reused from this submission's capture */
+        /* no read: reused from this submission's capture */
+        int c=calls==uniform_read_calls?UBOPROBE_CAPTURE:uniform_read_class;
         if(c!=UBOPROBE_KNOWN_COPY&&c!=UBOPROBE_GPU_PENDING&&async_copy_pending(address,size))c=UBOPROBE_COPY_OVERLAY;
         if(e)uboprobe_note(address,size,e->mapped,c);}
     return info;
 }
 static VkDescriptorBufferInfo uniform_read_cached_read(uintptr_t address,uint32_t size) {
     if(!address||!size||size>65536||size>UINTPTR_MAX-address)die("Vulkan uniform version bounds");
-    // queue_lock 串行复用 scratch；每次安全读取和 FIFO overlay 后才按实际字节复用，不依赖页保护或旧 stamp。
     // queue_lock serializes scratch reuse; compare fresh safe-read/FIFO-overlay bytes without relying on page protection or old stamps.
     unsigned bucket=read_bucket(address,size)&2047;uniform_version *entry=uniform_versions[bucket];while(entry&&(entry->address!=address||entry->size!=size))entry=entry->next;
     /* read earlier in this submission from the capture, and nothing recorded since could overlay it: same bytes */
     if(entry&&ucap_current&&entry->capture_serial==ucap_serial&&entry->capture_order==post_write_order){uniform_version_reuse_hits++;
-        static int check=-1;if(check<0)check=exp_env("ubocheck");   /* the reuse rule against a fresh read */
+        /* the reuse rule against a fresh read */
+        static int check=-1;if(check<0)check=exp_env("ubocheck");
         if(check&&!uniform_read_current(address,size)&&memcmp(entry->mapped,uniform_read_scratch,size))die("Vulkan uniform reuse mismatch: %#llx+%u",(unsigned long long)address,size);
         return entry->info;}
     if(uniform_read_current(address,size))die("Unreadable Vulkan cached uniform");uniform_version_read_bytes+=size;
@@ -362,7 +388,6 @@ static VkDescriptorBufferInfo uniform_read_cached_read(uintptr_t address,uint32_
     uint64_t serial=uniform_read_from_capture?ucap_serial:0;
     if(entry){uniform_version_compare_bytes+=size;if(!memcmp(entry->mapped,uniform_read_scratch,size)){uniform_version_hits++;entry->capture_serial=serial;entry->capture_order=post_write_order;return entry->info;}}
     uniform_version_misses++;uint8_t *mapped;VkDescriptorBufferInfo info=uniform_allocate_overwrite(size,&mapped);
-    // 变化时分配新 arena slot；旧 descriptor 引用的字节在该批 fence 完成前保持不变。
     // Allocate a fresh arena slot on changes; bytes referenced by older descriptors stay immutable until this batch's fence completes.
     memcpy(mapped,uniform_read_scratch,size);uniform_version_copy_bytes+=size;
     if(!entry){entry=uniform_version_new();entry->address=address;entry->size=size;entry->next=uniform_versions[bucket];uniform_versions[bucket]=entry;}
@@ -380,16 +405,14 @@ static void descriptor_payload_build(const VkWriteDescriptorSet *writes,unsigned
         }
     }
     descriptor_payload_words=cursor;
-    // 显式字段编码，不把 Vulkan 结构体未定义的 padding 当作内容。四路并行累加，再合并，免得逐字乘法串成一条依赖链。
-    // Encode explicit fields rather than treating unspecified Vulkan structure padding as content. Four independent lanes,
-    // folded at the end, so the multiplies do not form one serial dependency chain (the serial FNV loop was ~12% of
+    // Encode explicit fields rather than treating unspecified Vulkan structure padding as content. Four independent
+    // lanes, folded at the end, so the multiplies do not form one serial dependency chain (a serial FNV loop is ~12% of
     // bind_shader's self time).
     const uint64_t *w=descriptor_payload;size_t n=descriptor_payload_words,i=0;
     uint64_t h0=14695981039346656037ull,h1=h0^1,h2=h0^2,h3=h0^3;
     for(;i+4<=n;i+=4){h0=(h0^w[i])*1099511628211ull;h1=(h1^w[i+1])*1099511628211ull;h2=(h2^w[i+2])*1099511628211ull;h3=(h3^w[i+3])*1099511628211ull;}
     for(;i<n;i++)h0=(h0^w[i])*1099511628211ull;
     uint64_t h=h0^(h1*0x9E3779B97F4A7C15ull)^(h2*0xC2B2AE3D27D4EB4Full)^(h3*0x165667B19E3779F9ull)^n;
-    // 64 KiB arena offset 的低位相同，末尾混合高位防止所有模型版本挤进同一个桶。
     // Arena offsets share low 64 KiB bits; mix high bits at the end so model versions do not all land in one bucket.
     h^=h>>33;h*=0xff51afd7ed558ccdull;h^=h>>33;
     descriptor_payload_hash=h;

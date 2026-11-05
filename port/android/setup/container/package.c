@@ -162,7 +162,8 @@ static int section_key(uint8_t key[16], const tokc_nca *n, const tokc_keys *keys
     }
     if (n->area_index) return tokc_fail(err, errlen, TOKC_E_FORMAT, "an NCA uses key area %u; only the application's is supported", n->area_index);
     if (!(keys->have_area_app >> g & 1)) return tokc_fail(err, errlen, TOKC_E_KEY_MISSING, "prod.keys has no key_area_key_application_%02x", g);
-    tokc_aes_ecb_decrypt(keys->area_app[g], n->hdr + 0x300 + 32, key, 16);   /* the third slot is the CTR key */
+    /* the third slot is the CTR key */
+    tokc_aes_ecb_decrypt(keys->area_app[g], n->hdr + 0x300 + 32, key, 16);
     return TOKC_OK;
 }
 

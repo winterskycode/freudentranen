@@ -1,4 +1,3 @@
-// 多个真实 GPU/CPU 输出按 FIFO 覆盖一个新基线；客体内存仍只在最终完成时发布。
 // Overlay genuine GPU/CPU outputs over a fresh baseline in FIFO order; guest memory still publishes only on final completion.
 static uint64_t forward_compose_count,forward_compose_bytes,forward_compose_overlays;
 static uint64_t forward_compose_report_count,forward_compose_report_bytes,forward_compose_report_overlays;
@@ -39,7 +38,6 @@ static void forward_compose_chain(post_op *posts,const post_op *stop,uintptr_t a
     for(post_op *p=posts;p&&p!=stop;p=p->next){forward_slice slice;VkBufferCopy region;int result=forward_compose_post(p,address,size,&slice,&region);
         if(result<0)die("Vulkan compose changed after dependency preflight");if(!result)continue;
         forward_read_barrier(&slice,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_READ_BIT);forward_hold(&slice);
-        // 各覆盖可能重叠；即使源不同也必须保持目标写入的原命令次序。
         // Overlays can overlap; preserve destination write order even when their sources differ.
         VkBufferMemoryBarrier barrier={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,
             .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=output.buffer,.size=size};
@@ -49,7 +47,6 @@ static void forward_compose_chain(post_op *posts,const post_op *stop,uintptr_t a
 }
 static void forward_compose_into(vk_buffer output,uintptr_t address,uint64_t bytes,VkPipelineStageFlags stage,VkAccessFlags access,post_op *const *scope_marker) {
     if(!forward_compose_possible(address,bytes,scope_marker)||!output.owner||atomic_load(&output.owner->references)!=1||output.size<bytes)die("Vulkan compose without owned destination/complete plan");
-    // 不使用 snapshot_read：它会先套用 CPU copy，随后旧 GPU 覆盖会打乱 FIFO。
     // Do not use snapshot_read: its early CPU-copy overlays would be overwritten out of FIFO order by older GPU writes.
     if(dm_android_read_memory(address,output.mapped,bytes))die("Vulkan compose baseline unreadable");snapshot_read_account(bytes);
     graphics_pass_end();const post_op *stop=scope_marker?*scope_marker:NULL;

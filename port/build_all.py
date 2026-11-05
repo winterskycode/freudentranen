@@ -19,7 +19,8 @@ import build_app as B
 
 REWRITER = ROOT / 'port/rewriter/d2r'
 NDK_LLVM = Path('/opt/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin')
-MODULES = ('main', 'sdk', 'subsdk0')   # main first: it is the longest job
+# main first: it is the longest job
+MODULES = ('main', 'sdk', 'subsdk0')
 
 
 def timed(name, fn, *a, **k):
@@ -153,7 +154,8 @@ def code_lane(tree, game, update, version, keys, env, logs, android_out, workers
     jobs = [(f'structck {m}', [venv_py, REWRITER / 'structck.py', android_out, m, exefs / m, '--target', 'android'],
              android_out / f'{m}-structure.log', REWRITER, check_env) for m in MODULES]
     timed('structure checks', run_all, jobs, workers)
-    for m in MODULES:   # equiv already uses every core through its own worker pool
+    # equiv already uses every core through its own worker pool
+    for m in MODULES:
         mutate = '300' if m == 'main' else '150'
         timed(f'equivalence {m}', B.run, [venv_py, REWRITER / 'equiv.py', android_out, m, exefs / m, '--target', 'android',
               '--jobs', str(workers), '--min-eff', '2', '--max-extra', '16', '--mutate', mutate,
