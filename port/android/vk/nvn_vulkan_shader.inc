@@ -436,6 +436,10 @@ static int taa_enabled(void);
    rest of its pool. Bound to zeros, every vertex of the ground falls on one point, and the backdrop far below shows
    through as black ground. */
 static uint64_t mtl_room(uint64_t addr);
+static int storage_pointer_in_place(uint64_t addr,uint64_t bytes) {
+    uint64_t off;VkBuffer pool=zc_buffer_at(addr,bytes,&off);
+    return pool&&!(off%gpu_limits.minStorageBufferOffsetAlignment);
+}
 static void storage_pointer_resolve(unsigned stage,int ubo,int offset,p_bind_buf *out) {
     *out=(p_bind_buf){0};const p_bind_buf *u=&state.ubo[stage][ubo];
     if(!u->addr||offset<0||(uint64_t)offset+16>(u->size?u->size:65536))return;
@@ -626,9 +630,9 @@ static VkDescriptorSet bind_shader(shader_entry *s,post_op *lifetime,uint32_t *d
                 // forwarded, it would leave copies over the whole pool, from which other draws read old data as vertices (slabs
                 // over Gerudo Town after the Depths).
                 // BufferUsageFlags.Write is bit 0; image flag bits do not apply to SSBOs.
-                if(u->addr&&!(b->flags&1)&&plan->cb_pointer<0){if(!s->bmemo){s->bmemo=calloc(s->buffer_count?s->buffer_count:1,sizeof *s->bmemo);if(!s->bmemo)die("Vulkan buffer memo");}
+                if(u->addr&&!(b->flags&1)&&(plan->cb_pointer<0||!storage_pointer_in_place(u->addr,bytes))){if(!s->bmemo){s->bmemo=calloc(s->buffer_count?s->buffer_count:1,sizeof *s->bmemo);if(!s->bmemo)die("Vulkan buffer memo");}
                     buffers[j]=forward_readonly_shader_buffer(&s->bmemo[plan->offset+j],s,b,j,slot,UINT32_MAX,uniform_ptr?2:1,u->size,u->addr,bytes,gpu_limits.minStorageBufferOffsetAlignment,shader_pipeline_stage(s),VK_ACCESS_SHADER_READ_BIT);}
-                else if(u->addr&&(inplace_on()||plan->cb_pointer>=0)&&({uint64_t off_;VkBuffer pool_=zc_buffer_at(u->addr,bytes,&off_);int ok_=pool_&&!(off_%gpu_limits.minStorageBufferOffsetAlignment);if(ok_){buffers[j]=(VkDescriptorBufferInfo){pool_,off_,bytes};inplace_ssbo_w++;}else{inplace_fallback++;inplace_why[pool_?IF_SSBO_ALIGN:IF_SSBO_POOL]++;if(!pool_)inplace_classify(u->addr,bytes);}ok_;})){}
+                else if(u->addr&&(inplace_on()||(plan->cb_pointer>=0&&!(b->flags&1)))&&({uint64_t off_;VkBuffer pool_=zc_buffer_at(u->addr,bytes,&off_);int ok_=pool_&&!(off_%gpu_limits.minStorageBufferOffsetAlignment);if(ok_){buffers[j]=(VkDescriptorBufferInfo){pool_,off_,bytes};inplace_ssbo_w++;}else{inplace_fallback++;inplace_why[pool_?IF_SSBO_ALIGN:IF_SSBO_POOL]++;if(!pool_)inplace_classify(u->addr,bytes);}ok_;})){}
                 else if(u->addr&&ssbo_write_in_place(s,u->addr,bytes,&buffers[j])){}
                 else{post_op *p=post_new(u->addr?0:3);p->site=POST0_SITE_SSBO;p->destination=(void*)(uintptr_t)u->addr;p->size=bytes;p->output=buffer_create(bytes);if(u->addr){post_register_range(p);const uint8_t *inherit;int cpu=forward_seed(&p->output,u->addr,bytes,shader_pipeline_stage(s),&inherit);
                     /* experiment: publish changed blocks only */

@@ -6,8 +6,8 @@
 #   the exact upstream sources the build used, so a release can be rebuilt even if an upstream goes away
 # The app's version name is the tag; its version code is the minutes from 2025-01-01 00:00 to the tag's date and time, so
 # every later tag is a larger code (Android only updates to a larger one).
-# Signing: TOTK_KEYSTORE (the release .jks), TOTK_KEYSTORE_PASSWORD, TOTK_KEY_ALIAS. TOTK_RELEASE_DEBUG_KEY=1
-# signs a test build with this PC's debug key instead.
+# Signing: TOTK_KEYSTORE (the release .jks), TOTK_KEYSTORE_PASSWORD, TOTK_KEY_ALIAS. TOTK_RELEASE_DEBUG_KEY=1 builds with a
+# debug key instead: CI does, then release_sign.sh signs with the release key, so no build script sees it.
 # Needs: the Android SDK with the NDK, build-tools and platform of tools/env.sh (ANDROID_SDK_ROOT), git, curl, python3 with
 # venv, cmake, ninja, pkg-config, bison, flex, glslangValidator, a JDK (17+), zip and unzip (tools/ci-packages.txt).
 # No game files: the APK carries none, and nothing in its build is made from them.

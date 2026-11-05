@@ -1064,6 +1064,7 @@ public class LauncherActivity extends Activity {
         invalidateAll(page);
         new Thread(() -> {
             try { work.run(); } catch (RuntimeException e) { setupError = "That could not be read. Try again."; }
+            if (Game.MODS) Mods.forgetRomfs();
             runOnUiThread(() -> {
                 setupProgress = null;
                 if (!before && setup.state.complete() && setupBack.equals("home")) show("home");
@@ -1527,7 +1528,7 @@ public class LauncherActivity extends Activity {
             runOnUiThread(() -> {
                 launchStatus = null; iconsTried = true; iconsProblem = failed;
                 if (failed != null) Toast.makeText(this, failed, Toast.LENGTH_LONG).show();
-                preparing = prep; launch(); preparing = false;
+                preparing = prep; launch(); preparing = false; iconsTried = false;
             });
         }).start();
     }

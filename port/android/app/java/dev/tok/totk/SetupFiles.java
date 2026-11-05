@@ -148,9 +148,19 @@ final class SetupFiles implements Setup.Reader, Setup.Tree {
         Setup s = new Setup(c.getNoBackupFilesDir(), null);
         if (!s.complete()) return false;
         int base = forGame(r, s, Setup.BASE), update = base < 0 ? -1 : forGame(r, s, Setup.UPDATE);
-        if (update < 0) throw new IOException("The game files cannot be read where they are. Pick them again under Tools.");
-        PlayerRomfs.open(s.keysFile().getPath(), base, update);
+        if (update < 0) { closeFd(base); throw new IOException("The game files cannot be read where they are. Pick them again under Tools."); }
+        try { PlayerRomfs.open(s.keysFile().getPath(), base, update); }
+        catch (IOException | RuntimeException e) { closeFd(base); closeFd(update); throw e; }
+        // The native reader does not own its descriptors: the last pair stays open until the next one replaces it.
+        closeFd(modsBase); closeFd(modsUpdate); modsBase = base; modsUpdate = update;
         return true;
+    }
+
+    private static int modsBase = -1, modsUpdate = -1;
+
+    private static void closeFd(int fd) {
+        if (fd < 0) return;
+        try { ParcelFileDescriptor.adoptFd(fd).close(); } catch (IOException e) { /* nothing more can be done with it */ }
     }
 
     /** Before libtotk.so loads: the picks as TOTK_BASE_FD, TOTK_UPDATE_FD and TOTK_KEYS (a path, never the keys). With no picks

@@ -179,6 +179,9 @@ int compat_guest_overlay(void *address, size_t size, int dmabuf) {
     overlays[noverlays++] = (Overlay){bfd, off, size, dmabuf};
     remap_ctx c = {bfd, PROT_READ | PROT_WRITE};
     int r = for_each_mapping(bfd, off, size, remap_one, &c);
+    /* A failed remap leaves the range split between two backings, and the caller closes the dma-buf. The memfd still holds
+       the pages, so everything goes back to it. */
+    if (r) { noverlays--; for_each_mapping(bfd, off, size, remap_one, &c); }
     /* the dma-buf replaces these memfd pages: free them */
     if (!r) fallocate(bfd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, (off_t)size);
     /* The remap leaves the range's page tables empty, so every page the game touches afterwards faults on its own

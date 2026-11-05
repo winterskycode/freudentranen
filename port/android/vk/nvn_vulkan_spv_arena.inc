@@ -5,7 +5,7 @@
    and vkMapMemory then fail). Here they share large chunks instead: one mapping for many shaders.
 
    spv_callbacks goes to every vkCreateShaderModule and vkDestroyShaderModule of a game shader, and Vulkan requires the two
-   to match: a module made with it must be destroyed with it. A chunk is unmapped once nothing in it is alive. */
+   to match: a module made with it must be destroyed with it. A chunk is unmapped once nothing in it is alive. A block may be plain malloc memory when no chunk can be had. */
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <linux/prctl.h>
@@ -36,7 +36,11 @@ static void *spv_alloc(size_t size, size_t align) {
     unsigned c = spv_arena.current;
     if (!spv_arena.started || spv_arena.used + need > spv_arena.size[c]) {
         int fresh = spv_new_chunk(need);
-        if (fresh < 0) { pthread_mutex_unlock(&spv_arena_lock); return NULL; }
+        if (fresh < 0) {
+            pthread_mutex_unlock(&spv_arena_lock);
+            void *p = NULL;
+            return posix_memalign(&p, align, size) ? NULL : p;
+        }
         if (spv_arena.started && !spv_arena.live[c]) { munmap(spv_arena.base[c], spv_arena.size[c]); spv_arena.base[c] = NULL; }
         c = spv_arena.current = (unsigned)fresh; spv_arena.used = 0; spv_arena.started = 1;
     }
@@ -63,6 +67,11 @@ static void spv_free(void *p) {
     if (h->magic != SPV_MAGIC) die("Vulkan shader code arena: bad block");
     h->magic = 0;
     if (!--spv_arena.live[c] && c != spv_arena.current) { munmap(spv_arena.base[c], spv_arena.size[c]); spv_arena.base[c] = NULL; }
+    else {
+        /* Space is not reused, but the pages go back: a shader built only to warm the pipeline library stays out of memory. */
+        uintptr_t page = (uintptr_t)sysconf(_SC_PAGESIZE), lo = ((uintptr_t)p + page - 1) & ~(page - 1), hi = ((uintptr_t)p + h->size) & ~(page - 1);
+        if (hi > lo) madvise((void *)lo, hi - lo, MADV_DONTNEED);
+    }
     pthread_mutex_unlock(&spv_arena_lock);
 }
 /* Moves malloc'ed code into the arena; the code stays where it is if the arena has no room. */
@@ -78,6 +87,8 @@ static void *VKAPI_PTR spv_cb_realloc(void *user, void *old, size_t size, size_t
     (void)user; (void)scope;
     if (!old) return spv_alloc(size, align);
     if (!size) { spv_free(old); return NULL; }
+    pthread_mutex_lock(&spv_arena_lock); int owned = spv_owns(old); pthread_mutex_unlock(&spv_arena_lock);
+    if (!owned) return realloc(old, size);
     void *fresh = spv_alloc(size, align); if (!fresh) return NULL;
     size_t had = ((spv_header *)old - 1)->size;
     memcpy(fresh, old, had < size ? had : size); spv_free(old);

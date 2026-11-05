@@ -120,6 +120,8 @@ final class Setup {
         this.dir = dir; this.reader = reader;
         keys = new File(dir, "prod.keys"); state = new File(dir, "game-files.txt"); reported = new File(dir, "game-files-problem.txt");
         load();
+        // A check that failed left no words behind, and a file that could not be read may be back.
+        if (reader != null && !checked) recheck();
     }
 
     File keysFile() { return keys; }
@@ -308,7 +310,7 @@ final class Setup {
         if (newUpdate != null) put(UPDATE, newUpdate);
         if (keysWhy != null && (!folder || newBase == null || newUpdate == null)) { keysProblem = keysWhy; retry = locked; }
         if (folder) {
-            String none = cut ? TOO_MANY : keysWhy != null ? NEEDS_KEYS : otherGame ? OTHER_GAME : NOT_IN_FOLDER;
+            String none = cut ? TOO_MANY : keysWhy != null ? NEEDS_KEYS : otherGame ? OTHER_GAME : others.isEmpty() ? NOT_IN_FOLDER : NOT_IN_FOLDER + " " + others.get(0);
             if (newBase == null) refuse(BASE, baseWhy != null ? baseWhy : none);
             if (newUpdate == null) refuse(UPDATE, updateWhy != null ? updateWhy : none);
         } else {

@@ -37,18 +37,23 @@ jobs:
           SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SM" --licenses > /dev/null
           "$SM" "ndk;$NDK_VERSION" "build-tools;$BUILD_TOOLS_VERSION" "platforms;$PLATFORM_VERSION" > /dev/null
+      # The build runs third-party scripts, so it gets no secret: it signs with a throwaway key, and the release key comes after.
+      - name: Build the APK
+        env:
+          TOTK_RELEASE_DEBUG_KEY: 1
+        run: sh port/android/tools/release.sh "$GITHUB_REF_NAME"
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.TOTK_KEYSTORE_BASE64 }}
         run: |
           [ -n "$KEYSTORE" ] || { echo "the TOTK_KEYSTORE_BASE64 secret is not set (the release environment's secrets)"; exit 1; }
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
-      - name: Build the APK
+      - name: Sign the APK
         env:
           TOTK_KEYSTORE: ${{ runner.temp }}/release.jks
           TOTK_KEYSTORE_PASSWORD: ${{ secrets.TOTK_KEYSTORE_PASSWORD }}
           TOTK_KEY_ALIAS: totk
-        run: sh port/android/tools/release.sh "$GITHUB_REF_NAME"
+        run: sh port/android/tools/release_sign.sh "$GITHUB_REF_NAME"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

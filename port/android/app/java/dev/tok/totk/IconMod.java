@@ -356,7 +356,7 @@ final class IconMod {
         Mods.writeBytes(file, packed);
         Mods.Entry e = new Mods.Entry();
         e.path = path; e.size = packed.length; e.sha = ModData.hex(ModData.sha256(packed)); e.orig = ModData.hex(ModData.sha256(raw));
-        e.kind = "copy"; e.hint = table.get(path) + drawn.length - sarc.length;
+        e.kind = "copy"; long listed = table.get(path); e.hint = listed == 0 ? 0 : listed + drawn.length - sarc.length;
         return e;
     }
 

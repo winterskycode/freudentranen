@@ -170,12 +170,16 @@ final class Mods {
     private static ModData.Base base;
 
     /** The RomFS image, the zstd dictionaries and (when present) the 1.0.0 base, opened once. */
+    /** The picked files changed: the next use opens them again. */
+    static synchronized void forgetRomfs() { romfs = null; }
+
     private static synchronized ModData.Romfs env() throws IOException {
         if (romfs == null) {
-            romfs = context != null && Game.SETUP && SetupFiles.openForMods(context) ? new ModData.Romfs() : new ModData.Romfs(new File(DATA, "romfs"));
+            ModData.Romfs opened = context != null && Game.SETUP && SetupFiles.openForMods(context) ? new ModData.Romfs() : new ModData.Romfs(new File(DATA, "romfs"));
             List<byte[]> dicts = new ArrayList<>();
-            for (ModData.Member m : ModData.Sarc.read(Zstd.decompress(romfs.read("Pack/ZsDic.pack.zs"))).members) dicts.add(m.data);
+            for (ModData.Member m : ModData.Sarc.read(Zstd.decompress(opened.read("Pack/ZsDic.pack.zs"))).members) dicts.add(m.data);
             Zstd.dictionaries(dicts.toArray(new byte[0][]));
+            romfs = opened;
         }
         if (romfs.player && !BASE.exists()) PlayerRomfs.makeModBase(BASE.getPath());
         if (base == null && BASE.exists()) base = new ModData.Base(BASE);
