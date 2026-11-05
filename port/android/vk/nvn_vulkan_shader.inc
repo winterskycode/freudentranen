@@ -606,11 +606,13 @@ static VkDescriptorSet bind_shader(shader_entry *s,post_op *lifetime,uint32_t *d
             else if(type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER){
                 int uniform_ptr=plan->uniform_pointer,slot=plan->storage_slot;p_bind_buf pointed;
                 const p_bind_buf *u=plan->cb_pointer>=0?(storage_pointer_resolve(s->stage,plan->cb_pointer,plan->cb_pointer_offset,&pointed),&pointed):uniform_ptr?&state.ubo[s->stage][slot]:&state.ssbo[s->stage][slot];uint64_t bytes=u->size?u->size:65536;vk_buffer buffer;
+                // A storage pointer's window is the rest of its pool (up to the device limit, 146 MB seen), so it is bound in place: forwarded,
+                // it left copies over the whole pool, and after the Depths other draws read old data from them as vertices (slabs over Gerudo Town).
                 // BufferUsageFlags.Write 是位 0；图像 flags 的位号不可用于 SSBO。
                 // BufferUsageFlags.Write is bit 0; image flag bits do not apply to SSBOs.
-                if(u->addr&&!(b->flags&1)){if(!s->bmemo){s->bmemo=calloc(s->buffer_count?s->buffer_count:1,sizeof *s->bmemo);if(!s->bmemo)die("Vulkan buffer memo");}
+                if(u->addr&&!(b->flags&1)&&plan->cb_pointer<0){if(!s->bmemo){s->bmemo=calloc(s->buffer_count?s->buffer_count:1,sizeof *s->bmemo);if(!s->bmemo)die("Vulkan buffer memo");}
                     buffers[j]=forward_readonly_shader_buffer(&s->bmemo[plan->offset+j],s,b,j,slot,UINT32_MAX,uniform_ptr?2:1,u->size,u->addr,bytes,gpu_limits.minStorageBufferOffsetAlignment,shader_pipeline_stage(s),VK_ACCESS_SHADER_READ_BIT);}
-                else if(u->addr&&inplace_on()&&({uint64_t off_;VkBuffer pool_=zc_buffer_at(u->addr,bytes,&off_);int ok_=pool_&&!(off_%gpu_limits.minStorageBufferOffsetAlignment);if(ok_){buffers[j]=(VkDescriptorBufferInfo){pool_,off_,bytes};inplace_ssbo_w++;}else{inplace_fallback++;inplace_why[pool_?IF_SSBO_ALIGN:IF_SSBO_POOL]++;if(!pool_)inplace_classify(u->addr,bytes);}ok_;})){}
+                else if(u->addr&&(inplace_on()||plan->cb_pointer>=0)&&({uint64_t off_;VkBuffer pool_=zc_buffer_at(u->addr,bytes,&off_);int ok_=pool_&&!(off_%gpu_limits.minStorageBufferOffsetAlignment);if(ok_){buffers[j]=(VkDescriptorBufferInfo){pool_,off_,bytes};inplace_ssbo_w++;}else{inplace_fallback++;inplace_why[pool_?IF_SSBO_ALIGN:IF_SSBO_POOL]++;if(!pool_)inplace_classify(u->addr,bytes);}ok_;})){}
                 else if(u->addr&&ssbo_write_in_place(s,u->addr,bytes,&buffers[j])){}
                 else{post_op *p=post_new(u->addr?0:3);p->site=POST0_SITE_SSBO;p->destination=(void*)(uintptr_t)u->addr;p->size=bytes;p->output=buffer_create(bytes);if(u->addr){post_register_range(p);const uint8_t *inherit;int cpu=forward_seed(&p->output,u->addr,bytes,shader_pipeline_stage(s),&inherit);
                     static int full=-1;if(full<0)full=!exp_env("diffpublish");   /* experiment: publish changed blocks only (did not help the flicker) */
