@@ -130,7 +130,7 @@ static int map_file_range(uintptr_t va, size_t size, int prot, int fd, off_t off
         off_t piece_end = best ? (best->off + (off_t)best->size < end ? best->off + (off_t)best->size : end) : next;
         size_t n = (size_t)(piece_end - off);
         void *p = best ? mmap((void *)va, n, prot, MAP_SHARED | MAP_FIXED, best->dmabuf, off - best->off)
-                       : mmap((void *)va, n, prot, MAP_SHARED | MAP_FIXED, fd, off);
+                       : mmap((void *)va, n, prot, MAP_SHARED | MAP_NORESERVE | MAP_FIXED, fd, off);   /* as backed_map: a piece without it never merges with its neighbours, and they pile up to vm.max_map_count */
         if (p != (void *)va) return -1;
         va += n; off = piece_end;
     }
@@ -200,7 +200,7 @@ int compat_guest_unoverlay(void *address, size_t size) {
 }
 
 /* Map [address, address+size) again as one read-write mapping (dma-buf parts included). Page-sized mprotect splits a
-   mapping; memfd pieces merge back, dma-buf ones never do, and enough of them hit vm.max_map_count, after which mprotect
+   mapping; memfd pieces merge back if their flags match, dma-buf ones never do, and enough of them hit vm.max_map_count, after which mprotect
    fails (nvn_dirty.c then calls this). */
 int compat_guest_remap(void *address, size_t size) {
     pthread_mutex_lock(&backing_lock);

@@ -510,8 +510,10 @@ void ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer comm
         ImDrawIdx* idx_dst = nullptr;
         VkResult err = vkMapMemory(v->Device, rb->VertexBufferMemory, 0, vertex_size, 0, (void**)&vtx_dst);
         check_vk_result(err);
+        if (err != VK_SUCCESS) return;   // this port: a failed map skips the overlay for a frame; the copies below would write to null
         err = vkMapMemory(v->Device, rb->IndexBufferMemory, 0, index_size, 0, (void**)&idx_dst);
         check_vk_result(err);
+        if (err != VK_SUCCESS) { vkUnmapMemory(v->Device, rb->VertexBufferMemory); return; }
         for (int n = 0; n < draw_data->CmdListsCount; n++)
         {
             const ImDrawList* draw_list = draw_data->CmdLists[n];
