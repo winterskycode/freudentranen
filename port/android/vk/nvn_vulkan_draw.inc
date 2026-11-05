@@ -98,7 +98,7 @@ static void shader_override_poll(void){
         if(!code||bytes<20||bytes%4||code[0]!=0x07230203){LOG("[override] %s: not SPIR-V (%zu bytes)",path,bytes);free(code);continue;}
         if(gpl_state>0&&s->stage==1)spirv_own_set(code,bytes/4,s->set);
         VkShaderModule module;VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};
-        if(vkCreateShaderModule(device,&mi,NULL,&module)){LOG("[override] %s: module creation failed",path);free(code);continue;}
+        if(vkCreateShaderModule(device,&mi,&spv_callbacks,&module)){LOG("[override] %s: module creation failed",path);free(code);continue;}
         if(!o){o=calloc(1,sizeof *o);if(!o)die("shader override");o->s=s;o->orig_module=s->module;o->orig_spirv=s->spirv;o->orig_words=s->spirv_words;o->orig_linked=s->linked;o->next=shader_overrides;shader_overrides=o;}
         o->seen=1;o->mtime=(int64_t)st.st_mtime;s->module=module;
         if(s->stage==0){s->spirv=code;s->spirv_words=bytes/4;s->linked=NULL;}else free(code);
@@ -144,7 +144,7 @@ static void shader_enable_early_tests(shader_entry *s) {
     size_t words;uint32_t *patched=spirv_add_early_tests(code,bytes/4,&words);free(code);if(!patched)return;
     if(gpl_state>0)spirv_own_set(patched,words,s->set);
     VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=patched};VkShaderModule module;
-    VK_CHECK(vkCreateShaderModule(device,&mi,NULL,&module));free(patched);s->module=module;early_tests_shaders++;
+    VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&module));free(patched);s->module=module;early_tests_shaders++;
     for(unsigned b=0;b<2048;b++)for(pipeline_entry **link=&graphics_pipelines[b];*link;){if((*link)->key.fs==s){*link=(*link)->next;early_tests_pipelines++;}else link=&(*link)->next;}
     graphics_last_pipeline=NULL;
     char path[1100];snprintf(path,sizeof path,"%s/%s.early",totk_cache_dir(),s->key);FILE *f=fopen(path,"w");if(f)fclose(f);
@@ -188,7 +188,7 @@ static VkShaderModule graphics_vs_module(shader_entry *vs,const shader_entry *fs
         for(int l=0;l<32;l++)if(missing>>l&1&&!fs->io[l].base)die("Vulkan stage link: fragment shader %s input %d has no plain type",fs->key,l);
         size_t words;uint32_t *code=spirv_add_outputs(vs->spirv,vs->spirv_words,fs->io,missing,&words);
         m=calloc(1,sizeof *m);if(!m)die("Vulkan stage link allocation");m->missing=missing;
-        VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,NULL,&m->module));free(code);
+        VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&m->module));free(code);
         m->next=vs->linked;vs->linked=m;
         static unsigned said;if(said++<8)LOG("[vulkan] vertex shader %s gets outputs %#x for fragment shader %s",vs->key,missing,fs->key);
     }

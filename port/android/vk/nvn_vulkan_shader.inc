@@ -233,7 +233,7 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     if(s->stage==1){size_t mb;void *marker=read_shader_file_opt(key,"early",&mb);   /* a fragment shader earlier seen with early tests */
         if(marker){free(marker);size_t pw;uint32_t *patched=spirv_add_early_tests(code,bytes/4,&pw);if(patched){free(code);code=patched;bytes=pw*4;}s->early_tests=1;}}
     if(gpl_state>0&&s->stage==1)spirv_own_set(code,bytes/4,s->set);
-    VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,NULL,&s->module));
+    VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&s->module));
     { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SPVID");on=x&&atoi(x);}   /* the module's identity for a driver-side list (TOTK_FP16_SKIP) */
       if(on){const uint8_t *b=(const uint8_t*)code;uint64_t h=0xcbf29ce484222325ull;for(size_t i=0;i<bytes;i++){h^=b[i];h*=0x100000001b3ull;}
         LOG("[vulkan-spvid] %s stage %d fnv %016llx",key,s->stage,(unsigned long long)h);} }
@@ -241,7 +241,7 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     if(s->stage==1){spirv_io outs[32];s->frag_out_mask=spirv_io_scan(code,bytes/4,SPV_STORAGE_OUTPUT,outs);}   /* render targets the shader writes */
     spirv_uniform_extents(s,code,bytes/4);
     { static unsigned logged;if(logged<40)for(unsigned i=0;i<s->count;i++)if(s->ubo_bytes&&s->bindings[i].kind!=0&&s->bindings[i].slot>=3&&s->bindings[i].slot<19&&logged++<40)LOG("[ubo-extent] %s binding %u slot %u: %u bytes",key,s->bindings[i].binding,s->bindings[i].slot,s->ubo_bytes[i]); }
-    if(s->stage==0){s->spirv=code;s->spirv_words=bytes/4;}else free(code);
+    if(s->stage==0){s->spirv=spv_keep(code,bytes);s->spirv_words=bytes/4;}else free(code);
     // 反射与 shader 同寿命；只预计算布局和索引，不缓存动态资源地址或工作区指针。
     // Reflection lives with the shader; precompute only layout and indices, never dynamic resource addresses or scratch pointers.
     if(s->count){s->binding_plan=calloc(s->count,sizeof *s->binding_plan);if(!s->binding_plan)die("Vulkan shader binding plan allocation");}
@@ -298,16 +298,16 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     { uint64_t h=s->count; for(unsigned i=0;i<s->count;i++){uint32_t f[4]={bindings[i].binding,(uint32_t)bindings[i].descriptorType,bindings[i].descriptorCount,bindings[i].stageFlags};for(unsigned j=0;j<4;j++){h^=f[j];h*=0x100000001b3ull;h^=h>>29;}} s->layout_hash=h|1; }
     pthread_mutex_lock(&graphics_object_lock);unsigned hb=shader_key_bucket(s->key);
     for(shader_entry *o=shader_hash[hb];o;o=o->hash_next)if(!strcmp(o->key,key)){pthread_mutex_unlock(&graphics_object_lock);
-        vkDestroyDescriptorSetLayout(device,s->layout,NULL);vkDestroyShaderModule(device,s->module,NULL);free(s->spirv);free(s->binding_plan);free(s->ubo_bytes);free(meta);free(s);return o;}
+        vkDestroyDescriptorSetLayout(device,s->layout,NULL);vkDestroyShaderModule(device,s->module,&spv_callbacks);spv_free(s->spirv);free(s->binding_plan);free(s->ubo_bytes);free(meta);free(s);return o;}
     if(shader_load_private){pthread_mutex_unlock(&graphics_object_lock);shader_load_was_private=1;return s;}
     s->next=shader_list;shader_list=s;s->hash_next=shader_hash[hb];shader_hash[hb]=s;
     pthread_mutex_unlock(&graphics_object_lock);
     if(stats)resource_create_end(0,creation,s->key,NULL);LOG("[vulkan] shader %s stage=%u bindings=%u dynamic_uniforms=%u variant=%s",s->key,s->stage,s->count,s->dynamic_count,variant?shader_variant.id:"base");return s;
 }
 static void shader_entry_free_private(shader_entry *s) {   /* only an entry shader_load_by_key built privately: nothing else holds it */
-    vkDestroyDescriptorSetLayout(device,s->layout,NULL);vkDestroyShaderModule(device,s->module,NULL);
-    for(struct linked_module *m=s->linked;m;){struct linked_module *n=m->next;vkDestroyShaderModule(device,m->module,NULL);free(m);m=n;}
-    free(s->spirv);free(s->binding_plan);free(s->ubo_bytes);free((uint32_t*)(void*)s->bindings-7);free(s);
+    vkDestroyDescriptorSetLayout(device,s->layout,NULL);vkDestroyShaderModule(device,s->module,&spv_callbacks);
+    for(struct linked_module *m=s->linked;m;){struct linked_module *n=m->next;vkDestroyShaderModule(device,m->module,&spv_callbacks);free(m);m=n;}
+    spv_free(s->spirv);free(s->binding_plan);free(s->ubo_bytes);free((uint32_t*)(void*)s->bindings-7);free(s);
 }
 // TOTK: shader_get / program_shader / program_remove are in nvn_vulkan_totk_shader.inc (runtime variants); declared here,
 // defined after descriptor_texture, which their answers need.

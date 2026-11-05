@@ -1936,6 +1936,7 @@ void mtl_finish(void) { mtl_wait(mtl_last_fence(), UINT64_MAX); }
 void mtl_drain(void) { mtl_init();mtl_finish(); pthread_mutex_lock(&queue_lock); VK_CHECK(vkQueueWaitIdle(queue)); pthread_mutex_unlock(&queue_lock);pipeline_disk_stop_join(); }
 
 #include "nvn_vulkan_tex.inc"
+#include "nvn_vulkan_spv_arena.inc"
 #include "nvn_vulkan_shader.inc"
 #include "nvn_vulkan_counter_gpu.inc"
 #include "nvn_vulkan_upscale.inc"
