@@ -82,6 +82,39 @@ the previous build signed with the same key.
 
 The APK runs on Android 13 (API 33) or newer, on 64-bit ARM.
 
+## Updating MacNativeGames
+
+The `android` branch of our fork is upstream MacNativeGames with the Android changes merged in, and `port/setup.sh` pins
+one commit of it. To bring in a newer upstream:
+
+1. In a worktree of `MacNativeGames` on the `android` branch, merge upstream's `main`. Merge rather than rebase: the
+   commits that older releases pin stay on the branch.
+2. Build against the worktree in a build folder of its own, so the current build stays as it is:
+
+   ```sh
+   cmake -G Ninja -S port/android -B work/android/v143/build-sync -DMNG_DIR=$PWD/work/next-mng ...   # the options above
+   TOTK_BUILD_DIR=$PWD/work/android/v143/build-sync sh port/android/tools/build_apk.sh
+   MNG_DIR=$PWD/work/next-mng sh port/xlate/publish_android.sh
+   ```
+
+3. If the shader translator changed, build it from both trees on the PC and compare what they make of every shader
+   (this step needs the game files):
+
+   ```sh
+   XLATE_OUT=$PWD/work/xlate-cmp/old sh port/xlate/publish.sh
+   MNG_DIR=$PWD/work/next-mng XLATE_OUT=$PWD/work/xlate-cmp/new sh port/xlate/publish.sh
+   python3 port/android/tools/aot_shaders.py --profile <request-profile.json> --translator work/xlate-cmp/old/totk_xlate
+   ```
+
+   Run `aot_shaders.py` once with each translator, then compare the `.spv` files and check the changed ones with
+   `spirv-val`. A translation that changes for every shader also makes every player's shader cache start over.
+4. Test on a device: start the game, play with sound, and run `port/android/tools/bench.py`. Then push the branch to
+   the fork and put its new commit in `port/setup.sh`.
+
+What upstream changes most often break on Android: calls into Mac-only code (answered by weak stubs in
+`port/android/compat/src/mng_hooks.c`), macOS register names in signal handlers (`runtime/uc_compat.h` has portable
+ones), and defaults chosen for the Mac. The translation thread (`TOTK_ASYNC_REPLAY`), for one, stays on for Android.
+
 ## Turnip
 
 The bundled Vulkan driver for Adreno GPUs is Turnip, from Mesa. `port/android/tools/build_turnip.sh` builds it:
@@ -118,12 +151,15 @@ EOF
 zip turnip-custom.zip meta.json libvulkan_freedreno.so
 ```
 
+A driver installed that way gets its own shader cache, so it may run shaders at another width than the bundled one.
+Turnip builds from Mesa 27 run them 64 wide on Adreno 8xx GPUs, the bundled build 128 wide.
+
 ## Running it
 
 The APK holds no game files. The game needs your own copy of Tears of the Kingdom: the base game 1.0.0, the 1.4.3
-update, your console's keys and its firmware. Until the app can set itself up from those, preparing them is a PC step
-(`port/build_all.py`, then `port/android/tools/push_data.sh`).
+update and your console's keys. The app's Game files page reads them on the device, where they are (README). For
+development, `port/build_all.py` and `port/android/tools/push_data.sh` prepare the same data on a PC.
 
-Shaders do not need preparing. The app translates each one on the device the first time the game uses it. Translating
-them all ahead of time on the PC (`port/android/tools/aot_shaders.py`, then `push_shaders.sh`) only removes the stutter
-of first visits.
+Shaders do not need preparing. The app translates each one on the device the first time the game uses it. Prepare
+shaders on the startup screen translates them all ahead of time on the device, and `port/android/tools/aot_shaders.py`
+with `push_shaders.sh` does the same from a PC. Either only removes the stutter of first visits.
