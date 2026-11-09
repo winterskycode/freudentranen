@@ -153,11 +153,11 @@ static void fsr_pipelines(void) {
         VkResult made = pipeline_create_compute(&pi, &fsr.pipeline[i]); vkDestroyShaderModule(device, module, NULL);
         if (made != VK_SUCCESS) { fsr.failed = 1; LOG("[fsrfg] pipeline %s failed (%d): the built-in pass instead", s->name, (int)made); return; }
     }
-    VkDescriptorSetLayoutBinding b[6];
-    for (uint32_t k = 0; k < 6; k++) b[k] = (VkDescriptorSetLayoutBinding){.binding = k, .descriptorType = k < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
-    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 6, .pBindings = b};
+    VkDescriptorSetLayoutBinding b[7];
+    for (uint32_t k = 0; k < 7; k++) b[k] = (VkDescriptorSetLayoutBinding){.binding = k, .descriptorType = k < 2 || k == 6 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
+    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 7, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &fsr.prep_set_layout));
-    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 112};
+    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 128};
     VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &fsr.prep_set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
     VK_CHECK(vkCreatePipelineLayout(device, &pl, NULL, &fsr.prep_layout));
     static const uint32_t code[] = {
@@ -233,6 +233,7 @@ static void fsr_constants(void *slot, int reset) {
         memcpy((char *)slot + FSR_CB_OF + 256 * l, &o, sizeof o);
     }
 }
+static image_entry *mo_image(void);
 /* The generated picture into out, in place of the built-in pass. push: the built-in pass's constants (fsrfg_prep.comp). */
 static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *push, uint32_t sw, uint32_t sh, image_entry *out, const float *cam, uint64_t frames) {
     fsr_setup(sw, sh, out); fsr_camera(cam);
@@ -259,12 +260,15 @@ static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *pu
         vkCmdResetQueryPool(command, fsr.fine, fq, FSR_MAX_STEPS + 1); vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, fsr.fine, fq); fine_reset[fslot] = (uint8_t)reset;
     }
     if (fsr.stamps) { vkCmdResetQueryPool(command, fsr.stamps, q, FSR_STAMPS); vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, fsr.stamps, q); }
-    VkDescriptorImageInfo img[6] = {{fg.linear, attachment_view(pic, NULL, pic->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, fsr_view(&fsr.src[p], 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.mv, 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.depth, 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.src_half[p], 0), VK_IMAGE_LAYOUT_GENERAL}};
-    VkDescriptorSet set = descriptor_allocate(fsr.prep_set_layout); VkWriteDescriptorSet w[6];
-    for (int i = 0; i < 6; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
-        .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
-    vkUpdateDescriptorSets(device, 6, w, 0, NULL);
+    /* object motion when there is this frame's, else any sampled image (unread) */
+    image_entry *obj = mo_image();
+    VkDescriptorImageInfo img[7] = {{fg.linear, attachment_view(pic, NULL, pic->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, fsr_view(&fsr.src[p], 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.mv, 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.depth, 0), VK_IMAGE_LAYOUT_GENERAL}, {VK_NULL_HANDLE, fsr_view(&fsr.src_half[p], 0), VK_IMAGE_LAYOUT_GENERAL},
+        {fg.linear, obj ? attachment_view(obj, NULL, obj->format) : attachment_view(pic, NULL, pic->format), VK_IMAGE_LAYOUT_GENERAL}};
+    VkDescriptorSet set = descriptor_allocate(fsr.prep_set_layout); VkWriteDescriptorSet w[7];
+    for (int i = 0; i < 7; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+        .descriptorType = i < 2 || i == 6 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
+    vkUpdateDescriptorSets(device, 7, w, 0, NULL);
     fsr_barrier();
     /* ffx_opticalflow.cpp: everything the flow keeps between frames */
     if (reset) {
@@ -275,10 +279,10 @@ static void fsr_fg_run(image_entry *pic, VkImageView depth_view, const float *pu
     }
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fsr.prep);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fsr.prep_layout, 0, 1, &set, 0, NULL);
-    float pc[28]; memcpy(pc, push, sizeof pc); pc[21] = (float)fsr.scale; pc[22] = (float)fsr.of_scale;
+    float pc[32] = {0}; memcpy(pc, push, 28 * sizeof *pc); pc[21] = (float)fsr.scale; pc[22] = (float)fsr.of_scale; pc[28] = obj ? 1.0f : 0.0f;
     /* with dynamic resolution the scene is a corner of the depth target */
     pc[26] = fg.view[0] > 0 ? fg.view[0] : 1; pc[27] = fg.view[1] > 0 ? fg.view[1] : 1;
-    vkCmdPushConstants(command, fsr.prep_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 112, pc);
+    vkCmdPushConstants(command, fsr.prep_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
     vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
     fsr_barrier();
     uint32_t dyn[4] = {slot, slot, slot, slot}, fine_at = fq;

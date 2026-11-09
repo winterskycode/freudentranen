@@ -1,6 +1,7 @@
 // FSR frame interpolation's inputs from ours (nvn_vulkan_fsrfg.inc): the scene encoded for display, a copy of the depth,
-// and the camera's motion: reproj = VP_prev * inverse(VP_cur) (see framegen_interp.comp). FSR's motion vector is where the
-// point was in the previous frame, minus where it is now, in picture units: ours.
+// and the scene's motion: object motion where the motion pass drew, else the camera's, reproj = VP_prev * inverse(VP_cur)
+// (see framegen_interp.comp). FSR's motion vector is where the point was in the previous frame, minus where it is now, in
+// picture units: ours.
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
@@ -12,6 +13,8 @@ layout(push_constant) uniform P {
     vec4 opt;
     // xy: the picture's share of the picture texture, zw: the scene's share of the depth target (dynamic resolution)
     vec4 scale;
+    // x: 1 when obj_motion holds this frame's object motion
+    vec4 obj;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D pic;
 layout(set = 0, binding = 1) uniform sampler2D depth;
@@ -20,6 +23,8 @@ layout(set = 0, binding = 3, rg16f) uniform writeonly image2D motion;
 layout(set = 0, binding = 4, r32f) uniform writeonly image2D depth_out;
 // for optical flow at half size
 layout(set = 0, binding = 5, rgba8) uniform writeonly image2D color_half;
+// object motion (RG32F, the depth target's size): last frame's normalised position, x below -9 where nothing moved itself
+layout(set = 0, binding = 6) uniform sampler2D obj_motion;
 vec3 enc(vec3 c) {
     if (p.opt.w == 0.0) return c;
     c = clamp(c, 0.0, 1.0);
@@ -44,8 +49,13 @@ void main() {
     }
     uv = (vec2(near) + 0.5) * p.size.zw;
     imageStore(depth_out, o / s, vec4(d));
-    vec4 c = p.reproj * vec4(uv.x * 2.0 - 1.0, p.opt.x * (1.0 - uv.y * 2.0), d * 2.0 - 1.0, 1.0);
+    vec4 om = vec4(-10.0);
+    if (p.obj.x != 0.0) { ivec2 os = textureSize(obj_motion, 0); om = texelFetch(obj_motion, clamp(ivec2(uv * p.scale.zw * vec2(os)), ivec2(0), os - 1), 0); }
     vec2 m = vec2(0.0);
-    if (c.w > 1e-7) { vec2 n = c.xy / c.w; m = vec2(n.x * 0.5 + 0.5, 0.5 - 0.5 * p.opt.x * n.y) - uv; }
+    if (om.x > -9.0) m = vec2(om.x * 0.5 + 0.5, 0.5 - 0.5 * p.opt.x * om.y) - uv;
+    else {
+        vec4 c = p.reproj * vec4(uv.x * 2.0 - 1.0, p.opt.x * (1.0 - uv.y * 2.0), d * 2.0 - 1.0, 1.0);
+        if (c.w > 1e-7) { vec2 n = c.xy / c.w; m = vec2(n.x * 0.5 + 0.5, 0.5 - 0.5 * p.opt.x * n.y) - uv; }
+    }
     imageStore(motion, o / s, vec4(m, 0.0, 0.0));
 }

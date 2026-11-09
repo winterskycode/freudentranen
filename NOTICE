@@ -61,6 +61,10 @@ Tools > Licences:
   * bcdec -- MIT or Unlicense
   * Code in MacNativeGames derived from AMD FidelityFX, nxnative and Ryujinx's audio renderer -- MIT
   * The Ryujinx shader translator -- MIT; the .NET runtime compiled into it -- MIT
+  * totk-pc-recomp (https://github.com/valentderah/totk-pc-recomp) at ae30a61b -- MIT, Copyright (c) 2026 Valiantsin
+    Dzerakh; its per-object motion vectors by DizzyMan1337. The translator's last-frame position for vertex shaders
+    (MacNativeGames' totk_xlate patch 0009) is a port of its patch 0015, and the object motion pass
+    (port/android/vk/nvn_vulkan_motion.inc) follows its design. Text: LICENSES/MIT-totk-pc-recomp.txt.
   * AMD FidelityFX SDK v1.1.4, FSR 3.1 frame interpolation and optical flow (port/android/vk/third_party/fsr3) -- MIT,
     Copyright (C) 2024 Advanced Micro Devices, Inc.
   * Dear ImGui, lsfg-vk, volk, AMD FidelityFX Super Resolution 1, Arm Accuracy Super Resolution, SMAA, the RenderDoc

@@ -63,10 +63,11 @@ static void asr_pipelines(void) {
     size_t size[ASR_PASSES] = {sizeof motion, sizeof luma, sizeof recon, sizeof clip, sizeof lock, sizeof accum};
     for (int p = 0; p < ASR_PASSES; p++) {
         VkDescriptorSetLayoutBinding b[24]; unsigned n = 0;
-        /* the depth (combined), the motion out; its push constants */
+        /* the depth (combined), the motion out, object motion (combined); its push constants */
         if (p == ASR_MOTION) {
             b[n++] = (VkDescriptorSetLayoutBinding){0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL};
             b[n++] = (VkDescriptorSetLayoutBinding){1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL};
+            b[n++] = (VkDescriptorSetLayoutBinding){2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL};
         } else for (const char *t = asr_set1[p]; *t; t++, n++)
             b[n] = (VkDescriptorSetLayoutBinding){n, *t == 'U' ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, NULL};
         li.bindingCount = n; li.pBindings = b;
@@ -231,16 +232,19 @@ static image_entry *asr_run(image_entry *scene, uint32_t dw, uint32_t dh) {
         vkCmdResetQueryPool(command, asr.timer, q, 2); vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, asr.timer, q);
     }
 
-    { VkDescriptorSet set = descriptor_allocate(asr.set1[ASR_MOTION]); VkWriteDescriptorSet wd[2]; VkDescriptorImageInfo ii[2];
+    { VkDescriptorSet set = descriptor_allocate(asr.set1[ASR_MOTION]); VkWriteDescriptorSet wd[3]; VkDescriptorImageInfo ii[3];
       image_access(fg.depth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
       image_access(&asr.mv, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+      /* object motion when there is this frame's, else the depth (unread) */
+      image_entry *obj = mo_image();
       asr_write(&wd[0], &ii[0], set, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, asr_view(fg.depth, 0, 1)); ii[0].sampler = asr.point;
       asr_write(&wd[1], &ii[1], set, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, asr_view(&asr.mv, 0, 1));
-      vkUpdateDescriptorSets(device, 2, wd, 0, NULL);
+      asr_write(&wd[2], &ii[2], set, 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, obj ? asr_view(obj, 0, 1) : asr_view(fg.depth, 0, 1)); ii[2].sampler = asr.point;
+      vkUpdateDescriptorSets(device, 3, wd, 0, NULL);
       float push[24];
       /* GLSL mat4 is column-major */
       for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
-      push[16] = (float)w; push[17] = (float)h; push[18] = 1.0f / w; push[19] = 1.0f / h; push[20] = 1.0f; push[21] = push[22] = push[23] = 0;
+      push[16] = (float)w; push[17] = (float)h; push[18] = 1.0f / w; push[19] = 1.0f / h; push[20] = 1.0f; push[21] = obj ? 1.0f : 0.0f; push[22] = push[23] = 0;
       vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, asr.layout[ASR_MOTION], 0, 1, &set, 0, NULL);
       vkCmdPushConstants(command, asr.layout[ASR_MOTION], VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof push, push);
       vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, asr.pipe[ASR_MOTION]);

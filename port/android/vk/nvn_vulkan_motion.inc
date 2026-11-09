@@ -2,23 +2,29 @@
    totk-pc-recomp's per-object motion (MIT, Copyright (c) 2026 Valiantsin Dzerakh). A qualifying G-buffer draw (indexed,
    depth tested and written, full size, its position reading the scene camera c4 and an object block c5 or c7) is listed
    with the descriptor set of its vertex shader's motion variant (program_motion_shader: last frame's position at location
-   15, its banks bound to last frame's blocks, mv_prev_block) and its buffers. When the G-buffer pass ends, in the same
-   batch, so the sets and buffers are still the batch's, the list is drawn again into mo.img against the G-buffer depth
-   (the draw's own test, or-equal, no write) with shaders/motion_obj.frag: per pixel last frame's normalised position and
-   this frame's window position, (-10, -10) where no listed draw covers the pixel. The image is cleared at the first
-   flush of a frame. <files>/mvdump.trigger: the next frame's image is written to <files>/mvdump/ (RGBA32F). */
+   15, its banks bound to last frame's blocks, mv_prev_block) and its buffers. The game splits its G-buffer into many
+   passes; once they end (the next pass is another or has another depth, or the batch ends, so the sets and buffers are
+   still the batch's), the list is drawn again in one pass into mo.img against the G-buffer depth
+   (the draw's own test, or-equal, no write) with shaders/motion_obj.frag: per pixel last frame's normalised position
+   (MO_FORMAT; the pixel itself is this frame's), (-10, -10) where no listed draw covers the pixel. The image is cleared
+   at the first flush of a frame. <files>/mvdump.trigger: the next frame's image is written to <files>/mvdump/. */
+#define MO_FORMAT VK_FORMAT_R32G32_SFLOAT
 #define MO_DYN 64
 typedef struct { shader_entry *vs; pipeline_key key; ds_st depth; poly_st polygon; VkDescriptorSet sets[2]; uint32_t dyn[MO_DYN]; unsigned ndyn;
     VkBuffer vb[16]; VkDeviceSize vo[16]; VkBuffer ib; VkDeviceSize io; VkIndexType it; uint32_t count, instances, base_instance; int32_t base_vertex;
     VkViewport viewport; VkRect2D scissor; } mo_draw;
-typedef struct mo_pipeline { pipeline_key key; graphics_pass_entry *pass; VkPipeline pipeline; struct mo_pipeline *next; } mo_pipeline;
+/* built in the background (async_pso_queue_job) when that is on: its draws are left out until then */
+typedef struct mo_pipeline { pipeline_entry e; graphics_pass_entry *pass; struct mo_pipeline *next; } mo_pipeline;
 static struct {
     mo_draw *d; unsigned n, cap;
-    image_entry img; shader_entry fs; uint64_t cleared_at;
+    /* fresh: img holds this frame's motion (drawn since the last mo_frame) */
+    image_entry img; shader_entry fs; uint64_t cleared_at; int fresh;
+    /* the last G-buffer pass that ended while draws were listed: the list is drawn against its depth */
+    graphics_frame_entry *pend;
     mo_pipeline *pipes[256];
     /* per 600 frames: draws listed, skipped (no variant, not location 15), still (no object block changed), motion draws
        drawn, pipelines made */
-    uint64_t listed, skipped, still, drawn, pipes_made, frames;
+    uint64_t listed, skipped, still, drawn, pipes_made, frames, flushes;
     int dump;
 } mo;
 static int mo_on(void) { return mvs_on() && mvs.motion; }
@@ -42,7 +48,8 @@ static void mo_note_camera(void) {
     mo_cam *c = &mo_cams[mo_ncams++]; c->addr = u->addr; c->epoch = UINT64_MAX;
     memcpy(c->bytes, uniform_read_scratch, MO_CAM_SIZE);
     int changed; c->ok = mvs_similar(c->bytes + 21 * 16, c->bytes, 3 * 16, &changed);
-    if (c->ok) memcpy(c->bytes, c->bytes + 21 * 16, 7 * 16);
+    /* this frame's jitter on the projection, as the draw's own copy has it (taa_uniform): the motion comes out unjittered */
+    if (c->ok) { memcpy(c->bytes, c->bytes + 21 * 16, 7 * 16); taa_uniform((uintptr_t)u->addr, MO_CAM_SIZE, c->bytes); }
 }
 static int mo_prev_camera_bind(uint64_t addr, VkDescriptorBufferInfo *info) {
     for (unsigned i = 0; i < mo_ncams; i++) if (mo_cams[i].addr == addr) {
@@ -98,19 +105,22 @@ static VkPipeline mo_pipeline_get(const mo_draw *d, graphics_pass_entry *pass, V
     pipeline_key key = d->key;
     key.vs = d->vs; key.fs = mo_fs(); key.colors = 1; key.attachments = 2; key.depth_attachment = 1;
     memset(key.formats, 0, sizeof key.formats); memset(key.color_indices, 0, sizeof key.color_indices); memset(key.blend, 0, sizeof key.blend);
-    key.formats[0] = VK_FORMAT_R32G32B32A32_SFLOAT; key.formats[8] = pass->key.formats[1]; key.color_indices[0] = 0;
+    key.formats[0] = MO_FORMAT; key.formats[8] = pass->key.formats[1]; key.color_indices[0] = 0;
     key.color.blend_en = 0; key.color.logic_op = 0; key.mask.mask = 0xf; key.multisample = (ms_st){0}; key.raster_discard = 0;
     if (!eds_on) { key.depth = d->depth; key.depth.dw = 0; key.depth.st = 0;
         /* the draw's own test, or equal: the motion variant computes the position the same way */
         if (key.depth.df == VK_COMPARE_OP_LESS + 1) key.depth.df = VK_COMPARE_OP_LESS_OR_EQUAL + 1;
         else if (key.depth.df == VK_COMPARE_OP_GREATER + 1) key.depth.df = VK_COMPARE_OP_GREATER_OR_EQUAL + 1; }
     unsigned bucket = (unsigned)(graphics_hash(&key, sizeof key) ^ (uintptr_t)pass) & 255;
-    for (mo_pipeline *p = mo.pipes[bucket]; p; p = p->next) if (p->pass == pass && !memcmp(&p->key, &key, sizeof key)) return p->pipeline;
-    mo_pipeline *p = calloc(1, sizeof *p); if (!p) die("object motion pipelines");
-    p->key = key; p->pass = pass;
-    if (graphics_pipeline_create(&key, d->vs, mo_fs(), pass, layout, &p->pipeline, 0) != VK_SUCCESS) p->pipeline = VK_NULL_HANDLE;
-    p->next = mo.pipes[bucket]; mo.pipes[bucket] = p; mo.pipes_made++;
-    return p->pipeline;
+    mo_pipeline *p = mo.pipes[bucket];
+    while (p && (p->pass != pass || memcmp(&p->e.key, &key, sizeof key))) p = p->next;
+    if (!p) {
+        p = calloc(1, sizeof *p); if (!p) die("object motion pipelines");
+        p->e.key = key; p->pass = pass; p->next = mo.pipes[bucket]; mo.pipes[bucket] = p; mo.pipes_made++;
+        if (async_pso_on()) async_pso_queue_job(&p->e, d->vs, mo_fs(), pass, layout, 0);
+        else atomic_store(&p->e.ready, graphics_pipeline_create(&key, d->vs, mo_fs(), pass, layout, &p->e.pipeline, 0) == VK_SUCCESS ? 1 : -1);
+    }
+    return atomic_load_explicit(&p->e.ready, memory_order_acquire) == 1 ? p->e.pipeline : VK_NULL_HANDLE;
 }
 /* mvdump: the image read back after the frame's last flush (16 bytes a pixel) */
 static void mo_dump_write(void) {
@@ -118,7 +128,7 @@ static void mo_dump_write(void) {
     const char *dir = getenv("DM_VK_SHADERS"); if (!dir || !w || !h) return;
     if (async_recording_owned) mtl_sub_commit();
     mtl_sub_begin();
-    vk_buffer b = buffer_create((uint64_t)w * h * 16);
+    vk_buffer b = buffer_create((uint64_t)w * h * 8);
     image_access(&mo.img, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
     VkBufferImageCopy c = {.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {w, h, 1}};
     vkCmdCopyImageToBuffer(command, mo.img.image, VK_IMAGE_LAYOUT_GENERAL, b.buffer, 1, &c);
@@ -127,25 +137,25 @@ static void mo_dump_write(void) {
     uint64_t ticket = mtl_sub_commit(); mtl_wait(ticket, UINT64_MAX);
     char path[1200]; snprintf(path, sizeof path, "%s/../mvdump", dir); mkdir(path, 0700);
     snprintf(path, sizeof path, "%s/../mvdump/%06llu-%ux%u.f32", dir, (unsigned long long)presents, w, h);
-    FILE *f = fopen(path, "wb"); if (f) { fwrite(b.mapped, 16, (size_t)w * h, f); fclose(f); LOG("[motion] dump: %s", path); }
+    FILE *f = fopen(path, "wb"); if (f) { fwrite(b.mapped, 8, (size_t)w * h, f); fclose(f); LOG("[motion] dump: %s", path); }
     buffer_destroy(&b);
 }
-/* At the end of a G-buffer pass (graphics_pass_end): the listed draws into mo.img. */
+/* The listed draws into mo.img, against the depth of ended (a G-buffer pass), outside a pass */
 static void mo_flush(graphics_frame_entry *ended) {
     if (!mo.n) return;
     const graphics_pass_key *k = &ended->key.pass->key;
     if (k->depth == VK_ATTACHMENT_UNUSED || k->depth >= k->attachments) { mo.n = 0; return; }
     image_entry *depth = ended->images[k->depth]; uint32_t w = ended->key.width, h = ended->key.height;
-    fg_image(&mo.img, VK_FORMAT_R32G32B32A32_SFLOAT, w, h, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    int clear = mo.cleared_at != presents; mo.cleared_at = presents;
+    fg_image(&mo.img, MO_FORMAT, w, h, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    int clear = mo.cleared_at != presents; mo.cleared_at = presents; mo.fresh = 1; mo.flushes++;
     VkAttachmentDescription att[2] = {
-        {.format = VK_FORMAT_R32G32B32A32_SFLOAT, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        {.format = MO_FORMAT, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
          .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE, .initialLayout = VK_IMAGE_LAYOUT_GENERAL, .finalLayout = VK_IMAGE_LAYOUT_GENERAL},
         {.format = k->formats[k->depth], .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
          .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE, .initialLayout = VK_IMAGE_LAYOUT_GENERAL, .finalLayout = VK_IMAGE_LAYOUT_GENERAL}};
     VkAttachmentReference color = {0, VK_IMAGE_LAYOUT_GENERAL}, zref = {1, VK_IMAGE_LAYOUT_GENERAL};
     graphics_pass_entry *pass = graphics_pass_get(graphics_pass_key_make(2, 1, att, &color, zref), att, &color, zref, 1);
-    VkImageView views[2] = {attachment_view(&mo.img, NULL, VK_FORMAT_R32G32B32A32_SFLOAT), ended->key.views[k->depth]};
+    VkImageView views[2] = {attachment_view(&mo.img, NULL, MO_FORMAT), ended->key.views[k->depth]};
     image_entry *images[2] = {&mo.img, depth};
     graphics_frame_entry *frame = graphics_frame_get(pass, views, images, w, h);
     image_access(&mo.img, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
@@ -182,10 +192,29 @@ static void mo_flush(graphics_frame_entry *ended) {
     memset(&graphics_commands, 0, sizeof graphics_commands);
     mo.n = 0;
 }
+static image_entry *mo_pass_depth(const graphics_frame_entry *f) {
+    const graphics_pass_key *k = &f->key.pass->key;
+    return k->depth != VK_ATTACHMENT_UNUSED && k->depth < k->attachments ? f->images[k->depth] : NULL;
+}
+/* graphics_pass_end */
+static void mo_pass_end(graphics_frame_entry *ended) { if (mo.n) mo.pend = ended; }
+/* graphics_pass_begin, before the pass opens: the list when this pass is not another G-buffer pass on the same depth */
+static void mo_pass_begin(graphics_frame_entry *frame) {
+    if (mo.n && mo.pend && (!fg.in_gbuffer || mo_pass_depth(frame) != mo_pass_depth(mo.pend))) mo_flush(mo.pend);
+}
+/* mtl_sub_commit, after the last pass ended: the game submits its G-buffer in several batches, a pass each */
+static void mo_pending_flush(void) { if (mo.n && mo.pend && !graphics_active_frame) mo_flush(mo.pend); }
+/* This frame's object motion for the motion consumers, or NULL: read in compute shaders. The live word noobjmo
+   (<files>/exp.live) leaves them on the camera's motion alone, for A/B while playing. */
+static image_entry *mo_image(void) {
+    if (!mo_on() || !mo.fresh || (live_exp[0] && exp_word(live_exp, "noobjmo", 0))) return NULL;
+    image_access(&mo.img, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+    return &mo.img;
+}
 /* Once a frame (fg_frame_end): the dump, the summary */
 static void mo_frame(void) {
     if (!mo_on()) return;
-    mo.n = 0;
+    mo.n = 0; mo.fresh = 0; mo.pend = NULL;
     if (mo.dump == 2) { mo_dump_write(); mo.dump = 0; }
     mo_ncams = 0;
     if (mo.dump == 1) mo.dump = 2;
@@ -193,9 +222,9 @@ static void mo_frame(void) {
       if (now >= next) { next = now + 250000000ull; const char *dir = getenv("DM_VK_SHADERS"); char path[1200];
           if (dir) { snprintf(path, sizeof path, "%s/../mvdump.trigger", dir); if (!access(path, F_OK)) { unlink(path); mo.dump = 1; LOG("[motion] dump armed"); } } } }
     if (++mo.frames % 600) return;
-    LOG("[motion] a frame: %.1f draws listed, %.1f skipped (no motion variant at location 15), %.1f still (camera motion only), %.1f drawn; %llu pipelines",
-        mo.listed / 600.0, mo.skipped / 600.0, mo.still / 600.0, mo.drawn / 600.0, (unsigned long long)mo.pipes_made);
+    LOG("[motion] a frame: %.1f draws listed, %.1f skipped (no motion variant at location 15), %.1f still (camera motion only), %.1f drawn in %.2f passes; %llu pipelines",
+        mo.listed / 600.0, mo.skipped / 600.0, mo.still / 600.0, mo.drawn / 600.0, mo.flushes / 600.0, (unsigned long long)mo.pipes_made);
     LOG("[motion] camera: %.1f bindings a frame given last frame's camera, %.1f without one", mo_cam_hits / 600.0, mo_cam_misses / 600.0);
     mo_cam_hits = mo_cam_misses = 0;
-    mo.listed = mo.skipped = mo.still = mo.drawn = 0;
+    mo.listed = mo.skipped = mo.still = mo.drawn = mo.flushes = 0;
 }

@@ -238,7 +238,8 @@ static int fg_scene_copy(image_entry *c) {
    where the game may already be writing the next frame. Every 600 frames a summary per bank (with the share read from
    the capture), the bytes a capture of both neighbours of every bank would add, and the survey's own time. */
 #define MVS_TABLE (1u << 15)
-typedef struct { uint64_t addr; uint32_t bank, size; } mvs_seen;
+/* prev, memo, changed: mv_prev_block's answer for the block this frame (memo 1 last frame's copy at prev, -1 none) */
+typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
 /* on: the tables are kept (the survey or object motion); survey: the summaries are logged */
 static struct { int on, survey, motion; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
@@ -257,8 +258,9 @@ static mvs_seen *mvs_find(mvs_seen *t, uint64_t addr, uint32_t bank, int add) {
     mvs.full++; return NULL;
 }
 /* The vertex binding indices whose two-copy neighbours the submit capture takes (hle_nvn.c flatten_recording): c5 bones
-   and c7 place, while the survey is on */
-uint32_t mtl_mv_banks(void) { return !mvs_on() ? 0 : mvs.motion ? 0x3fffu : 1u << 2 | 1u << 4; }
+   and c7 place, while the survey or object motion is on. Object motion takes last frame's copy of these two only (the
+   camera's is in its own block, mo_note_camera); other banks keep this frame's. */
+uint32_t mtl_mv_banks(void) { return !mvs_on() ? 0 : 1u << 2 | 1u << 4; }
 /* a block's bytes from the submit capture when it holds them, else from guest memory */
 static uint8_t mvs_buf[65536];
 static const uint8_t *mvs_bytes(uint64_t addr, uint64_t size, int *captured) {
@@ -282,9 +284,9 @@ static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, int *
     *changed = 1; return 1;
 }
 static void mvs_draw(void) {
-    /* the survey's banks, or every user bank c3-c16 for object motion (a motion variant may read any of them) */
-    static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11}, all_banks[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
-    const uint32_t *banks = mvs.motion ? all_banks : survey_banks; unsigned nbanks = mvs.motion ? 14 : 6;
+    /* the survey's banks, or c5 and c7 for object motion alone, which only needs the blocks noted */
+    static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11}, motion_banks[] = {2, 4};
+    const uint32_t *banks = mvs.survey ? survey_banks : motion_banks; unsigned nbanks = mvs.survey ? 6 : 2;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
     for (unsigned b = 0; b < nbanks; b++) {
         uint32_t bank = banks[b]; const p_bind_buf *u = &state.ubo[0][bank];
@@ -292,6 +294,7 @@ static void mvs_draw(void) {
         mvs_seen *e = mvs_find(mvs.t[0], u->addr, bank, 1);
         if (!e || e->size) continue;
         e->size = (uint32_t)u->size;
+        if (!mvs.survey) continue;
         mvs_stat *st = &mvs.st[bank]; st->blocks++;
         uint64_t step = (u->size + 255) & ~(uint64_t)255;
         mvs.extra_bytes += 2 * u->size; mvs.extra_blocks += 2;
@@ -322,15 +325,16 @@ static void mvs_draw(void) {
     }
     mvs.ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
 }
-/* Last frame's copy of the vertex block at binding index `index`, by the two-copy rule and the similarity check (as
-   mvs_draw counts them), read from the submit capture where it holds the copy: *out with that address, or this frame's
-   block when there is no copy (bound at the same address last frame, a new object, another object's block). */
+/* Last frame's copy of the vertex block at binding index `index` (c5 or c7; the other banks keep this frame's), by the
+   two-copy rule and the similarity check (as mvs_draw counts them), read from the submit capture where it holds the
+   copy: *out with that address, or this frame's block when there is no copy (bound at the same address last frame, a
+   new object, another object's block). */
 /* set by mv_prev_block: the last block it looked up had a copy of last frame that differs from this frame's */
 static int mv_prev_changed;
-static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_buf *out) {
+static const p_bind_buf *mv_prev_lookup(unsigned stage, unsigned index, p_bind_buf *out) {
     mv_prev_changed = 0;
     const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
-    if (!u || stage != 0 || mvs.on <= 0 || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
+    if (!u || stage != 0 || mvs.on <= 0 || (index != 2 && index != 4) || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
     if (mvs_find(mvs.t[1], u->addr, index, 0)) return u;
     uint64_t step = (u->size + 255) & ~(uint64_t)255;
     int up = mvs_find(mvs.t[1], u->addr + step, index, 0) != NULL, down = u->addr >= step && mvs_find(mvs.t[1], u->addr - step, index, 0) != NULL;
@@ -348,6 +352,18 @@ static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_bu
     int changed;
     if (!mvs_similar(cur, mvs_bytes(prev, u->size, &captured), u->size, &changed)) return u;
     mv_prev_changed = changed; *out = *u; out->addr = prev; return out;
+}
+/* mv_prev_lookup once a frame per block: an object's draws share their blocks */
+static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_buf *out) {
+    const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
+    mvs_seen *e = u && stage == 0 && mvs.on > 0 && (index == 2 || index == 4) && u->addr && mvs.t[0] ? mvs_find(mvs.t[0], u->addr, index, 1) : NULL;
+    if (e && e->memo && e->memo_size == u->size) {
+        mv_prev_changed = e->changed;
+        if (e->memo < 0) return u;
+        *out = *u; out->addr = e->prev; return out; }
+    const p_bind_buf *r = mv_prev_lookup(stage, index, out);
+    if (e) { e->memo_size = (uint32_t)u->size; e->changed = (int8_t)mv_prev_changed; e->memo = r == out ? 1 : -1; e->prev = r->addr; }
+    return r;
 }
 static void mvs_frame(void) {
     if (!mvs_on()) return;
@@ -489,6 +505,7 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 
 /* At the game's present, before the real picture: the generated picture (an image_entry to present), or NULL. */
 #include "nvn_vulkan_fsrfg.inc"
+static image_entry *mo_image(void);
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
@@ -533,12 +550,14 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
     push[20] = 1.0f; push[21] = 0.08f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
-    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = 0; push[27] = 0;
+    image_entry *obj = mo_image();
+    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0;
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
     else {
     VkDescriptorImageInfo img[5] = {
         {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
-        {fg.linear, attachment_view(fin, NULL, fin->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
+        obj ? (VkDescriptorImageInfo){fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL} : (VkDescriptorImageInfo){fg.linear, attachment_view(fin, NULL, fin->format), VK_IMAGE_LAYOUT_GENERAL},
+        {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorSet set = descriptor_allocate(fg.set_layout);
     VkWriteDescriptorSet w[5];

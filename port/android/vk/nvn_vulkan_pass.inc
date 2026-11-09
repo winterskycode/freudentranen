@@ -134,7 +134,7 @@ static void query_open(void) { if(graphics_query_open||!graphics_active_frame||!
     vkCmdBeginQuery(command,draw_queries,graphics_active_query,gpu_features.occlusionQueryPrecise?VK_QUERY_CONTROL_PRECISE_BIT:0);graphics_query_open=1;pass_queries_opened++; }
 static int graphics_pass_open(void) { return graphics_active_frame != NULL; }
 static void graphics_pass_dims(uint32_t *w,uint32_t *h,unsigned *att) { const graphics_frame_entry *f=graphics_active_frame;*w=f?f->key.width:0;*h=f?f->key.height:0;*att=f?f->key.pass->key.attachments:0; }
-static void mo_flush(graphics_frame_entry *ended);
+static void mo_pass_end(graphics_frame_entry *ended); static void mo_pass_begin(graphics_frame_entry *frame);
 static void graphics_pass_end(void) {
     if(!graphics_active_frame)return;
     passend_note(__builtin_return_address(0),graphics_active_frame);
@@ -143,8 +143,8 @@ static void graphics_pass_end(void) {
     query_close();
     graphics_frame_entry *ended=graphics_active_frame;
     vkCmdEndRenderPass(command);graphics_active_frame=NULL;
-    /* object motion: this pass's listed draws again, while their sets and buffers are this batch's */
-    mo_flush(ended);
+    /* object motion: the G-buffer pass its listed draws are drawn against */
+    mo_pass_end(ended);
     if(passtime_state>0)passtime_pass_end((unsigned)(async_current-async_batches),command,passtime_draws);passtime_draws=0;
     /* timestamp reports recorded inside the pass */
     counter_gpu_flush();
@@ -208,7 +208,7 @@ static void graphics_pass_begin(graphics_frame_entry *frame) {
     if(frame->key.pass->key.attachments>=4){static uint32_t last_w,last_h;static uint64_t changes;
         if(frame->key.width!=last_w||frame->key.height!=last_h){changes++;if(changes<=40||!(changes%100))LOG("[vulkan-dynres] frame %llu: G-buffer pass %ux%u (was %ux%u), change %llu",(unsigned long long)presents,frame->key.width,frame->key.height,last_w,last_h,(unsigned long long)changes);last_w=frame->key.width;last_h=frame->key.height;}}
     if(passtime_state>0)passtime_pass_begin((unsigned)(async_current-async_batches),command,(passtime_key){frame->key.width,frame->key.height,frame->key.pass->key.attachments,frame->key.pass->key.attachments?(uint32_t)frame->key.pass->key.formats[0]:0,0});
-    fg_pass_begin(frame);
+    fg_pass_begin(frame);mo_pass_begin(frame);
     vkCmdBeginRenderPass(command,&info,VK_SUBPASS_CONTENTS_INLINE);graphics_active_frame=frame;render_passes++;
     query_open();pass_queries_report();
 }

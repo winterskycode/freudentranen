@@ -1845,11 +1845,14 @@ void mtl_sub_counter(uint64_t addr, uint32_t type) {
     if (type == NVN_COUNTER_TYPE_SAMPLES_PASSED) samples_report();
     if (type != NVN_COUNTER_TYPE_SAMPLES_PASSED && !(addr & 7) && mtl_addr(addr, 8, NULL, NULL)) { dm_guest_write_prepare((void *)(uintptr_t)addr, 8); *(volatile uint64_t *)(uintptr_t)addr = 0; }
     else cond_pending_add(addr, 0, 0);post_op *p = post_new(2); p->destination = (void *)(uintptr_t)addr; p->value = type;p->size=16;post_register_range(p);counter_gpu_record(p); }
+static void mo_pending_flush(void);
 uint64_t mtl_sub_commit(void) {
     /* deferred clears never cross a batch (fences and write-backs are published per batch) */
     pclear_flush_all();
     if (!recording) die("NVN commit without begin");
     graphics_pass_end();
+    /* object motion's listed draws, while their sets and buffers are this batch's */
+    mo_pending_flush();
     if(graphics_host_writes){VkMemoryBarrier writes={.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT};
         vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&writes,0,NULL,0,NULL);graphics_host_writes=0;}
     if(batch_times)vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,batch_times,1);
