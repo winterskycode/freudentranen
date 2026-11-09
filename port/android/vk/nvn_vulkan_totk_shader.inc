@@ -214,6 +214,26 @@ static void totk_shader_id(const uint8_t *control, const uint8_t *code, int st, 
     totk_hex(md, 32, id);
 }
 static shader_entry *totk_named(shader_entry *s, const char *id) { if (s && !s->game_id[0]) memcpy(s->game_id, id, 16); return s; }
+/* One translation by the service: <key>.spv and its files in the cache. extra: more request fields (", \"mvprev\": true").
+   totk_shader_lock is held. */
+static void totk_translate(const char *key, const uint8_t *control, const uint8_t *code, int st, const char *id, const char *answers, const char *extra) {
+    uint32_t length, c1o; memcpy(&length, control + 0x704, 4); memcpy(&c1o, control + 0x700, 4);
+    const char *dir = totk_cache_dir(); char path[1200];
+    // graphics: the translator wants SPH + instructions, without the 0x30-byte NVN header
+    size_t skip = st == 5 ? 0 : 0x30;
+    snprintf(path, sizeof path, "%s/%s.code", dir, key);
+    FILE *f = fopen(path, "wb"); if (!f || fwrite(code + skip, 1, length - skip, f) != length - skip) die("write shader code %s", path); fclose(f);
+    char *c1 = malloc(2 * (size_t)(length - c1o) + 1); if (!c1) die("c1 hex"); totk_hex(code + c1o, length - c1o, c1);
+    char local[64] = "";
+    if (st == 5) { uint32_t l[3]; memcpy(l, control + 0x748, 12); if (!l[0] || !l[1] || !l[2]) die("compute shader %s: thread group size", id); snprintf(local, sizeof local, ", \"local\": [%u, %u, %u]", l[0], l[1], l[2]); }
+    totk_service_start();
+    char constants[160]; totk_request_constants(st, constants, sizeof constants);
+    fprintf(totk_xl_in, "{\"variant\": \"%s\", \"stage\": \"%s\", \"code\": \"%s\", \"c1\": \"%s\", %s%s, %s%s}\n",
+            key, st == 0 ? "vs" : st == 1 ? "ps" : "cs", path, c1, answers, local, constants, extra);
+    fflush(totk_xl_in); free(c1);
+    char reply[2048]; if (!fgets(reply, sizeof reply, totk_xl_out)) die("shader translator exited while translating %s", key);
+    if (!strstr(reply, "\"ok\": true")) die("shader %s (%s) translation failed: %s", key, id, reply);
+}
 static shader_entry *totk_variant_shader(const nvn_state *ns, const uint8_t *control, const uint8_t *code, int st, const char *id, totk_mask *mask) {
     uint32_t length, c1o; memcpy(&length, control + 0x704, 4); memcpy(&c1o, control + 0x700, 4);
     uint8_t md[32]; dm_android_sha256_context c;
@@ -240,28 +260,15 @@ static shader_entry *totk_variant_shader(const nvn_state *ns, const uint8_t *con
     dm_android_sha256_init(&c); dm_android_sha256_update(&c, id, 64); dm_android_sha256_update(&c, answers, an); dm_android_sha256_final(md, &c);
     char key[17]; totk_hex(md, 8, key);
     const char *dir = totk_cache_dir(); char path[1200];
-    // graphics: the translator wants SPH + instructions, without the 0x30-byte NVN header
-    size_t skip = st == 5 ? 0 : 0x30;
-    snprintf(path, sizeof path, "%s/%s.code", dir, key);
-    FILE *f = fopen(path, "wb"); if (!f || fwrite(code + skip, 1, length - skip, f) != length - skip) die("write shader code %s", path); fclose(f);
-    char *c1 = malloc(2 * (size_t)(length - c1o) + 1); if (!c1) die("c1 hex"); totk_hex(code + c1o, length - c1o, c1);
-    char local[64] = "";
-    if (st == 5) { uint32_t l[3]; memcpy(l, control + 0x748, 12); if (!l[0] || !l[1] || !l[2]) die("compute shader %s: thread group size", id); snprintf(local, sizeof local, ", \"local\": [%u, %u, %u]", l[0], l[1], l[2]); }
-    totk_service_start();
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
-    char constants[160]; totk_request_constants(st, constants, sizeof constants);
-    fprintf(totk_xl_in, "{\"variant\": \"%s\", \"stage\": \"%s\", \"code\": \"%s\", \"c1\": \"%s\", %s%s, %s}\n",
-            key, st == 0 ? "vs" : st == 1 ? "ps" : "cs", path, c1, answers, local, constants);
-    fflush(totk_xl_in); free(c1);
-    char reply[2048]; if (!fgets(reply, sizeof reply, totk_xl_out)) die("shader translator exited while translating %s", key);
-    if (!strstr(reply, "\"ok\": true")) die("shader %s (%s) translation failed: %s", key, id, reply);
+    totk_translate(key, control, code, st, id, answers, "");
     snprintf(path, sizeof path, "%s/%s.deps", dir, key);
     totk_variant *v = calloc(1, sizeof *v); if (!v) die("variant table");
     memcpy(v->key, key, 17); v->deps = totk_read_text(path); if (!v->deps) die("shader %s: no .deps after translation", key);
     v->mask = *mask = totk_deps_mask(v->deps);
     v->next = s->variants; s->variants = v;
     snprintf(path, sizeof path, "%s/%s.variants", dir, id);
-    f = fopen(path, "a"); if (f) { fprintf(f, "%s\n", key); fclose(f); }
+    FILE *f = fopen(path, "a"); if (f) { fprintf(f, "%s\n", key); fclose(f); }
     totk_translated++;
     LOG("[shader] translated %llu: %s %s (shader %.16s) in %.1f ms", (unsigned long long)totk_translated, st == 0 ? "vs" : st == 1 ? "ps" : "cs", key, id,
         (dm_android_clock_ns(CLOCK_MONOTONIC) - t0) / 1e6);
@@ -325,6 +332,38 @@ static shader_entry *program_shader_in(const nvn_state *ns, const prog_t *progra
     return e->shaders[index];
 }
 static shader_entry *program_shader(const prog_t *program, unsigned index) { return program_shader_in(&state, program, index); }
+/* Object motion: the variant of a program's vertex stage (for the bound state) that also writes last frame's position
+   (translator patch 0009, job "mvprev"), or NULL when the position reads none of the object banks or no output is free.
+   Its key hashes the normal variant's key with "mvprev", so each normal variant has one; the first use translates it
+   (the service, as for any variant: a one-time hitch), later ones find it in the cache. */
+static shader_entry *program_motion_shader(const nvn_state *ns, const prog_t *program, unsigned index) {
+    shader_entry *vs = program_shader_in(ns, program, index);
+    if (!vs || vs->stage != 0) return NULL;
+    if (vs->motion_tried) return vs->motion;
+    const uint8_t *control = program->sd[index].control, *code = (const uint8_t *)(uintptr_t)program->sd[index].data;
+    char id[65]; totk_shader_id(control, code, 0, id);
+    uint8_t md[32]; dm_android_sha256_context c; dm_android_sha256_init(&c); dm_android_sha256_update(&c, vs->key, 16);
+    dm_android_sha256_update(&c, "mvprev", 6); dm_android_sha256_final(md, &c);
+    char key[17]; totk_hex(md, 8, key);
+    const char *dir = totk_cache_dir(); char path[1200];
+    pthread_mutex_lock(&totk_shader_lock);
+    vs->motion_tried = 1;
+    snprintf(path, sizeof path, "%s/%s.mvprev", dir, key);
+    if (access(path, R_OK)) {
+        totk_answers a; totk_answers_build(ns, 0, &a); char answers[16384]; totk_answers_json(&a, answers, sizeof answers);
+        uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
+        totk_translate(key, control, code, 0, id, answers, ", \"mvprev\": true");
+        LOG("[motion] translated the motion variant %s of %s (shader %.16s) in %.1f ms", key, vs->key, id, (dm_android_clock_ns(CLOCK_MONOTONIC) - t0) / 1e6);
+    }
+    int location = -1; unsigned banks = 0;
+    FILE *f = fopen(path, "r"); if (f) { if (fscanf(f, "%d %u", &location, &banks) != 2) location = -1; fclose(f); }
+    pthread_mutex_unlock(&totk_shader_lock);
+    if (location < 0 || !banks) return NULL;
+    shader_entry *m = shader_load_by_key(key, 1, 0);
+    if (!m) return NULL;
+    m->mv_location = location; m->mv_banks = banks; vs->motion = m;
+    return m;
+}
 /* The variant a program's stage resolved to last (shader s), with the mask and signature it was chosen by (nvn_vulkan_plan.inc). */
 static int program_shader_last(const prog_t *program, const shader_entry *s, totk_mask *mask, uint64_t *sig) {
     unsigned b = ((uintptr_t)program >> 4) & 1023; totk_program *e = totk_programs[b];

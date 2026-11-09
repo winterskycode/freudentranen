@@ -239,9 +239,10 @@ static int fg_scene_copy(image_entry *c) {
 #define MVS_TABLE (1u << 15)
 typedef struct { uint64_t addr; uint32_t bank, size; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
-static struct { int on; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
+/* on: the tables are kept (the survey or object motion); survey: the summaries are logged */
+static struct { int on, survey, motion; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
 static int mvs_on(void) {
-    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"); mvs.on = e && atoi(e) > 0;
+    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m && atoi(m) > 0; mvs.on = mvs.survey || mvs.motion;
         if (mvs.on) { mvs.t[0] = calloc(MVS_TABLE, sizeof(mvs_seen)); mvs.t[1] = calloc(MVS_TABLE, sizeof(mvs_seen)); if (!mvs.t[0] || !mvs.t[1]) die("motion survey tables");
             LOG("[mv-survey] on: last frame's object blocks in G-buffer draws (c5 c6 c7 c9 c11 c14), a summary every 600 frames"); } }
     return mvs.on;
@@ -256,7 +257,7 @@ static mvs_seen *mvs_find(mvs_seen *t, uint64_t addr, uint32_t bank, int add) {
 }
 /* The vertex binding indices whose two-copy neighbours the submit capture takes (hle_nvn.c flatten_recording): c5 bones
    and c7 place, while the survey is on */
-uint32_t mtl_mv_banks(void) { return mvs_on() ? 1u << 2 | 1u << 4 : 0; }
+uint32_t mtl_mv_banks(void) { return !mvs_on() ? 0 : mvs.motion ? 0x3fffu : 1u << 2 | 1u << 4; }
 /* a block's bytes from the submit capture when it holds them, else from guest memory */
 static uint8_t mvs_buf[65536];
 static const uint8_t *mvs_bytes(uint64_t addr, uint64_t size, int *captured) {
@@ -280,9 +281,11 @@ static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, int *
     *changed = 1; return 1;
 }
 static void mvs_draw(void) {
-    static const uint32_t banks[] = {2, 3, 4, 6, 8, 11};
+    /* the survey's banks, or every user bank c3-c16 for object motion (a motion variant may read any of them) */
+    static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11}, all_banks[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+    const uint32_t *banks = mvs.motion ? all_banks : survey_banks; unsigned nbanks = mvs.motion ? 14 : 6;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
-    for (unsigned b = 0; b < sizeof banks / sizeof *banks; b++) {
+    for (unsigned b = 0; b < nbanks; b++) {
         uint32_t bank = banks[b]; const p_bind_buf *u = &state.ubo[0][bank];
         if (!u->addr || !u->size || u->size > 65536) continue;
         mvs_seen *e = mvs_find(mvs.t[0], u->addr, bank, 1);
@@ -318,15 +321,38 @@ static void mvs_draw(void) {
     }
     mvs.ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
 }
+/* Last frame's copy of the vertex block at binding index `index`, by the two-copy rule and the similarity check (as
+   mvs_draw counts them), read from the submit capture where it holds the copy: *out with that address, or this frame's
+   block when there is no copy (bound at the same address last frame, a new object, another object's block). */
+static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_buf *out) {
+    const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
+    if (!u || stage != 0 || mvs.on <= 0 || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
+    if (mvs_find(mvs.t[1], u->addr, index, 0)) return u;
+    uint64_t step = (u->size + 255) & ~(uint64_t)255;
+    int up = mvs_find(mvs.t[1], u->addr + step, index, 0) != NULL, down = u->addr >= step && mvs_find(mvs.t[1], u->addr - step, index, 0) != NULL;
+    if (!up && !down) return u;
+    if (uniform_read_current((uintptr_t)u->addr, (uint32_t)u->size)) return u;
+    static uint8_t cur[65536]; memcpy(cur, uniform_read_scratch, u->size);
+    uint64_t prev = up ? u->addr + step : u->addr - step; int captured;
+    if (up && down) {
+        uint32_t a[16] = {0}; size_t words = u->size < 64 ? (size_t)u->size / 4 : 16;
+        memcpy(a, mvs_bytes(u->addr + step, u->size, &captured), words * 4);
+        const uint32_t *c = (const uint32_t *)cur, *d = (const uint32_t *)mvs_bytes(u->addr - step, u->size, &captured);
+        int na = 0, nd = 0; for (size_t w = 0; w < words; w++) na += c[w] == a[w], nd += c[w] == d[w];
+        if (nd > na) prev = u->addr - step;
+    }
+    int changed;
+    if (!mvs_similar(cur, mvs_bytes(prev, u->size, &captured), u->size, &changed)) return u;
+    *out = *u; out->addr = prev; return out;
+}
 static void mvs_frame(void) {
     if (!mvs_on()) return;
     mvs_seen *t = mvs.t[1]; mvs.t[1] = mvs.t[0]; mvs.t[0] = t; memset(t, 0, MVS_TABLE * sizeof *t);
-    if (++mvs.frames % 600) return;
-    static const char *const names[14] = {[2] = "c5", [3] = "c6", [4] = "c7", [6] = "c9", [8] = "c11", [11] = "c14"};
-    for (int b = 0; b < 14; b++) { const mvs_stat *s = &mvs.st[b]; if (!s->blocks) continue;
+    if (++mvs.frames % 600 || !mvs.survey) return;
+    for (int b = 0; b < 14; b++) { const mvs_stat *s = &mvs.st[b]; if (!s->blocks) continue; char name[8]; snprintf(name, sizeof name, "c%d", b + 3);
         double n = (double)s->blocks, found = (double)(s->side + s->nearer), moved = (double)(s->still + s->small + s->big);
         LOG("[mv-survey] %s: %.0f blocks a frame: self %.1f%%, side %.1f%%, nearer %.1f%%, none %.1f%%; of the neighbours found %.1f%% from the capture, %.1f%% similar (%.1f%% changed), %.1f%% different; moved: still %.1f%%, under 1 unit %.1f%%, more %.1f%%",
-            names[b], n / 600, 100 * s->self / n, 100 * s->side / n, 100 * s->nearer / n, 100 * s->none / n,
+            name, n / 600, 100 * s->self / n, 100 * s->side / n, 100 * s->nearer / n, 100 * s->none / n,
             found ? 100 * s->captured / found : 0, found ? 100 * s->similar / found : 0, found ? 100 * s->changed / found : 0, found ? 100 * s->different / found : 0,
             moved ? 100 * s->still / moved : 0, moved ? 100 * s->small / moved : 0, moved ? 100 * s->big / moved : 0); }
     LOG("[mv-survey] capturing both neighbours would add %.1f KiB in %.0f blocks a frame; survey %.3f ms a frame%s",
