@@ -890,11 +890,13 @@ static void copy_texture_texture(const p_copy_t2t *c) {
    reads an entry without the descriptor lock, retrying a copy that raced a write. It runs for every texture binding
    of every draw (~60,000 lock pairs a frame in the open world if it locked). */
 static _Atomic uint32_t texture_seq[1u << 20];
-void mtl_set_tex_pool_n(int n) {
-    if(n<0||n>1048576)die("Vulkan texture descriptor capacity %d",n);pthread_mutex_lock(&descriptor_lock);
+/* The table grows with the highest id registered: the shared runtime gives each texture pool a base in one id space
+   (hle_nvn.c dpool_add) and reports no pool sizes. The descriptor lock is held. */
+static void texture_capacity_grow(int n) {
+    if(n<0||n>1048576)die("Vulkan texture descriptor capacity %d",n);
     if(!texture_descriptors){void *m=mmap(NULL,(size_t)1048576*sizeof *texture_descriptors,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
         if(m==MAP_FAILED)die("Vulkan descriptor reservation");texture_descriptors=m;}
-    if(n>texture_capacity)texture_capacity=n;pthread_mutex_unlock(&descriptor_lock);
+    if(n>texture_capacity)texture_capacity=n;
 }
 /* TOTK: changes whenever a texture id is (re)registered */
 static _Atomic uint64_t descriptor_generation;
@@ -902,7 +904,7 @@ static _Atomic uint64_t descriptor_generation;
    format << 8 of the view (else the texture), 0 for none. A fixed array (4 MB of zero pages until used): read without
    the descriptor lock on every draw. */
 static _Atomic uint32_t texture_kinds[1u << 20];
-void mtl_reg_tex(int id,const tex_t *t,const view_t *v) {pthread_mutex_lock(&descriptor_lock);atomic_fetch_add(&descriptor_generation,1);if(id<0||id>=texture_capacity)die("Vulkan texture descriptor index %d",id);
+void mtl_reg_tex(int id,const tex_t *t,const view_t *v) {pthread_mutex_lock(&descriptor_lock);atomic_fetch_add(&descriptor_generation,1);if(id<0)die("Vulkan texture descriptor index %d",id);if(id>=texture_capacity)texture_capacity_grow(id+1);
     atomic_store_explicit(&texture_kinds[id],1u|(uint32_t)((v&&v->set_target?v->target:t->d.target)&127)<<1|(uint32_t)(v&&v->set_format?v->format:t->d.format)<<8,memory_order_relaxed);uint32_t seq=atomic_load_explicit(&texture_seq[id],memory_order_relaxed);atomic_store_explicit(&texture_seq[id],seq+1,memory_order_relaxed);atomic_thread_fence(memory_order_release);
     texture_descriptors[id]=(texture_descriptor){.valid=1,.texture=*t};if(v)texture_descriptors[id].view=*v;atomic_store_explicit(&texture_seq[id],seq+2,memory_order_release);
     if(v){static unsigned view_diagnostics;if(v->set_format&&v->format!=t->d.format&&view_diagnostics++<12)LOG("[vulkan] texture view format texture=%#x view=%#x serial=%llu",t->d.format,v->format,(unsigned long long)t->serial);}pthread_mutex_unlock(&descriptor_lock);}
