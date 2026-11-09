@@ -241,14 +241,26 @@ static int fg_scene_copy(image_entry *c) {
 /* prev, memo, changed: mv_prev_block's answer for the block this frame (memo 1 last frame's copy at prev, -1 none) */
 typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
-/* on: the tables are kept (the survey or object motion); survey: the summaries are logged */
-static struct { int on, survey, motion; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
-static int mvs_on(void) {
-    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m ? atoi(m) : 0; if (mvs.motion < 0) mvs.motion = 0; mvs.on = mvs.survey || mvs.motion;
-        if (mvs.on) { mvs.t[0] = calloc(MVS_TABLE, sizeof(mvs_seen)); mvs.t[1] = calloc(MVS_TABLE, sizeof(mvs_seen)); if (!mvs.t[0] || !mvs.t[1]) die("motion survey tables");
-            LOG("[mv-survey] on: last frame's object blocks in G-buffer draws (c5 c6 c7 c9 c11 c14), a summary every 600 frames"); } }
-    return mvs.on;
+/* on: the tables are kept this frame (the survey or object motion); survey: the summaries are logged. motion
+   (TOTK_OBJ_MOTION): -1 when a consumer of object motion runs (the built-in or FSR 3.1 frame generation, Arm ASR;
+   not LSFG, which takes only pictures), the default; 0 off; 1 always; 2 still objects too (diagnostic). Settled once a
+   frame (mvs_frame), so it follows the in-game menu. */
+static struct { int on, survey, motion, mo; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
+static int mvs_settle(void) {
+    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m && *m ? atoi(m) : -1; if (mvs.motion < -1) mvs.motion = -1;
+        if (mvs.survey) LOG("[mv-survey] on: last frame's object blocks in G-buffer draws (c5 c6 c7 c9 c11 c14), a summary every 600 frames"); }
+    int motion = mvs.motion < 0 ? fg_enabled() > 0 || taa_enabled() == 2 : mvs.motion > 0;
+    int on = mvs.survey || motion;
+    if (on && !mvs.t[0]) { mvs.t[0] = calloc(MVS_TABLE, sizeof(mvs_seen)); mvs.t[1] = calloc(MVS_TABLE, sizeof(mvs_seen)); if (!mvs.t[0] || !mvs.t[1]) die("motion survey tables"); }
+    /* coming on: no blocks of this frame or a last frame yet */
+    if (on && mvs.on <= 0) { memset(mvs.t[0], 0, MVS_TABLE * sizeof(mvs_seen)); memset(mvs.t[1], 0, MVS_TABLE * sizeof(mvs_seen)); }
+    if (motion != mvs.mo && (mvs.on >= 0 || motion)) LOG("[motion] object motion %s", motion ? "on" : "off");
+    mvs.on = on; mvs.mo = motion;
+    return on;
 }
+static int mvs_on(void) { return mvs.on >= 0 ? mvs.on : mvs_settle(); }
+/* object motion this frame (not the survey alone) */
+static int mvs_motion(void) { return mvs_on() && mvs.mo; }
 static mvs_seen *mvs_find(mvs_seen *t, uint64_t addr, uint32_t bank, int add) {
     uint32_t i = (uint32_t)(((addr ^ (uint64_t)bank * 0x9E3779B97F4A7C15ull) * 0xff51afd7ed558ccdull) >> 40) & (MVS_TABLE - 1);
     for (uint32_t k = 0; k < MVS_TABLE; k++, i = (i + 1) & (MVS_TABLE - 1)) {
@@ -366,7 +378,8 @@ static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_bu
     return r;
 }
 static void mvs_frame(void) {
-    if (!mvs_on()) return;
+    int was = mvs.on > 0;
+    if (!mvs_settle() || !was) return;
     mvs_seen *t = mvs.t[1]; mvs.t[1] = mvs.t[0]; mvs.t[0] = t; memset(t, 0, MVS_TABLE * sizeof *t);
     if (++mvs.frames % 600 || !mvs.survey) return;
     for (int b = 0; b < 14; b++) { const mvs_stat *s = &mvs.st[b]; if (!s->blocks) continue; char name[8]; snprintf(name, sizeof name, "c%d", b + 3);

@@ -1,4 +1,4 @@
-/* Object motion (TOTK_OBJ_MOTION=1): last frame's position of what the G-buffer draws, for frame interpolation, after
+/* Object motion (TOTK_OBJ_MOTION, mvs_settle): last frame's position of what the G-buffer draws, for frame interpolation, after
    totk-pc-recomp's per-object motion (MIT, Copyright (c) 2026 Valiantsin Dzerakh). A qualifying G-buffer draw (indexed,
    depth tested and written, full size, its position reading the scene camera c4 and an object block c5 or c7) is listed
    with the descriptor set of its vertex shader's motion variant (program_motion_shader: last frame's position at location
@@ -27,7 +27,7 @@ static struct {
     uint64_t listed, skipped, still, drawn, pipes_made, frames, flushes;
     int dump;
 } mo;
-static int mo_on(void) { return mvs_on() && mvs.motion; }
+static int mo_on(void) { return mvs_motion(); }
 /* Last frame's camera. The scene camera block (c4, 2,368 bytes) holds this frame's view (rows 0-2, 3x4) and
    view-projection (rows 3-6) and, at rows 21-23 and 24-27, last frame's: its copy for last frame is this frame's block
    with those moved up, the projection (rows 7-10) kept. A block whose last frame's view is not close to this frame's
@@ -213,8 +213,8 @@ static image_entry *mo_image(void) {
 }
 /* Once a frame (fg_frame_end): the dump, the summary */
 static void mo_frame(void) {
-    if (!mo_on()) return;
     mo.n = 0; mo.fresh = 0; mo.pend = NULL;
+    if (!mo_on()) return;
     if (mo.dump == 2) { mo_dump_write(); mo.dump = 0; }
     mo_ncams = 0;
     if (mo.dump == 1) mo.dump = 2;
