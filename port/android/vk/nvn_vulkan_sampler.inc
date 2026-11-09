@@ -1,6 +1,8 @@
 // Shared sampler objects are owned by effective parameter keys; slots retain references, and re-registration never destroys in-flight objects.
 typedef struct {
     uint32_t mag,min,mip,u,v,w,compare,compare_op,border;
+    /* the colour of VK_BORDER_COLOR_FLOAT_CUSTOM_EXT, zero for the fixed colours */
+    float border_rgba[4];
     /* aniso: 0 = off */
     float bias,min_lod,max_lod,aniso;
 } sampler_key;
@@ -18,9 +20,15 @@ static void sampler_forget_all_locked(void) {
     for(int i=0;i<sampler_capacity;i++)sampler_descriptors[i].sampler=VK_NULL_HANDLE;
     for(int i=0;i<4096;i++)atomic_store_explicit(&sampler_fast[i],0,memory_order_relaxed);
 }
-static VkBorderColor sampler_border(const samp_par *p) {
-    // Match the Metal backend's three standard border colors; arbitrary NVN custom colors remain limited.
+static VkBorderColor sampler_border_fixed(const samp_par *p) {
     return p->border[3]>.5f?(p->border[0]>.5f?VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE:VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK):VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+}
+/* A fixed colour when the game's is one of them, else its own (custom_border_ok) */
+static VkBorderColor sampler_border(const samp_par *p) {
+    const float *c=p->border;
+    if(!c[0]&&!c[1]&&!c[2]&&(!c[3]||c[3]==1))return c[3]?VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+    if(c[0]==1&&c[1]==1&&c[2]==1&&c[3]==1)return VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    return custom_border_ok?VK_BORDER_COLOR_FLOAT_CUSTOM_EXT:sampler_border_fixed(p);
 }
 static sampler_key sampler_key_make(const samp_par *p) {
     sampler_key key={.mag=p->magf?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.min=(p->minf&1)?VK_FILTER_LINEAR:VK_FILTER_NEAREST,
@@ -28,6 +36,7 @@ static sampler_key sampler_key_make(const samp_par *p) {
         .compare=!!p->cmp_mode,.compare_op=p->cmp_mode&&p->cmp_func?p->cmp_func-1:VK_COMPARE_OP_ALWAYS,.border=sampler_border(p),.bias=p->lod_bias};
     if(p->minf>=2){key.min_lod=p->lod_min>0?p->lod_min:0;key.max_lod=p->lod_max>=key.min_lod?p->lod_max:key.min_lod;}
     if(key.u!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER&&key.v!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER&&key.w!=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER)key.border=VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+    if(key.border==VK_BORDER_COLOR_FLOAT_CUSTOM_EXT)memcpy(key.border_rgba,p->border,sizeof key.border_rgba);
     if(key.bias==0)key.bias=0;
     /* NVN min/max reduction (1 MIN, 2 MAX) is not applied: count the samplers that ask for it */
     { static unsigned reduction_notes;if(p->reduction&&reduction_notes<16){reduction_notes++;
@@ -61,9 +70,16 @@ static VkSampler sampler_get_for_type(int id,uint32_t type) {
         sampler_resolved_locked(id,descriptor,entry->sampler);sampler_reuses++;pthread_mutex_unlock(&descriptor_lock);return entry->sampler;
     }
     sampler_cache_entry *entry=calloc(1,sizeof *entry);if(!entry)die("Vulkan sampler parameter cache allocation");entry->key=key;
+    /* the cache entry keeps the custom key, so later lookups still find this sampler */
+    VkSamplerCustomBorderColorCreateInfoEXT border_color={.sType=VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT,.format=VK_FORMAT_UNDEFINED};
+    if(key.border==VK_BORDER_COLOR_FLOAT_CUSTOM_EXT){
+        if(custom_border_used<custom_border_max){custom_border_used++;memcpy(border_color.customBorderColor.float32,key.border_rgba,sizeof key.border_rgba);}
+        else key.border=sampler_border_fixed(&parameters);
+    }
     VkSamplerCreateInfo info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=key.mag,.minFilter=key.min,.mipmapMode=key.mip,
         .addressModeU=key.u,.addressModeV=key.v,.addressModeW=key.w,.mipLodBias=key.bias,.compareEnable=key.compare,.compareOp=key.compare_op,
-        .minLod=key.min_lod,.maxLod=key.max_lod,.borderColor=key.border,.anisotropyEnable=key.aniso>1,.maxAnisotropy=key.aniso>1?key.aniso:1};
+        .minLod=key.min_lod,.maxLod=key.max_lod,.borderColor=key.border,.anisotropyEnable=key.aniso>1,.maxAnisotropy=key.aniso>1?key.aniso:1,
+        .pNext=key.border==VK_BORDER_COLOR_FLOAT_CUSTOM_EXT?&border_color:NULL};
     VK_CHECK(vkCreateSampler(device,&info,NULL,&entry->sampler));
     { static uint64_t aniso_samplers;if(key.aniso>1&&++aniso_samplers<=8)LOG("[vulkan-sampler] anisotropic sampler %llu: %gx (min %u mip %u)",(unsigned long long)aniso_samplers,key.aniso,key.min,key.mip); }
     entry->next=sampler_cache[bucket];sampler_cache[bucket]=entry;sampler_creations++;

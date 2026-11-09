@@ -230,6 +230,12 @@ static int ext_fbloop, fbloop_ok;
    show cache-line "ants" (Turnip on a7xx+ flushes per overlap only for this, not for feedback loops). Costs ~0.9 ms
    GPU a frame (the overlapping meshes' flushes), so it is off unless TOTK_VK_RORDER=1. */
 static int ext_rorder, rorder_ok;
+/* VK_EXT_custom_border_color without a format: a sampler clamps to the game's own border colour. TotK's grass map
+   clamps to 0.5 grey; as transparent black the grass lay flat away from Link and cutting it left no cut. Without the
+   extension (or past maxCustomBorderColorSamplers) the nearest of Vulkan's three fixed colours is used.
+   TOTK_VK_CUSTOM_BORDER=0 keeps the fixed colours. */
+static int ext_custom_border, custom_border_ok;
+static uint32_t custom_border_max, custom_border_used;
 static int ext_gpl, ext_pipeline_library, gpl_state;
 static int ext_descriptor_indexing;
 static int bindless_on(void);static void bindless_create(void);
@@ -1045,7 +1051,7 @@ driver_retry:;
                 pace_ext |= !strcmp(ext[i].extensionName, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
                 provoking_last |= !strcmp(ext[i].extensionName, VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
                 ext_eds |= !strcmp(ext[i].extensionName, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME); ext_eds2 |= !strcmp(ext[i].extensionName, VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME);
-                ext_memory_fd |= !strcmp(ext[i].extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME); ext_robustness2 |= !strcmp(ext[i].extensionName, VK_EXT_ROBUSTNESS_2_EXTENSION_NAME); ext_fbloop |= !strcmp(ext[i].extensionName, VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME); ext_rorder |= !strcmp(ext[i].extensionName, VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME); ext_dma_buf |= !strcmp(ext[i].extensionName, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME); ext_descriptor_indexing |= !strcmp(ext[i].extensionName, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+                ext_memory_fd |= !strcmp(ext[i].extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME); ext_robustness2 |= !strcmp(ext[i].extensionName, VK_EXT_ROBUSTNESS_2_EXTENSION_NAME); ext_fbloop |= !strcmp(ext[i].extensionName, VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME); ext_rorder |= !strcmp(ext[i].extensionName, VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME); ext_custom_border |= !strcmp(ext[i].extensionName, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME); ext_dma_buf |= !strcmp(ext[i].extensionName, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME); ext_descriptor_indexing |= !strcmp(ext[i].extensionName, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
                 ext_gpl |= !strcmp(ext[i].extensionName, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME); ext_pipeline_library |= !strcmp(ext[i].extensionName, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME); }
             free(ext); }
         LOG("[vulkan-wsi] device extensions=%u VK_EXT_swapchain_maintenance1=%s (not enabled; same-surface rebuilds retire on re-acquire evidence, surface teardown on queue idle)", ne, maintenance1 ? "listed" : "absent"); }
@@ -1143,6 +1149,16 @@ driver_retry:;
             if (rorder.rasterizationOrderColorAttachmentAccess) { rorder.rasterizationOrderDepthAttachmentAccess = rorder.rasterizationOrderStencilAttachmentAccess = VK_FALSE;
                 rorder.pNext = (void *)di.pNext; di.pNext = &rorder; device_extensions[nde++] = VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME; rorder_ok = 1; } }
         LOG("[vulkan] feedback-loop draws in rasterization order: %s", rorder_ok ? "yes" : ext_rorder ? "no (TOTK_VK_RORDER not set, feedback loops off or feature missing)" : "no (extension absent)"); }
+    VkPhysicalDeviceCustomBorderColorFeaturesEXT border_features = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT};
+    {   const char *e = getenv("TOTK_VK_CUSTOM_BORDER");
+        if (ext_custom_border && !(e && !atoi(e))) {
+            VkPhysicalDeviceFeatures2 query = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &border_features}; vkGetPhysicalDeviceFeatures2(physical, &query);
+            VkPhysicalDeviceCustomBorderColorPropertiesEXT border_limits = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_PROPERTIES_EXT};
+            VkPhysicalDeviceProperties2 limits = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &border_limits}; vkGetPhysicalDeviceProperties2(physical, &limits);
+            if (border_features.customBorderColors && border_features.customBorderColorWithoutFormat && border_limits.maxCustomBorderColorSamplers) {
+                border_features.pNext = (void *)di.pNext; di.pNext = &border_features; device_extensions[nde++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
+                custom_border_max = border_limits.maxCustomBorderColorSamplers; custom_border_ok = 1; } }
+        LOG("[vulkan] sampler border colours: %s (up to %u samplers)", custom_border_ok ? "the game's own" : ext_custom_border ? "three fixed (TOTK_VK_CUSTOM_BORDER=0 or a feature missing)" : "three fixed (extension absent)", custom_border_max); }
     /* Pipeline libraries (nvn_vulkan_gpl.inc, TOTK_VK_GPL=0 off): new pipelines fast-linked from per-stage libraries, the
        whole pipeline built behind. Only where the driver links fast (graphicsPipelineLibraryFastLinking): elsewhere a link
        costs about a whole build and gains nothing. */
