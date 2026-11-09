@@ -232,12 +232,13 @@ static int fg_scene_copy(image_entry *c) {
      nearer  both were: the one with more of its first 16 words equal to this frame's
      none    neither
    and the copy found is compared with this frame's block by totk-pc-recomp's mo_similar rule (every float within 10 %,
-   at least 1.0 and at most 4.0 units). The neighbour is read from guest memory at replay, so the game may already be
-   writing the next frame into it: an upper bound on what a capture at the submit call would see. Every 600 frames a
-   summary per bank, the bytes a capture of both neighbours would add, and the survey's own time. */
+   at least 1.0 and at most 4.0 units). The neighbours of c5 and c7 are captured at the submit call (mtl_mv_banks), so
+   the copy is read from there as the game left it; the other banks' neighbours are read from guest memory at replay,
+   where the game may already be writing the next frame. Every 600 frames a summary per bank (with the share read from
+   the capture), the bytes a capture of both neighbours of every bank would add, and the survey's own time. */
 #define MVS_TABLE (1u << 15)
 typedef struct { uint64_t addr; uint32_t bank, size; } mvs_seen;
-typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big; } mvs_stat;
+typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
 static struct { int on; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
 static int mvs_on(void) {
     if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"); mvs.on = e && atoi(e) > 0;
@@ -252,6 +253,16 @@ static mvs_seen *mvs_find(mvs_seen *t, uint64_t addr, uint32_t bank, int add) {
         if (!t[i].addr) { if (!add) return NULL; t[i].addr = addr; t[i].bank = bank; return &t[i]; }
     }
     mvs.full++; return NULL;
+}
+/* The vertex binding indices whose two-copy neighbours the submit capture takes (hle_nvn.c flatten_recording): c5 bones
+   and c7 place, while the survey is on */
+uint32_t mtl_mv_banks(void) { return mvs_on() ? 1u << 2 | 1u << 4 : 0; }
+/* a block's bytes from the submit capture when it holds them, else from guest memory */
+static uint8_t mvs_buf[65536];
+static const uint8_t *mvs_bytes(uint64_t addr, uint64_t size, int *captured) {
+    *captured = ucap_covers((uintptr_t)addr, (uint32_t)size);
+    if (!*captured) return (const uint8_t *)(uintptr_t)addr;
+    ucap_apply((uintptr_t)addr, mvs_buf, (uint32_t)size); return mvs_buf;
 }
 /* totk-pc-recomp runtime/vk_exec_draw.c mo_similar (MIT, Copyright (c) 2026 Valiantsin Dzerakh) */
 static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, int *changed) {
@@ -286,17 +297,21 @@ static void mvs_draw(void) {
         if (uniform_read_current((uintptr_t)u->addr, (uint32_t)u->size)) { st->none++; continue; }
         const uint8_t *cur = uniform_read_scratch;
         uint64_t prev = up ? u->addr + step : u->addr - step;
+        int captured;
         if (up && down) {
-            const uint32_t *c = (const uint32_t *)cur, *a = (const uint32_t *)(uintptr_t)(u->addr + step), *d = (const uint32_t *)(uintptr_t)(u->addr - step);
-            int na = 0, nd = 0; for (int w = 0; w < 16 && (uint64_t)w * 4 < u->size; w++) na += c[w] == a[w], nd += c[w] == d[w];
+            /* the first 16 words of each: the up neighbour copied aside, as mvs_bytes reuses its buffer */
+            uint32_t a[16] = {0}; size_t words = u->size < 64 ? (size_t)u->size / 4 : 16;
+            memcpy(a, mvs_bytes(u->addr + step, u->size, &captured), words * 4);
+            const uint32_t *c = (const uint32_t *)cur, *d = (const uint32_t *)mvs_bytes(u->addr - step, u->size, &captured);
+            int na = 0, nd = 0; for (size_t w = 0; w < words; w++) na += c[w] == a[w], nd += c[w] == d[w];
             if (nd > na) prev = u->addr - step;
             st->nearer++;
         } else st->side++;
-        int changed;
-        if (!mvs_similar(cur, (const uint8_t *)(uintptr_t)prev, u->size, &changed)) { st->different++; continue; }
+        int changed; const uint8_t *old = mvs_bytes(prev, u->size, &captured); st->captured += (uint64_t)captured;
+        if (!mvs_similar(cur, old, u->size, &changed)) { st->different++; continue; }
         st->similar++; st->changed += (uint64_t)changed;
         if ((bank == 2 || bank == 4) && u->size >= 48) {
-            const float *x = (const float *)cur, *y = (const float *)(uintptr_t)prev;
+            const float *x = (const float *)cur, *y = (const float *)old;
             float dx = x[3] - y[3], dy = x[7] - y[7], dz = x[11] - y[11], m = sqrtf(dx * dx + dy * dy + dz * dz);
             if (m == 0) st->still++; else if (m < 1) st->small++; else st->big++;
         }
@@ -310,9 +325,9 @@ static void mvs_frame(void) {
     static const char *const names[14] = {[2] = "c5", [3] = "c6", [4] = "c7", [6] = "c9", [8] = "c11", [11] = "c14"};
     for (int b = 0; b < 14; b++) { const mvs_stat *s = &mvs.st[b]; if (!s->blocks) continue;
         double n = (double)s->blocks, found = (double)(s->side + s->nearer), moved = (double)(s->still + s->small + s->big);
-        LOG("[mv-survey] %s: %.0f blocks a frame: self %.1f%%, side %.1f%%, nearer %.1f%%, none %.1f%%; of the neighbours found %.1f%% similar (%.1f%% changed), %.1f%% different; moved: still %.1f%%, under 1 unit %.1f%%, more %.1f%%",
+        LOG("[mv-survey] %s: %.0f blocks a frame: self %.1f%%, side %.1f%%, nearer %.1f%%, none %.1f%%; of the neighbours found %.1f%% from the capture, %.1f%% similar (%.1f%% changed), %.1f%% different; moved: still %.1f%%, under 1 unit %.1f%%, more %.1f%%",
             names[b], n / 600, 100 * s->self / n, 100 * s->side / n, 100 * s->nearer / n, 100 * s->none / n,
-            found ? 100 * s->similar / found : 0, found ? 100 * s->changed / found : 0, found ? 100 * s->different / found : 0,
+            found ? 100 * s->captured / found : 0, found ? 100 * s->similar / found : 0, found ? 100 * s->changed / found : 0, found ? 100 * s->different / found : 0,
             moved ? 100 * s->still / moved : 0, moved ? 100 * s->small / moved : 0, moved ? 100 * s->big / moved : 0); }
     LOG("[mv-survey] capturing both neighbours would add %.1f KiB in %.0f blocks a frame; survey %.3f ms a frame%s",
         mvs.extra_bytes / 600.0 / 1024, mvs.extra_blocks / 600.0, mvs.ns / 600.0 / 1e6, mvs.full ? " (table full)" : "");
