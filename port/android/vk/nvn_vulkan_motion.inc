@@ -22,9 +22,11 @@ static struct {
     /* the last G-buffer pass that ended while draws were listed: the list is drawn against its depth */
     graphics_frame_entry *pend;
     mo_pipeline *pipes[256];
-    /* per 600 frames: draws listed, skipped (no variant, not location 15), still (no object block changed), motion draws
-       drawn, pipelines made */
-    uint64_t listed, skipped, still, drawn, pipes_made, frames, flushes;
+    /* per 600 frames: draws listed, skipped (no variant, not location 15), still (no object block changed), small (moving
+       less than TOTK_MO_MINPX), motion draws drawn, pipelines made */
+    uint64_t listed, skipped, still, drawn, pipes_made, frames, flushes, small;
+    /* TOTK_MO_TIME=1: the passes' GPU time (a ring of timestamp pairs read back when reused) */
+    int timing; VkQueryPool stamps; uint64_t stamp_n; double gpu_ms;
     int dump;
 } mo;
 static int mo_on(void) { return mvs_motion(); }
@@ -36,7 +38,7 @@ static int mo_on(void) { return mvs_motion(); }
    (chunk_epoch). */
 #define MO_CAMS 32
 #define MO_CAM_SIZE 2368
-typedef struct { uint64_t addr; int ok; uint64_t epoch; VkDescriptorBufferInfo info; uint8_t bytes[MO_CAM_SIZE]; } mo_cam;
+typedef struct { uint64_t addr; int ok; uint64_t epoch; VkDescriptorBufferInfo info; float view_z[4], fx; uint8_t bytes[MO_CAM_SIZE]; } mo_cam;
 static mo_cam mo_cams[MO_CAMS]; static unsigned mo_ncams;
 /* per summary: camera bindings given last frame's camera, and without one */
 static uint64_t mo_cam_hits, mo_cam_misses;
@@ -47,6 +49,7 @@ static void mo_note_camera(void) {
     if (mo_ncams == MO_CAMS || uniform_read_current((uintptr_t)u->addr, MO_CAM_SIZE)) return;
     mo_cam *c = &mo_cams[mo_ncams++]; c->addr = u->addr; c->epoch = UINT64_MAX;
     memcpy(c->bytes, uniform_read_scratch, MO_CAM_SIZE);
+    memcpy(c->view_z, c->bytes + 2 * 16, 16); { float f; memcpy(&f, c->bytes + 7 * 16, 4); c->fx = f * (float)(fg.depth ? fg.depth->texture.d.width : 1280) * 0.5f; }
     int changed; c->ok = mvs_similar(c->bytes + 21 * 16, c->bytes, 3 * 16, &changed);
     /* this frame's jitter on the projection, as the draw's own copy has it (taa_uniform): the motion comes out unjittered */
     if (c->ok) { memcpy(c->bytes, c->bytes + 21 * 16, 7 * 16); taa_uniform((uintptr_t)u->addr, MO_CAM_SIZE, c->bytes); }
@@ -73,6 +76,34 @@ static shader_entry *mo_fs(void) {
     }
     return &mo.fs;
 }
+/* How far a skinned object's bones (c5, 3x4 matrices) move it on screen, at most: per bone its translation's change
+   plus its rotation's largest change times the bones' spread (+0.5 m), projected at the bones' mean view depth with
+   the camera's x scale. Once a frame per block (its survey entry's px: 0 not yet, else 1 + pixels). */
+static float mo_bone_px(void) {
+    const p_bind_buf *u = &state.ubo[0][2]; mvs_seen *e = u->addr && mvs.t[0] ? mvs_find(mvs.t[0], u->addr, 2, 1) : NULL;
+    if (!e) return 1e9f;
+    if (e->px > 0) return e->px - 1;
+    float px = 1e9f; mo_cam *cam = NULL;
+    for (unsigned i = 0; i < mo_ncams; i++) if (mo_cams[i].addr == state.ubo[0][1].addr) cam = &mo_cams[i];
+    p_bind_buf tmp; const p_bind_buf *pv = mv_prev_block(0, 2, &tmp);
+    uint32_t nb = (uint32_t)(u->size / 48);
+    if (cam && pv == &tmp && nb && nb <= 1024 && !uniform_read_current((uintptr_t)u->addr, (uint32_t)u->size)) {
+        static float cur[16384]; memcpy(cur, uniform_read_scratch, nb * 48);
+        int cap; const float *prv = (const float *)mvs_bytes(pv->addr, u->size, &cap);
+        float c[3] = {0}; for (uint32_t b = 0; b < nb; b++) for (int k = 0; k < 3; k++) c[k] += cur[b * 12 + k * 4 + 3] / nb;
+        float spread = 0, disp = 0;
+        for (uint32_t b = 0; b < nb; b++) { float d2 = 0; for (int k = 0; k < 3; k++) { float x = cur[b * 12 + k * 4 + 3] - c[k]; d2 += x * x; } if (d2 > spread) spread = d2; }
+        spread = sqrtf(spread) + 0.5f;
+        for (uint32_t b = 0; b < nb; b++) {
+            float dt2 = 0, dr = 0;
+            for (int k = 0; k < 3; k++) { float x = cur[b * 12 + k * 4 + 3] - prv[b * 12 + k * 4 + 3]; dt2 += x * x;
+                for (int j = 0; j < 3; j++) { float y = fabsf(cur[b * 12 + k * 4 + j] - prv[b * 12 + k * 4 + j]); if (y > dr) dr = y; } }
+            float d = sqrtf(dt2) + dr * 1.7320508f * spread; if (d > disp) disp = d; }
+        float vz = fabsf(cam->view_z[0] * c[0] + cam->view_z[1] * c[1] + cam->view_z[2] * c[2] + cam->view_z[3]);
+        px = cam->fx * disp / (vz > 0.1f ? vz : 0.1f);
+    }
+    e->px = px + 1; return px;
+}
 /* After a G-buffer draw: list it when it qualifies (see the top). */
 static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, poly_st polygon, const VkBuffer *vb, const VkDeviceSize *vo,
                       VkBuffer ib, VkDeviceSize io, VkIndexType it, uint32_t count, const p_draw_idx *indexed, const VkViewport *viewport, const VkRect2D *scissor) {
@@ -88,6 +119,11 @@ static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, po
     { int moved = 0; for (unsigned n = 5; n <= 7 && !moved; n += 2) if (m->mv_banks >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
       /* TOTK_OBJ_MOTION=2 (diagnostic): still objects too, to check the camera half against the depth */
       if (!moved && mvs.motion < 2) { mo.still++; return; } }
+    /* a skinned object that moves less than TOTK_MO_MINPX pixels (default 0.5; 0: all) keeps the camera's motion: idle
+       animation, distant characters; its place (c7) changing always counts */
+    { static float minpx = -1; if (minpx < 0) { const char *e = getenv("TOTK_MO_MINPX"); minpx = e ? (float)atof(e) : 0.5f; if (minpx < 0) minpx = 0; }
+      int placed = 0; if (m->mv_banks >> 7 & 1) { p_bind_buf tmp; mv_prev_block(0, 4, &tmp); placed = mv_prev_changed; }
+      if (minpx > 0 && mvs.motion < 2 && !placed && (m->mv_banks >> 5 & 1) && mo_bone_px() < minpx) { mo.small++; return; } }
     if (mo.n == mo.cap) { mo.cap = mo.cap ? mo.cap * 2 : 256; mo.d = realloc(mo.d, mo.cap * sizeof *mo.d); if (!mo.d) die("object motion list"); }
     mo_draw *d = &mo.d[mo.n];
     unsigned ndyn = 0; uint32_t dyn[256];
@@ -161,6 +197,12 @@ static void mo_flush(graphics_frame_entry *ended) {
     image_access(&mo.img, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
     image_access(depth, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
     VkClearValue clears[2] = {{.color = {.float32 = {-10, -10, 0, 0}}}, {.depthStencil = {0, 0}}};
+    if (!mo.timing) { const char *e = getenv("TOTK_MO_TIME"); mo.timing = e && atoi(e) > 0 ? 1 : -1;
+        if (mo.timing > 0) { VkQueryPoolCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = 512}; VK_CHECK(vkCreateQueryPool(device, &qi, NULL, &mo.stamps)); } }
+    uint32_t q = (uint32_t)(mo.stamp_n % 256) * 2;
+    if (mo.timing > 0) { uint64_t ts[2];
+        if (mo.stamp_n >= 256 && vkGetQueryPoolResults(device, mo.stamps, q, 2, sizeof ts, ts, 8, VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && ts[1] > ts[0]) mo.gpu_ms += (double)(ts[1] - ts[0]) * gpu_limits.timestampPeriod / 1e6;
+        vkCmdResetQueryPool(command, mo.stamps, q, 2); vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, mo.stamps, q); }
     VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = pass->pass, .framebuffer = frame->frame, .renderArea = {{0, 0}, {w, h}}, .clearValueCount = 2, .pClearValues = clears};
     vkCmdBeginRenderPass(command, &bi, VK_SUBPASS_CONTENTS_INLINE);
     const float zero[4] = {0};
@@ -187,6 +229,7 @@ static void mo_flush(graphics_frame_entry *ended) {
         mo.drawn++;
     }
     vkCmdEndRenderPass(command);
+    if (mo.timing > 0) { vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mo.stamps, q + 1); mo.stamp_n++; }
     image_gpu_written(&mo.img);
     /* the game's next draw binds everything again */
     memset(&graphics_commands, 0, sizeof graphics_commands);
@@ -222,9 +265,11 @@ static void mo_frame(void) {
       if (now >= next) { next = now + 250000000ull; const char *dir = getenv("DM_VK_SHADERS"); char path[1200];
           if (dir) { snprintf(path, sizeof path, "%s/../mvdump.trigger", dir); if (!access(path, F_OK)) { unlink(path); mo.dump = 1; LOG("[motion] dump armed"); } } } }
     if (++mo.frames % 600) return;
-    LOG("[motion] a frame: %.1f draws listed, %.1f skipped (no motion variant at location 15), %.1f still (camera motion only), %.1f drawn in %.2f passes; %llu pipelines",
-        mo.listed / 600.0, mo.skipped / 600.0, mo.still / 600.0, mo.drawn / 600.0, mo.flushes / 600.0, (unsigned long long)mo.pipes_made);
+    LOG("[motion] a frame: %.1f draws listed, %.1f skipped (no motion variant at location 15), %.1f still (camera motion only), %.1f moving too little, %.1f drawn in %.2f passes; %llu pipelines",
+        mo.listed / 600.0, mo.skipped / 600.0, mo.still / 600.0, mo.small / 600.0, mo.drawn / 600.0, mo.flushes / 600.0, (unsigned long long)mo.pipes_made);
     LOG("[motion] camera: %.1f bindings a frame given last frame's camera, %.1f without one", mo_cam_hits / 600.0, mo_cam_misses / 600.0);
     mo_cam_hits = mo_cam_misses = 0;
-    mo.listed = mo.skipped = mo.still = mo.drawn = mo.flushes = 0;
+    if (mo.timing > 0) LOG("[motion] GPU %.3f ms a frame in its passes", mo.gpu_ms / 600.0);
+    mo.gpu_ms = 0;
+    mo.listed = mo.skipped = mo.still = mo.small = mo.drawn = mo.flushes = 0;
 }

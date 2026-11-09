@@ -239,7 +239,7 @@ static int fg_scene_copy(image_entry *c) {
    the capture), the bytes a capture of both neighbours of every bank would add, and the survey's own time. */
 #define MVS_TABLE (1u << 15)
 /* prev, memo, changed: mv_prev_block's answer for the block this frame (memo 1 last frame's copy at prev, -1 none) */
-typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; } mvs_seen;
+typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; float px; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
 /* on: the tables are kept this frame (the survey or object motion); survey: the summaries are logged. motion
    (TOTK_OBJ_MOTION): -1 when a consumer of object motion runs (the built-in or FSR 3.1 frame generation, Arm ASR;
