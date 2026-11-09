@@ -1902,7 +1902,7 @@ static void ov_apply(const char *key, const char *value) {
     LOG("[overlay] %s=%s", key, value);
     if (!strcmp(key, "TOTK_UNCAPPED_HZ")) fg_cap_set(atoi(value));
     else if (!strcmp(key, "TOTK_UPSCALER")) { upscale_ready(); int fsr = strcmp(value, "bilinear") != 0; if (!fsr || upscale.easu) upscale.mode = fsr; }
-    else if (!strcmp(key, "TOTK_FSR_SHARPNESS")) { upscale_ready(); upscale.sharpness = (float)atof(value); }
+    else if (!strcmp(key, "TOTK_FSR_SHARPNESS")) { upscale_ready(); upscale.sharpness = upscale_sharpness(value); }
     else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }
     else if (!strcmp(key, "TOTK_SMAA_ULTRA")) smaa_ultra_on = atoi(value) > 0;
     /* 0, <rate> (built-in) or lsfg<rate>x<multiplier>: the game's rendered rate (fg_parse) */

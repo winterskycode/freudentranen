@@ -43,11 +43,13 @@ static VkPipeline upscale_pipeline(const uint32_t *code, size_t bytes) {
     return pipeline;
 }
 
+/* TOTK_FSR_SHARPNESS: RCAS's strength in stops below its strongest (0), or "off": EASU alone, no sharpening (-1) */
+static float upscale_sharpness(const char *s) { return !s ? 0.25f : !strcmp(s, "off") ? -1.0f : (float)atof(s); }
 static int upscale_ready(void) {
     if (upscale.mode >= 0) return upscale.mode;
     const char *e = getenv("TOTK_UPSCALER"), *s = getenv("TOTK_FSR_SHARPNESS");
     upscale.mode = !(e && !strcmp(e, "bilinear"));
-    upscale.sharpness = s ? (float)atof(s) : 0.25f;
+    upscale.sharpness = upscale_sharpness(s);
     if (upscale.mode) {
         VkDescriptorSetLayoutBinding b[2] = {
             {.binding = 0, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT},
@@ -68,7 +70,8 @@ static int upscale_ready(void) {
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE};
         VK_CHECK(vkCreateSampler(device, &si, NULL, &upscale.sampler));
     }
-    LOG("[upscale] present upscaler: %s (sharpness %.2f stops)", upscale.mode ? "FSR 1 (EASU + RCAS)" : "bilinear blit", upscale.sharpness);
+    if (upscale.sharpness < 0) LOG("[upscale] present upscaler: %s (no sharpening)", upscale.mode ? "FSR 1 (EASU)" : "bilinear blit");
+    else LOG("[upscale] present upscaler: %s (sharpness %.2f stops)", upscale.mode ? "FSR 1 (EASU + RCAS)" : "bilinear blit", upscale.sharpness);
     return upscale.mode;
 }
 
@@ -107,16 +110,19 @@ static int upscale_present(image_entry *e, int sx, int sy, int sw, int sh, VkIma
         upscale_float_bits(1.0f / iw), upscale_float_bits(1.0f / ih), upscale_float_bits(1.0f / iw), upscale_float_bits(-1.0f / ih),
         upscale_float_bits(-1.0f / iw), upscale_float_bits(2.0f / ih), upscale_float_bits(1.0f / iw), upscale_float_bits(2.0f / ih),
         upscale_float_bits(0.0f), upscale_float_bits(4.0f / ih), 0, 0};
-    upscale_pass(upscale.easu, attachment_view(e, NULL, e->format), upscale.mid.view, con, (uint32_t)dw, (uint32_t)dh);
+    /* without sharpening EASU writes the output itself */
+    int sharpen = upscale.sharpness >= 0;
+    upscale_pass(upscale.easu, attachment_view(e, NULL, e->format), sharpen ? upscale.mid.view : upscale.out.view, con, (uint32_t)dw, (uint32_t)dh);
     VkImageMemoryBarrier mid = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = upscale.mid.image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &mid);
-
-    /* RCAS constants (FsrRcasCon): sharpness in stops -> linear */
-    uint32_t rcon[16] = {0}; rcon[0] = upscale_float_bits(exp2f(-upscale.sharpness));
-    { _Float16 h = (_Float16)exp2f(-upscale.sharpness); uint16_t hb; memcpy(&hb, &h, 2); rcon[1] = (uint32_t)hb | ((uint32_t)hb << 16); }
-    upscale_pass(upscale.rcas, upscale.mid.view, upscale.out.view, rcon, (uint32_t)dw, (uint32_t)dh);
+    if (sharpen) {
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &mid);
+        /* RCAS constants (FsrRcasCon): sharpness in stops -> linear */
+        uint32_t rcon[16] = {0}; rcon[0] = upscale_float_bits(exp2f(-upscale.sharpness));
+        { _Float16 h = (_Float16)exp2f(-upscale.sharpness); uint16_t hb; memcpy(&hb, &h, 2); rcon[1] = (uint32_t)hb | ((uint32_t)hb << 16); }
+        upscale_pass(upscale.rcas, upscale.mid.view, upscale.out.view, rcon, (uint32_t)dw, (uint32_t)dh);
+    }
     VkImageMemoryBarrier done = mid; done.image = upscale.out.image; done.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &done);
 
