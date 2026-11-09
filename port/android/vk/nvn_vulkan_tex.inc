@@ -752,10 +752,43 @@ static void clear_color(const p_clear_color *c) {
     if(af!=e->format){clear_color_pass(e,r,c->rgba,(VkRect2D){{0,0},{(uint32_t)w,(uint32_t)h}},af);return;}
     graphics_pass_end();VkClearColorValue color;memcpy(color.float32,c->rgba,sizeof c->rgba);image_access(e,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);vkCmdClearColorImage(command,e->image,VK_IMAGE_LAYOUT_GENERAL,&color,1,&r);image_gpu_written(e);
 }
+/* A depth / stencil clear of a rectangle (r.aspectMask: the aspects cleared): the pass loads the image and
+   vkCmdClearAttachments clears the rectangle. One render pass per format, the framebuffer kept with the view. */
+static void clear_depth_pass(image_entry *e,VkImageSubresourceRange r,VkClearDepthStencilValue value,VkRect2D rect) {
+    uint32_t w=dimension(e->texture.d.width,r.baseMipLevel),h=dimension(e->texture.d.height,r.baseMipLevel);
+    static struct { VkFormat format; VkRenderPass pass; } passes[8]; static unsigned npasses;
+    VkRenderPass pass=VK_NULL_HANDLE;
+    for(unsigned i=0;i<npasses;i++)if(passes[i].format==e->format)pass=passes[i].pass;
+    if(!pass){
+        VkAttachmentDescription a={.format=e->format,.samples=VK_SAMPLE_COUNT_1_BIT,.loadOp=VK_ATTACHMENT_LOAD_OP_LOAD,.storeOp=VK_ATTACHMENT_STORE_OP_STORE,
+            .stencilLoadOp=VK_ATTACHMENT_LOAD_OP_LOAD,.stencilStoreOp=VK_ATTACHMENT_STORE_OP_STORE,.initialLayout=VK_IMAGE_LAYOUT_GENERAL,.finalLayout=VK_IMAGE_LAYOUT_GENERAL};
+        VkAttachmentReference ref={0,VK_IMAGE_LAYOUT_GENERAL};VkSubpassDescription sub={.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS,.pDepthStencilAttachment=&ref};
+        VkRenderPassCreateInfo ci={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,.attachmentCount=1,.pAttachments=&a,.subpassCount=1,.pSubpasses=&sub};
+        VK_CHECK(vkCreateRenderPass(device,&ci,NULL,&pass));if(npasses<8)passes[npasses++]=(typeof(passes[0])){e->format,pass};else die("Vulkan depth clear render passes");
+    }
+    VkImageAspectFlags clear_aspect=r.aspectMask;
+    /* the attachment view takes every aspect of the image; the clear only the ones asked for */
+    r.layerCount=1;r.levelCount=1;r.aspectMask=e->aspect;cached_image_view *cv=image_view_formatted(e,VK_IMAGE_VIEW_TYPE_2D,r,(VkComponentMapping){0},e->format);VkFramebuffer fb=cv->clear_fb[0];
+    if(!fb){VkFramebufferCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,.renderPass=pass,.attachmentCount=1,.pAttachments=&cv->view,.width=w,.height=h,.layers=1};
+        VK_CHECK(vkCreateFramebuffer(device,&fi,NULL,&fb));cv->clear_fb[0]=fb;}
+    graphics_pass_end();
+    image_access(e,VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT|VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+    VkRenderPassBeginInfo bi={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{w,h}}};
+    vkCmdBeginRenderPass(command,&bi,VK_SUBPASS_CONTENTS_INLINE);
+    VkClearAttachment ca={clear_aspect,0,{.depthStencil=value}};VkClearRect cr={rect,0,1};vkCmdClearAttachments(command,1,&ca,1,&cr);
+    vkCmdEndRenderPass(command);image_gpu_written(e);
+    { static unsigned said;if(!said++)LOG("[vulkan] depth clear of a rectangle: %d,%d %ux%u of %ux%u",rect.offset.x,rect.offset.y,rect.extent.width,rect.extent.height,w,h); }
+}
 static void clear_depth(const p_clear_ds *c) {
     if(!state.rt.depth)return;image_entry *e=image_get(state.rt.depth);VkImageSubresourceRange r=texture_range(e,state.rt.has_dview?&state.rt.dview:NULL);r.aspectMask=0;
     if(c->depth_mask)r.aspectMask|=VK_IMAGE_ASPECT_DEPTH_BIT;if(c->stencil_mask){if(c->stencil_mask!=255)die("Vulkan partial stencil clear pending");r.aspectMask|=VK_IMAGE_ASPECT_STENCIL_BIT;}
     r.aspectMask&=e->aspect;if(!r.aspectMask)return;
+    /* A partial scissor keeps the pixels outside it, as for colour (TotK clears an 8x8 corner of a 64x64 depth target) */
+    { int w=dimension(e->texture.d.width,r.baseMipLevel),h=dimension(e->texture.d.height,r.baseMipLevel);
+      if(state.scissor.w>0&&(state.scissor.x||state.scissor.y||state.scissor.w<w||state.scissor.h<h)){
+          int x=state.scissor.x>0?state.scissor.x:0,y=state.scissor.y>0?state.scissor.y:0,x1=state.scissor.x+state.scissor.w,y1=state.scissor.y+state.scissor.h;
+          if(x1>w)x1=w;if(y1>h)y1=h;if(x1<=x||y1<=y)return;
+          clear_depth_pass(e,r,(VkClearDepthStencilValue){c->depth,c->stencil},(VkRect2D){{x,y},{(uint32_t)(x1-x),(uint32_t)(y1-y)}});return; } }
     { VkClearValue v={.depthStencil={c->depth,c->stencil}};if(image_clear_defer(e,r,v,e->format))return; }
     graphics_pass_end();VkClearDepthStencilValue value={c->depth,c->stencil};image_access(e,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);vkCmdClearDepthStencilImage(command,e->image,VK_IMAGE_LAYOUT_GENERAL,&value,1,&r);image_gpu_written(e);
 }

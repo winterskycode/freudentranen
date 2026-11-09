@@ -6,7 +6,7 @@ typedef struct graphics_command_state {
     uint32_t dynamic_offsets[256];unsigned dynamic_count;
     VkViewport viewport;
     VkRect2D scissor;
-    float blend[4],bias_units,bias_factor;
+    float blend[4],bias_units,bias_factor,bias_clamp;
     uint32_t stencil_compare[2],stencil_write[2],stencil_reference[2];
     VkBuffer vertices[16],index;
     VkDeviceSize offsets[16],index_offset;
@@ -30,7 +30,9 @@ static void graphics_command_apply(VkPipeline pipeline,VkPipelineLayout layout,c
     if(!(last->valid&1)||memcmp(&last->viewport,viewport,sizeof *viewport)){vkCmdSetViewport(command,0,1,viewport);last->viewport=*viewport;graphics_command_emitted++;}else graphics_command_reused++;
     if(!(last->valid&2)||memcmp(&last->scissor,scissor,sizeof *scissor)){vkCmdSetScissor(command,0,1,scissor);last->scissor=*scissor;graphics_command_emitted++;}else graphics_command_reused++;
     if(!(last->valid&4)||memcmp(last->blend,blend,sizeof last->blend)){vkCmdSetBlendConstants(command,blend);memcpy(last->blend,blend,sizeof last->blend);graphics_command_emitted++;}else graphics_command_reused++;
-    if(!(last->valid&8)||last->bias_units!=units||last->bias_factor!=factor){vkCmdSetDepthBias(command,units,0,factor);last->bias_units=units;last->bias_factor=factor;graphics_command_emitted++;}else graphics_command_reused++;
+    /* NVN's polygon offset clamp (SetPolygonOffsetClamp), where the device has depthBiasClamp (enabled with it) */
+    float clamp=gpu_features.depthBiasClamp?state.polygon_offset.clamp:0;
+    if(!(last->valid&8)||last->bias_units!=units||last->bias_factor!=factor||last->bias_clamp!=clamp){vkCmdSetDepthBias(command,units,clamp,factor);last->bias_units=units;last->bias_factor=factor;last->bias_clamp=clamp;graphics_command_emitted++;}else graphics_command_reused++;
     for(unsigned face=0;face<2;face++){
         VkStencilFaceFlags mask=face?VK_STENCIL_FACE_BACK_BIT:VK_STENCIL_FACE_FRONT_BIT;
         uint32_t compare_bit=16u<<face,write_bit=64u<<face,reference_bit=256u<<face;

@@ -2,12 +2,12 @@
    that the fragment shader it is paired with declares as an input (Ryujinx links the stages when it translates them;
    the Metal backend appends the missing outputs to the vertex shader's MSL). Vulkan requires every fragment input to
    have a matching vertex output, and the Adreno linker rejects the pipeline otherwise. The vertex shader is patched
-   instead: each missing location becomes an output of the type the fragment shader reads, initialised to zero. */
+   instead: each missing location becomes an output of the type the fragment shader reads (spirv_add_outputs). */
 /* base: 1 float, 2 signed int, 3 unsigned int (32-bit); count 1..4 */
 typedef struct { uint8_t base, count; } spirv_io;
 
 enum { SPV_OP_ENTRY_POINT = 15, SPV_OP_TYPE_INT = 21, SPV_OP_TYPE_FLOAT = 22, SPV_OP_TYPE_VECTOR = 23, SPV_OP_TYPE_POINTER = 32,
-       SPV_OP_CONSTANT_NULL = 46, SPV_OP_FUNCTION = 54, SPV_OP_VARIABLE = 59, SPV_OP_DECORATE = 71,
+       SPV_OP_CONSTANT = 43, SPV_OP_CONSTANT_COMPOSITE = 44, SPV_OP_CONSTANT_NULL = 46, SPV_OP_FUNCTION = 54, SPV_OP_VARIABLE = 59, SPV_OP_DECORATE = 71,
        SPV_DECORATION_LOCATION = 30, SPV_DECORATION_COMPONENT = 31, SPV_STORAGE_INPUT = 1, SPV_STORAGE_OUTPUT = 3 };
 
 /* The Location-decorated variables of a storage class: a mask of locations and, per location, the scalar or vector
@@ -44,7 +44,8 @@ static uint32_t spirv_io_scan(const uint32_t *w, size_t n, uint32_t storage, spi
     return mask;
 }
 
-/* A copy of the vertex shader w with an output, initialised to zero, for every location in missing (described by io). */
+/* A copy of the vertex shader w with an output for every location in missing (described by io): a float vec4 starts at
+   (0, 0, 0, 1), as Maxwell reads components a vertex shader leaves unwritten (translator patch 0005), others at zero. */
 static uint32_t *spirv_add_outputs(const uint32_t *w, size_t n, const spirv_io io[32], uint32_t missing, size_t *out_words) {
     /* ids: the 32-bit float, int and uint scalar types; vecs: their vectors (SPIR-V forbids declaring a type twice) */
     uint32_t bound = w[3], ids[4] = {0}, vecs[4][5] = {{0}};
@@ -62,7 +63,8 @@ static uint32_t *spirv_add_outputs(const uint32_t *w, size_t n, const spirv_io i
         i += wc;
     }
     if (!entry || !first_type || !first_function) die("SPIR-V patch: no entry point, types or function");
-    uint32_t *decor = malloc(32 * 4 * sizeof *decor), *glob = malloc(32 * 16 * sizeof *glob), vars[32]; size_t nd = 0, ng = 0, nv = 0;
+    uint32_t *decor = malloc(32 * 4 * sizeof *decor), *glob = malloc((32 * 24 + 16) * sizeof *glob), vars[32]; size_t nd = 0, ng = 0, nv = 0;
+    uint32_t f0 = 0, f1 = 0;   /* the float constants 0 and 1, made with the first float vec4 */
     if (!decor || !glob) die("SPIR-V patch allocation");
     for (int base = 1; base <= 3; base++) if (!ids[base]) {
         int used = 0; for (int l = 0; l < 32; l++) used |= (missing >> l & 1) && io[l].base == base;
@@ -80,7 +82,12 @@ static uint32_t *spirv_add_outputs(const uint32_t *w, size_t n, const spirv_io i
         }
         uint32_t ptr = bound++, zero = bound++, var = bound++;
         glob[ng++] = 4 << 16 | SPV_OP_TYPE_POINTER; glob[ng++] = ptr; glob[ng++] = SPV_STORAGE_OUTPUT; glob[ng++] = t;
-        glob[ng++] = 3 << 16 | SPV_OP_CONSTANT_NULL; glob[ng++] = t; glob[ng++] = zero;
+        if (io[l].base == 1 && io[l].count == 4) {
+            if (!f1) { f0 = bound++; f1 = bound++;
+                glob[ng++] = 4 << 16 | SPV_OP_CONSTANT; glob[ng++] = ids[1]; glob[ng++] = f0; glob[ng++] = 0;
+                glob[ng++] = 4 << 16 | SPV_OP_CONSTANT; glob[ng++] = ids[1]; glob[ng++] = f1; glob[ng++] = 0x3f800000u; }
+            glob[ng++] = 7 << 16 | SPV_OP_CONSTANT_COMPOSITE; glob[ng++] = t; glob[ng++] = zero; glob[ng++] = f0; glob[ng++] = f0; glob[ng++] = f0; glob[ng++] = f1;
+        } else { glob[ng++] = 3 << 16 | SPV_OP_CONSTANT_NULL; glob[ng++] = t; glob[ng++] = zero; }
         glob[ng++] = 5 << 16 | SPV_OP_VARIABLE; glob[ng++] = ptr; glob[ng++] = var; glob[ng++] = SPV_STORAGE_OUTPUT; glob[ng++] = zero;
         decor[nd++] = 4 << 16 | SPV_OP_DECORATE; decor[nd++] = var; decor[nd++] = SPV_DECORATION_LOCATION; decor[nd++] = (uint32_t)l;
         vars[nv++] = var;
