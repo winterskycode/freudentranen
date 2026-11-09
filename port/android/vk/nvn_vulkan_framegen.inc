@@ -242,14 +242,15 @@ static int fg_scene_copy(image_entry *c) {
 typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; float px; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
 /* on: the tables are kept this frame (the survey or object motion); survey: the summaries are logged. motion
-   (TOTK_OBJ_MOTION): -1 when a consumer of object motion runs (the built-in or FSR 3.1 frame generation, Arm ASR;
-   not LSFG, which takes only pictures), the default; 0 off; 1 always; 2 still objects too (diagnostic). Settled once a
-   frame (mvs_frame), so it follows the in-game menu. */
+   (TOTK_OBJ_MOTION): -1 when a consumer of object motion runs (the built-in or FSR 3.1 frame generation, Arm ASR
+   while it replaces the game's upscale; not LSFG, which takes only pictures), the default; 0 off; 1 always; 2 still
+   objects too (diagnostic). Settled once a frame (mvs_frame), so it follows the in-game menu. */
 static struct { int on, survey, motion, mo; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
+static uint64_t asr_last_run; static int asr_running(void);
 static int mvs_settle(void) {
     if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m && *m ? atoi(m) : -1; if (mvs.motion < -1) mvs.motion = -1;
         if (mvs.survey) LOG("[mv-survey] on: last frame's object blocks in G-buffer draws (c5 c6 c7 c9 c11 c14), a summary every 600 frames"); }
-    int motion = mvs.motion < 0 ? fg_enabled() > 0 || taa_enabled() == 2 : mvs.motion > 0;
+    int motion = mvs.motion < 0 ? fg_enabled() > 0 || (taa_enabled() == 2 && asr_running()) : mvs.motion > 0;
     int on = mvs.survey || motion;
     if (on && !mvs.t[0]) { mvs.t[0] = calloc(MVS_TABLE, sizeof(mvs_seen)); mvs.t[1] = calloc(MVS_TABLE, sizeof(mvs_seen)); if (!mvs.t[0] || !mvs.t[1]) die("motion survey tables"); }
     /* coming on: no blocks of this frame or a last frame yet */

@@ -322,7 +322,7 @@ static image_entry *asr_run(image_entry *scene, uint32_t dw, uint32_t dh) {
         if (++asr.timer_frames % 300 == 0 && asr.timer_n) { LOG("[asr] GPU time %.3f ms a frame (%ux%u, %llu frames)", asr.timer_ms / asr.timer_n, w, h, (unsigned long long)asr.timer_n); asr.timer_ms = 0; asr.timer_n = 0; }
     }
     asr_show(rd, wr);
-    taa.cur ^= 1; taa.hist_ok = 1; taa.ran = 1; taa.done++;
+    taa.cur ^= 1; taa.hist_ok = 1; taa.ran = 1; taa.done++; asr_last_run = presents;
     if (!(taa.done % 600)) LOG("[asr] %llu frames (%ux%u), %llu resets, %llu not run", (unsigned long long)taa.done, w, h, (unsigned long long)taa.resets, (unsigned long long)taa.skipped);
     return &asr.out;
 }
@@ -333,6 +333,8 @@ static image_entry *asr_run(image_entry *scene, uint32_t dw, uint32_t dh) {
    (fragment uniform 0: con0.xy = the scene's valid size over the output's, the output size as integers at floats 16/17)
    say the whole scene texture is used (dynamic resolution draws a smaller region: the game's own upscale then, as the
    Mac's MetalFX upscale does). Returns 1 when the draw is replaced (draw_graphics_inner, before its bindings). */
+/* ASR replaced the game's upscale in the last 120 frames (it runs docked only: handheld has no upscale step) */
+static int asr_running(void) { return asr_last_run && presents - asr_last_run < 120; }
 static int asr_upscale_draw(const shader_entry *fs) {
     if (taa.on != 2 || !fs || !fs->module || fg.menu) return 0;
     if (strncmp(fs->game_id, "a3a570eb159202f1", 16) && strncmp(fs->game_id, "ac58fc18eda5f387", 16)) return 0;
