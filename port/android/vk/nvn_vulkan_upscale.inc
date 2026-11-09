@@ -1,16 +1,21 @@
-/* Present-time upscaling (TOTK_UPSCALER=fsr1 | bilinear; default fsr1). In handheld mode the game's finished picture is
-   1280x720 (UI included) and the present stretches it to the 1920x1080 panel with a linear blit. With FSR 1 the stretch
-   is EASU (edge-adaptive upsampling) into a display-size image, then RCAS sharpening (TOTK_FSR_SHARPNESS, in stops: 0 is
-   the strongest, default 0.25), then a same-size copy into the swapchain image. Shaders: shaders/fsr1_*.comp (AMD
-   FidelityFX FSR 1, MIT, third_party/fsr1; tools/gen_shaders.sh). The picture is gamma-encoded RGBA8, as EASU expects. */
+/* Present-time upscaling (TOTK_UPSCALER=fsr1 | sgsr | mmpx | bilinear; default fsr1). In handheld mode the game's
+   finished picture is 1280x720 (UI included) and the present stretches it to the 1920x1080 panel with a linear blit.
+   With FSR 1 the stretch is EASU (edge-adaptive upsampling) into a display-size image, then RCAS sharpening
+   (TOTK_FSR_SHARPNESS, in stops: 0 is the strongest, default 0.25; off: none), then a same-size copy into the swapchain
+   image. SGSR 1 upscales and sharpens in one pass into the display-size image. MMPX doubles the picture (2x2 per pixel,
+   edges of equal colours reshaped), then a linear blit scales that to the screen. Shaders: shaders/fsr1_*.comp (AMD
+   FidelityFX FSR 1, MIT, third_party/fsr1), sgsr1.comp (Qualcomm Snapdragon GSR 1, BSD-3-Clause, third_party/sgsr),
+   mmpx.comp (McGuire & Gagiu, MIT, third_party/mmpx); tools/gen_shaders.sh. The picture is gamma-encoded RGBA8, as
+   they expect. */
 #include <math.h>
 typedef struct { VkImage image; VkDeviceMemory memory; VkImageView view; uint32_t w, h; } upscale_image;
 static struct {
-    /* -1 unread, 0 bilinear blit, 1 FSR 1 */
+    /* -1 unread, 0 bilinear blit, 1 FSR 1, 2 SGSR 1, 3 MMPX */
     int mode;
     float sharpness;
-    VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline easu, rcas; VkSampler sampler;
-    upscale_image mid, out;
+    VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline easu, rcas, sgsr, mmpx; VkSampler sampler;
+    /* big: MMPX's 2x picture */
+    upscale_image mid, out, big;
     uint64_t frames, fallbacks;
 } upscale = {.mode = -1};
 
@@ -45,12 +50,15 @@ static VkPipeline upscale_pipeline(const uint32_t *code, size_t bytes) {
 
 /* TOTK_FSR_SHARPNESS: RCAS's strength in stops below its strongest (0), or "off": EASU alone, no sharpening (-1) */
 static float upscale_sharpness(const char *s) { return !s ? 0.25f : !strcmp(s, "off") ? -1.0f : (float)atof(s); }
+static int upscale_mode_of(const char *v) { return !v ? 1 : !strcmp(v, "bilinear") ? 0 : !strcmp(v, "sgsr") ? 2 : !strcmp(v, "mmpx") ? 3 : 1; }
+static const char *const upscale_names[4] = {"bilinear blit", "FSR 1", "SGSR 1", "MMPX (2x, then a linear blit)"};
 static int upscale_ready(void) {
     if (upscale.mode >= 0) return upscale.mode;
     const char *e = getenv("TOTK_UPSCALER"), *s = getenv("TOTK_FSR_SHARPNESS");
-    upscale.mode = !(e && !strcmp(e, "bilinear"));
+    upscale.mode = upscale_mode_of(e);
     upscale.sharpness = upscale_sharpness(s);
-    if (upscale.mode) {
+    /* all of them, so the menu can switch while playing */
+    {
         VkDescriptorSetLayoutBinding b[2] = {
             {.binding = 0, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT},
             {.binding = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT}};
@@ -65,13 +73,21 @@ static int upscale_ready(void) {
         static const uint32_t rcas[] = {
 #include "fsr1_rcas_spv.inc"
         };
+        static const uint32_t sgsr[] = {
+#include "sgsr1_spv.inc"
+        };
+        static const uint32_t mmpx[] = {
+#include "mmpx_spv.inc"
+        };
         upscale.easu = upscale_pipeline(easu, sizeof easu); upscale.rcas = upscale_pipeline(rcas, sizeof rcas);
+        upscale.sgsr = upscale_pipeline(sgsr, sizeof sgsr); upscale.mmpx = upscale_pipeline(mmpx, sizeof mmpx);
         VkSamplerCreateInfo si = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .magFilter = VK_FILTER_LINEAR, .minFilter = VK_FILTER_LINEAR,
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE};
         VK_CHECK(vkCreateSampler(device, &si, NULL, &upscale.sampler));
     }
-    if (upscale.sharpness < 0) LOG("[upscale] present upscaler: %s (no sharpening)", upscale.mode ? "FSR 1 (EASU)" : "bilinear blit");
-    else LOG("[upscale] present upscaler: %s (sharpness %.2f stops)", upscale.mode ? "FSR 1 (EASU + RCAS)" : "bilinear blit", upscale.sharpness);
+    if (upscale.mode != 1) LOG("[upscale] present upscaler: %s", upscale_names[upscale.mode]);
+    else if (upscale.sharpness < 0) LOG("[upscale] present upscaler: FSR 1 (EASU, no sharpening)");
+    else LOG("[upscale] present upscaler: FSR 1 (EASU + RCAS, sharpness %.2f stops)", upscale.sharpness);
     return upscale.mode;
 }
 
@@ -90,6 +106,34 @@ static void upscale_pass(VkPipeline pipeline, VkImageView src, VkImageView dst, 
     vkCmdDispatch(command, (w + 15) / 16, (h + 15) / 16, 1);
 }
 
+/* SGSR 1 into the display-size image, or MMPX into the 2x one; then into dst's rect */
+static int upscale_present_other(image_entry *e, int sw, int sh, VkImage dst, int x, int y, int dw, int dh) {
+    int mmpx = upscale.mode == 3;
+    upscale_image *o = mmpx ? &upscale.big : &upscale.out;
+    if (mmpx) upscale_image_make(&upscale.big, (uint32_t)sw * 2, (uint32_t)sh * 2);
+    VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = o->image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+    uint32_t con[16] = {0};
+    if (mmpx) {
+        int32_t size[4] = {sw, sh, 0, 0}; memcpy(con, size, sizeof size);
+        upscale_pass(upscale.mmpx, attachment_view(e, NULL, e->format), o->view, con, (uint32_t)sw, (uint32_t)sh);
+    } else {
+        float iw = (float)e->texture.d.width, ih = (float)e->texture.d.height;
+        float v[8] = {1.0f / iw, 1.0f / ih, iw, ih, (float)sw / iw, (float)sh / ih, (float)dw, (float)dh}; memcpy(con, v, sizeof v);
+        upscale_pass(upscale.sgsr, attachment_view(e, NULL, e->format), o->view, con, (uint32_t)dw, (uint32_t)dh);
+    }
+    b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; b.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+    int32_t ow = mmpx ? sw * 2 : dw, oh = mmpx ? sh * 2 : dh;
+    VkImageBlit copy = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {ow, oh, 1}},
+        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{x, y, 0}, {x + dw, y + dh, 1}}};
+    vkCmdBlitImage(command, o->image, VK_IMAGE_LAYOUT_GENERAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy, mmpx ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+    upscale.frames++;
+    return 1;
+}
+
 /* Replaces the present blit of the picture (the sw x sh region at the origin of e) into dst's (x, y, dw, dh) rect when it is
    an enlargement. Returns 0 to let the caller blit. */
 static int upscale_present(image_entry *e, int sx, int sy, int sw, int sh, VkImage dst, int x, int y, int dw, int dh) {
@@ -97,6 +141,7 @@ static int upscale_present(image_entry *e, int sx, int sy, int sw, int sh, VkIma
     graphics_pass_end();
     upscale_image_make(&upscale.mid, (uint32_t)dw, (uint32_t)dh); upscale_image_make(&upscale.out, (uint32_t)dw, (uint32_t)dh);
     image_access(e, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+    if (upscale.mode >= 2) return upscale_present_other(e, sw, sh, dst, x, y, dw, dh);
     VkImageMemoryBarrier start[2];
     for (int i = 0; i < 2; i++) start[i] = (VkImageMemoryBarrier){.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT,
         .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_GENERAL,

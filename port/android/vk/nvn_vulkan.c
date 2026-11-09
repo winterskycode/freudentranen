@@ -1901,7 +1901,7 @@ void compat_audio_set_gain(float gain) __attribute__((weak));
 static void ov_apply(const char *key, const char *value) {
     LOG("[overlay] %s=%s", key, value);
     if (!strcmp(key, "TOTK_UNCAPPED_HZ")) fg_cap_set(atoi(value));
-    else if (!strcmp(key, "TOTK_UPSCALER")) { upscale_ready(); int fsr = strcmp(value, "bilinear") != 0; if (!fsr || upscale.easu) upscale.mode = fsr; }
+    else if (!strcmp(key, "TOTK_UPSCALER")) { upscale_ready(); upscale.mode = upscale_mode_of(value); LOG("[upscale] present upscaler: %s", upscale_names[upscale.mode]); }
     else if (!strcmp(key, "TOTK_FSR_SHARPNESS")) { upscale_ready(); upscale.sharpness = upscale_sharpness(value); }
     else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }
     else if (!strcmp(key, "TOTK_SMAA_ULTRA")) smaa_ultra_on = atoi(value) > 0;

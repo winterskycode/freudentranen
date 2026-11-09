@@ -25,6 +25,8 @@ DXVK's DXBC compiler	zlib	Translates the shaders of the player's own Lossless.dl
 SPIR-V headers	MIT-style (Khronos)	By The Khronos Group: spirv.hpp and GLSL.std.450.h, part of the DXBC compiler. Both carry this licence.	port/android/vk/third_party/dxbc/include/spirv/thirdparty/GLSL.std.450.h	-
 pe-parse	MIT	Reads the resources of the player's own Lossless.dll (libtotklsfg.so).	port/android/vk/third_party/pe-parse/LICENSE	-
 AMD FidelityFX Super Resolution 1	MIT	The FSR 1 upscaler and sharpening.	port/android/vk/third_party/fsr1/LICENSE	-
+Snapdragon Game Super Resolution 1	BSD-3-Clause	By Qualcomm: the SGSR upscaler.	port/android/vk/third_party/sgsr/LICENSE	-
+MMPX	MIT	By Morgan McGuire and Mara Gagiu: the MMPX upscaler.	port/android/vk/third_party/mmpx/LICENSE	-
 AMD FidelityFX SDK (FSR 3.1)	MIT	The FSR 3.1 frame generation: frame interpolation and optical flow.	port/android/vk/third_party/fsr3/LICENSE.txt	-
 Arm Accuracy Super Resolution	MIT	Temporal upscaling (Arm ASR).	port/android/vk/third_party/asr/LICENSE	-
 SMAA	MIT	Anti-aliasing.	port/android/vk/third_party/smaa/LICENSE.txt	-
