@@ -1878,6 +1878,7 @@ void mtl_drain(void) { mtl_init();mtl_finish(); pthread_mutex_lock(&queue_lock);
 #include "nvn_vulkan_counter_gpu.inc"
 #include "nvn_vulkan_upscale.inc"
 #include "nvn_vulkan_framegen.inc"
+#include "nvn_vulkan_motion.inc"
 #include "nvn_vulkan_taa.inc"
 #include "nvn_vulkan_asr.inc"
 #include "nvn_vulkan_lsfg.inc"

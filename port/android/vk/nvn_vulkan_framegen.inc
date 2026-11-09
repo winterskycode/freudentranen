@@ -61,6 +61,7 @@ static int smaa_on(void); static int smaa_apply(image_entry *canvas); static voi
 /* TAA needs the G-buffer depth and the camera too */
 static int taa_enabled(void);
 static int mvs_on(void);
+static void mo_frame(void);
 static int fg_track(void) {
     if (fg.lsfg < 0) fg.lsfg = lsfg_requested();
     return fg_enabled() || fg.lsfg || smaa_on() || taa_enabled() || mvs_on();
@@ -242,7 +243,7 @@ typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, di
 /* on: the tables are kept (the survey or object motion); survey: the summaries are logged */
 static struct { int on, survey, motion; mvs_seen *t[2]; uint64_t frames, extra_bytes, extra_blocks, ns, full; mvs_stat st[14]; } mvs = {.on = -1};
 static int mvs_on(void) {
-    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m && atoi(m) > 0; mvs.on = mvs.survey || mvs.motion;
+    if (mvs.on < 0) { const char *e = getenv("TOTK_MV_SURVEY"), *m = getenv("TOTK_OBJ_MOTION"); mvs.survey = e && atoi(e) > 0; mvs.motion = m ? atoi(m) : 0; if (mvs.motion < 0) mvs.motion = 0; mvs.on = mvs.survey || mvs.motion;
         if (mvs.on) { mvs.t[0] = calloc(MVS_TABLE, sizeof(mvs_seen)); mvs.t[1] = calloc(MVS_TABLE, sizeof(mvs_seen)); if (!mvs.t[0] || !mvs.t[1]) die("motion survey tables");
             LOG("[mv-survey] on: last frame's object blocks in G-buffer draws (c5 c6 c7 c9 c11 c14), a summary every 600 frames"); } }
     return mvs.on;
@@ -324,7 +325,10 @@ static void mvs_draw(void) {
 /* Last frame's copy of the vertex block at binding index `index`, by the two-copy rule and the similarity check (as
    mvs_draw counts them), read from the submit capture where it holds the copy: *out with that address, or this frame's
    block when there is no copy (bound at the same address last frame, a new object, another object's block). */
+/* set by mv_prev_block: the last block it looked up had a copy of last frame that differs from this frame's */
+static int mv_prev_changed;
 static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_buf *out) {
+    mv_prev_changed = 0;
     const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
     if (!u || stage != 0 || mvs.on <= 0 || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
     if (mvs_find(mvs.t[1], u->addr, index, 0)) return u;
@@ -343,7 +347,7 @@ static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_bu
     }
     int changed;
     if (!mvs_similar(cur, mvs_bytes(prev, u->size, &captured), u->size, &changed)) return u;
-    *out = *u; out->addr = prev; return out;
+    mv_prev_changed = changed; *out = *u; out->addr = prev; return out;
 }
 static void mvs_frame(void) {
     if (!mvs_on()) return;
@@ -661,7 +665,7 @@ static void dynres_frame(void) {
 }
 static void taa_frame_end(void);
 static void fg_frame_end(const tex_t *t, const int crop[4]) {
-    dynres_frame(); taa_frame_end(); mvs_frame();
+    dynres_frame(); taa_frame_end(); mvs_frame(); mo_frame();
     /* the debug files, once a frame (per draw would be ~7,600 clock reads a frame) */
     fg_dump_poll(); magenta_poll(); shader_override_poll();
     live_frame_base = draw_count;

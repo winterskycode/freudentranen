@@ -41,6 +41,7 @@ typedef struct {
     blend_st blend[8]; poly_st polygon; ds_st depth; ms_st multisample;
     uint8_t depth_clamp, raster_discard, pad_[2];
 } pipeline_key;
+static int mo_on(void);static void mo_record(shader_entry *vs,const pipeline_key *key,ds_st depth,poly_st polygon,const VkBuffer *vb,const VkDeviceSize *vo,VkBuffer ib,VkDeviceSize io,VkIndexType it,uint32_t count,const p_draw_idx *indexed,const VkViewport *viewport,const VkRect2D *scissor);
 /* 1 built, 0 building in the background, -1 failed */
 typedef struct pipeline_entry { pipeline_key key; VkPipeline pipeline; struct pipeline_entry *next; _Atomic int ready; } pipeline_entry;
 /* part 1: the draw plan */
@@ -683,7 +684,9 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     {void graphics_probe_select(const char *);graphics_probe_select(fs&&fs->module?fs->key:NULL);}
     graphics_probe_draw(draw,indexed);
     unsigned drawstat_slot=(unsigned)(async_current-async_batches);int drawstat_query=async_current?drawstat_draw_begin(drawstat_slot,command,vs->key,fs?fs->key:NULL,indexed?indexed->count:draw->count,indexed?indexed->instances:(uint32_t)draw->instances,primitive):-1;
-    if(indexed){if(index_count){graphics_command_index(index_buffer,index_off,index_type);vkCmdDrawIndexed(command,index_count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);}}
+    if(indexed){if(index_count){graphics_command_index(index_buffer,index_off,index_type);vkCmdDrawIndexed(command,index_count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);
+        /* object motion: listed for a second draw after the G-buffer pass (nvn_vulkan_motion.inc) */
+        if(mo_on())mo_record(vs,&key,dyn_depth,dyn_polygon,vertex_buffers,offsets,index_buffer,index_off,index_type,index_count,indexed,&viewport,&scissor);}}
     else if(index_buffer){if(index_count){graphics_command_index(index_buffer,0,index_type);vkCmdDrawIndexed(command,index_count,draw->instances>0?(uint32_t)draw->instances:1,0,draw->first,(uint32_t)draw->base_instance);}}
     /* TOTK: instanced DrawArrays */
     else vkCmdDraw(command,draw->count,draw->instances>0?(uint32_t)draw->instances:1,draw->first,(uint32_t)draw->base_instance);

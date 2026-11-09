@@ -468,6 +468,8 @@ static VkDescriptorBufferInfo forward_readonly_buffer(uintptr_t address,uint64_t
 static int dependencies_unknown(uintptr_t address,uint64_t size);
 /* object motion (nvn_vulkan_framegen.inc): last frame's block of binding index `index`, or this frame's when none is found */
 static const p_bind_buf *mv_prev_block(unsigned stage,unsigned index,p_bind_buf *out);
+/* object motion (nvn_vulkan_motion.inc): last frame's bytes of the camera block at this address, and their binding */
+static int mo_prev_camera_bind(uint64_t addr,VkDescriptorBufferInfo *info);
 static VkDescriptorBufferInfo uniform_buffer(shader_entry *s,const shader_binding *b,uint32_t *dynamic_offset) {
     *dynamic_offset=0;
     // Support data and each shader's c1 are immutable; share across draws instead of repeatedly clearing 64 KiB.
@@ -493,7 +495,9 @@ static VkDescriptorBufferInfo uniform_buffer(shader_entry *s,const shader_bindin
     /* bindless: the slot block (nvn_vulkan_bindless.inc) */
     if(b->slot==BL_SLOT_BUFFER&&bl_set&&s->stage<6){uint32_t words=bl_block_words[s->stage]>4?bl_block_words[s->stage]:4;
         return uniform_dynamic_split(s,b,uniform_driver(s->stage,2,(const uint8_t*)bl_block[s->stage],words*4),dynamic_offset);}
-    /* slots 43-56: a motion variant's last-frame copies of c3-c16 (translator patch 0009) */
+    /* slots 43-56: a motion variant's last-frame copies of c3-c16 (translator patch 0009). The camera block c4 is written
+       again in place each frame, so its last frame is a copy the motion pass kept. */
+    if(b->slot==44){VkDescriptorBufferInfo pc;if(mo_prev_camera_bind(state.ubo[s->stage][1].addr,&pc))return uniform_dynamic_split(s,b,pc,dynamic_offset);}
     if((b->slot>=3&&b->slot<19)||(b->slot>=43&&b->slot<57)){p_bind_buf mv_prev;const p_bind_buf *u=b->slot<19?&state.ubo[s->stage][b->slot-3]:mv_prev_block(s->stage,b->slot-43,&mv_prev);uint32_t n=u->addr&&u->size?(u->size<65536?u->size:65536):0;
         /* only what the shader reads */
         { uint32_t used=s->ubo_bytes?s->ubo_bytes[b-s->bindings]:0;if(used&&n>used){uniform_trimmed_bytes+=n-used;n=used;} }

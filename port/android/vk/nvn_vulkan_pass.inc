@@ -134,6 +134,7 @@ static void query_open(void) { if(graphics_query_open||!graphics_active_frame||!
     vkCmdBeginQuery(command,draw_queries,graphics_active_query,gpu_features.occlusionQueryPrecise?VK_QUERY_CONTROL_PRECISE_BIT:0);graphics_query_open=1;pass_queries_opened++; }
 static int graphics_pass_open(void) { return graphics_active_frame != NULL; }
 static void graphics_pass_dims(uint32_t *w,uint32_t *h,unsigned *att) { const graphics_frame_entry *f=graphics_active_frame;*w=f?f->key.width:0;*h=f?f->key.height:0;*att=f?f->key.pass->key.attachments:0; }
+static void mo_flush(graphics_frame_entry *ended);
 static void graphics_pass_end(void) {
     if(!graphics_active_frame)return;
     passend_note(__builtin_return_address(0),graphics_active_frame);
@@ -142,6 +143,8 @@ static void graphics_pass_end(void) {
     query_close();
     graphics_frame_entry *ended=graphics_active_frame;
     vkCmdEndRenderPass(command);graphics_active_frame=NULL;
+    /* object motion: this pass's listed draws again, while their sets and buffers are this batch's */
+    mo_flush(ended);
     if(passtime_state>0)passtime_pass_end((unsigned)(async_current-async_batches),command,passtime_draws);passtime_draws=0;
     /* timestamp reports recorded inside the pass */
     counter_gpu_flush();
