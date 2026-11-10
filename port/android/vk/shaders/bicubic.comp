@@ -1,0 +1,25 @@
+// Bicubic upscaling (Catmull-Rom, the cubic through the samples: B = 0, C = 0.5), 4x4 taps, one output pixel a thread.
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(push_constant) uniform P {
+    // xy: the picture's size in the source texture, zw: the output size
+    vec4 size;
+} k;
+layout(set = 0, binding = 0) uniform sampler2D src;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D dst;
+float cr(float x) {
+    x = abs(x);
+    return x < 1.0 ? (1.5 * x - 2.5) * x * x + 1.0 : x < 2.0 ? ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0 : 0.0;
+}
+void main() {
+    ivec2 o = ivec2(gl_GlobalInvocationID.xy);
+    if (o.x >= int(k.size.z) || o.y >= int(k.size.w)) return;
+    vec2 p = (vec2(o) + 0.5) * k.size.xy / k.size.zw - 0.5, b = floor(p), f = p - b;
+    ivec2 hi = ivec2(k.size.xy) - 1;
+    vec3 c = vec3(0.0); float ws = 0.0;
+    for (int y = -1; y <= 2; y++) for (int x = -1; x <= 2; x++) {
+        float w = cr(float(x) - f.x) * cr(float(y) - f.y);
+        c += w * texelFetch(src, clamp(ivec2(b) + ivec2(x, y), ivec2(0), hi), 0).rgb; ws += w;
+    }
+    imageStore(dst, o, vec4(clamp(c / ws, 0.0, 1.0), 1.0));
+}

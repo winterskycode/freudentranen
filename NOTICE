@@ -73,6 +73,13 @@ Tools > Licences:
     mobile shader) -- BSD-3-Clause, Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc.
   * MMPX style-preserving pixel art magnification (shaders/mmpx.comp, after its GLSL version) -- MIT, Copyright 2020
     Morgan McGuire & Mara Gagiu. Text: port/android/vk/third_party/mmpx/LICENSE.
+  * NVIDIA Image Scaling (port/android/vk/third_party/nis; its coefficient tables in nis_coef.inc) -- MIT, Copyright (c) 2022
+    NVIDIA CORPORATION & AFFILIATES
+  * AMD FidelityFX CAS (port/android/vk/third_party/cas) -- MIT, Copyright (c) 2020 Advanced Micro Devices, Inc.
+  * Super-xBR (shaders/superxbr_p*.comp, after the libretro shaders) -- MIT, Copyright (c) 2015 Hyllian. Text:
+    port/android/vk/third_party/superxbr/LICENSE.
+  * ScaleFX (shaders/scalefx_p*.comp, after the libretro shaders) -- MIT, Copyright (c) 2016 Sp00kyFox. Text:
+    port/android/vk/third_party/scalefx/LICENSE.
   * DXVK's DXBC compiler, by way of the dxbc project (port/android/vk/third_party/dxbc) -- zlib; the Khronos SPIR-V
     headers in it -- MIT-style
   * Opus, libvpx, Zstandard -- BSD-3-Clause

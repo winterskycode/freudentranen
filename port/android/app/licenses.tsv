@@ -27,6 +27,10 @@ pe-parse	MIT	Reads the resources of the player's own Lossless.dll (libtotklsfg.s
 AMD FidelityFX Super Resolution 1	MIT	The FSR 1 upscaler and sharpening.	port/android/vk/third_party/fsr1/LICENSE	-
 Snapdragon Game Super Resolution 1	BSD-3-Clause	By Qualcomm: the SGSR upscaler.	port/android/vk/third_party/sgsr/LICENSE	-
 MMPX	MIT	By Morgan McGuire and Mara Gagiu: the MMPX upscaler.	port/android/vk/third_party/mmpx/LICENSE	-
+NVIDIA Image Scaling	MIT	By NVIDIA: the NIS upscaler.	port/android/vk/third_party/nis/licence.txt	-
+AMD FidelityFX CAS	MIT	By AMD: the CAS upscaler.	port/android/vk/third_party/cas/LICENSE.txt	-
+Super-xBR	MIT	By Hyllian: the Super-xBR upscaler.	port/android/vk/third_party/superxbr/LICENSE	-
+ScaleFX	MIT	By Sp00kyFox: the ScaleFX upscaler.	port/android/vk/third_party/scalefx/LICENSE	-
 AMD FidelityFX SDK (FSR 3.1)	MIT	The FSR 3.1 frame generation: frame interpolation and optical flow.	port/android/vk/third_party/fsr3/LICENSE.txt	-
 Arm Accuracy Super Resolution	MIT	Temporal upscaling (Arm ASR).	port/android/vk/third_party/asr/LICENSE	-
 SMAA	MIT	Anti-aliasing.	port/android/vk/third_party/smaa/LICENSE.txt	-

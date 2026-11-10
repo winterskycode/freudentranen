@@ -1,0 +1,75 @@
+/*
+Copyright (c) 2016 Sp00kyFox - ScaleFX@web.de
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+// ScaleFX (Sp00kyFox), pass 4 of 5, 3x: subpixel output.
+// Each game picture pixel becomes 3x3 output pixels; each one takes the
+// colour of the neighbour named by its pass 3 tag (0 = E, 1 = D, 2 = D0,
+// 3 = F, 4 = F0, 5 = B, 6 = B0, 7 = H, 8 = H0), so the output holds only
+// colours of the game picture. The output is exactly 3x the game picture.
+// Source is the pass 3 tags; binding 1 is the game picture.
+
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(push_constant) uniform P { vec4 SourceSize; vec4 OriginalSize; vec4 OutputSize; vec4 unused_; } k;
+
+layout(set = 0, binding = 0) uniform sampler2D Source;
+layout(set = 0, binding = 1) uniform sampler2D refpass;
+layout(set = 0, binding = 4, rgba16f) uniform writeonly image2D dst;
+
+// corner tags
+vec4 loadCrn(vec4 x) { return floor(mod(x * 80.0 + 0.5, 9.0)); }
+
+// mid tags
+vec4 loadMid(vec4 x) { return floor(mod(x * 8.888888 + 0.055555, 9.0)); }
+
+void main() {
+    ivec2 opos = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(opos, ivec2(k.OutputSize.xy)))) return;
+
+    /*  grid        corners     mids
+
+          B         x   y         x
+        D E F                   w   y
+          H         w   z         z
+    */
+
+    // source pixel and which of its 3x3 subpixels this is
+    ivec2 pos = opos / 3;
+    ivec2 fp = opos - pos * 3;
+
+    vec4 E = texelFetch(Source, min(pos, ivec2(k.SourceSize.xy) - 1), 0);
+    vec4 crn = loadCrn(E);
+    vec4 mid = loadMid(E);
+
+    float sp = fp.y == 0 ? (fp.x == 0 ? crn.x : fp.x == 1 ? mid.x : crn.y)
+             : fp.y == 1 ? (fp.x == 0 ? mid.w : fp.x == 1 ? 0.0   : mid.y)
+             :             (fp.x == 0 ? crn.w : fp.x == 1 ? mid.z : crn.z);
+
+    ivec2 res = sp == 0.0 ? ivec2( 0,  0) : sp == 1.0 ? ivec2(-1,  0) : sp == 2.0 ? ivec2(-2,  0)
+              : sp == 3.0 ? ivec2( 1,  0) : sp == 4.0 ? ivec2( 2,  0) : sp == 5.0 ? ivec2( 0, -1)
+              : sp == 6.0 ? ivec2( 0, -2) : sp == 7.0 ? ivec2( 0,  1) : ivec2( 0,  2);
+
+    ivec2 refMax = textureSize(refpass, 0) - 1;
+    vec3 c = texelFetch(refpass, clamp(pos + res, ivec2(0), refMax), 0).rgb;
+    imageStore(dst, opos, vec4(c, 1.0));
+}
