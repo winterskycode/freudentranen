@@ -20,11 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-// ScaleFX (Sp00kyFox), pass 4 of 5, 3x: subpixel output.
-// Each game picture pixel becomes 3x3 output pixels; each one takes the
-// colour of the neighbour named by its pass 3 tag (0 = E, 1 = D, 2 = D0,
-// 3 = F, 4 = F0, 5 = B, 6 = B0, 7 = H, 8 = H0), so the output holds only
-// colours of the game picture. The output is exactly 3x the game picture.
+// ScaleFX (Sp00kyFox), pass 4 of 5: subpixel output, filtered to the output size.
+// Each game picture pixel becomes 3x3 subpixels; each one takes the colour
+// of the neighbour named by its pass 3 tag (0 = E, 1 = D, 2 = D0, 3 = F,
+// 4 = F0, 5 = B, 6 = B0, 7 = H, 8 = H0), so the subpixels hold only colours
+// of the game picture. An output pixel is the area-weighted mean of the
+// subpixels it covers: at 3x the picture's size that is one subpixel (the
+// original ScaleFX output); at the screen's size it stands in for a 3x
+// picture shrunk to the screen, without writing the 3x picture.
 // Source is the pass 3 tags; binding 1 is the game picture.
 
 #version 450
@@ -42,22 +45,17 @@ vec4 loadCrn(vec4 x) { return floor(mod(x * 80.0 + 0.5, 9.0)); }
 // mid tags
 vec4 loadMid(vec4 x) { return floor(mod(x * 8.888888 + 0.055555, 9.0)); }
 
-void main() {
-    ivec2 opos = ivec2(gl_GlobalInvocationID.xy);
-    if (any(greaterThanEqual(opos, ivec2(k.OutputSize.xy)))) return;
-
+vec3 subpixel(ivec2 sub) {
     /*  grid        corners     mids
 
           B         x   y         x
         D E F                   w   y
           H         w   z         z
     */
+    ivec2 pos = sub / 3;
+    ivec2 fp = sub - pos * 3;
 
-    // source pixel and which of its 3x3 subpixels this is
-    ivec2 pos = opos / 3;
-    ivec2 fp = opos - pos * 3;
-
-    vec4 E = texelFetch(Source, min(pos, ivec2(k.SourceSize.xy) - 1), 0);
+    vec4 E = texelFetch(Source, pos, 0);
     vec4 crn = loadCrn(E);
     vec4 mid = loadMid(E);
 
@@ -70,6 +68,28 @@ void main() {
               : sp == 6.0 ? ivec2( 0, -2) : sp == 7.0 ? ivec2( 0,  1) : ivec2( 0,  2);
 
     ivec2 refMax = textureSize(refpass, 0) - 1;
-    vec3 c = texelFetch(refpass, clamp(pos + res, ivec2(0), refMax), 0).rgb;
-    imageStore(dst, opos, vec4(c, 1.0));
+    return texelFetch(refpass, clamp(pos + res, ivec2(0), refMax), 0).rgb;
+}
+
+void main() {
+    ivec2 opos = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(opos, ivec2(k.OutputSize.xy)))) return;
+
+    // the output pixel's footprint in subpixels: at most 3 wide while the output is at least the picture's size, so
+    // it touches at most 4 subpixels a side
+    vec2 f = 3.0 * k.SourceSize.xy / k.OutputSize.xy;
+    vec2 a = vec2(opos) * f, b = a + f;
+    ivec2 lo = ivec2(floor(a)), hi = min(ivec2(ceil(b - 1e-4)), ivec2(3.0 * k.SourceSize.xy)) - 1;
+    hi = min(hi, lo + 3);
+    vec3 sum = vec3(0.0);
+    float total = 0.0;
+    for (int y = lo.y; y <= hi.y; y++) {
+        float wy = min(b.y, float(y + 1)) - max(a.y, float(y));
+        for (int x = lo.x; x <= hi.x; x++) {
+            float w = wy * (min(b.x, float(x + 1)) - max(a.x, float(x)));
+            sum += w * subpixel(ivec2(x, y));
+            total += w;
+        }
+    }
+    imageStore(dst, opos, vec4(sum / total, 1.0));
 }

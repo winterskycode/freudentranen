@@ -13,7 +13,7 @@ typedef struct { VkImage image; VkDeviceMemory memory; VkImageView view; uint32_
 enum { UP_BILINEAR, UP_FSR1, UP_SGSR, UP_MMPX, UP_NEAREST, UP_BICUBIC, UP_LANCZOS, UP_CAS, UP_NIS, UP_SUPERXBR, UP_SCALEFX, UP_MODES };
 static const char *const upscale_values[UP_MODES] = {"bilinear", "fsr1", "sgsr", "mmpx", "nearest", "bicubic", "lanczos", "cas", "nis", "superxbr", "scalefx"};
 static const char *const upscale_names[UP_MODES] = {"bilinear blit", "FSR 1", "SGSR 1", "MMPX (2x, then a linear blit)", "nearest blit",
-    "bicubic (Catmull-Rom)", "Lanczos-3", "AMD CAS", "NVIDIA Image Scaling", "Super-xBR (2x, then a linear blit)", "ScaleFX (3x, then a linear blit)"};
+    "bicubic (Catmull-Rom)", "Lanczos-3", "AMD CAS", "NVIDIA Image Scaling", "Super-xBR (2x, then a linear blit)", "ScaleFX"};
 /* The multi-pass choices (shaders/superxbr_p*.comp, scalefx_p*.comp): each pass's output size as a multiple of the
    picture's and its inputs at bindings 0-3 (-1 none, 0 the picture, n pass n-1's output); RGBA16F between passes */
 #define UP_MP_PASSES 5
@@ -25,6 +25,8 @@ static struct {
     /* -1 unread, else UP_* */
     int mode;
     float sharpness;
+    /* TOTK_SCALEFX_RES: ScaleFX's output, 0 the screen's size, else that multiple of the picture's (3: its own 3x) */
+    int sfx_res;
     /* pipe: the one-pass choices on the shared layout (a sampled source, a storage output, 64 bytes of constants) */
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline easu, rcas, pipe[UP_MODES]; VkSampler sampler;
     /* NVIDIA Image Scaling: its own layout (constants, sampler, source, output, two coefficient tables) */
@@ -72,6 +74,7 @@ static VkPipeline upscale_pipeline(const uint32_t *code, size_t bytes) {
 
 /* TOTK_FSR_SHARPNESS: RCAS's strength in stops below its strongest (0), or "off": EASU alone, no sharpening (-1) */
 static float upscale_sharpness(const char *s) { return !s ? 0.25f : !strcmp(s, "off") ? -1.0f : (float)atof(s); }
+static int upscale_sfx_res(const char *s) { return s && !strcmp(s, "3x") ? 3 : s && !strcmp(s, "2x") ? 2 : 0; }
 static int upscale_mode_of(const char *v) { for (int m = 0; v && m < UP_MODES; m++) if (!strcmp(v, upscale_values[m])) return m; return UP_FSR1; }
 static void upscale_nis_ready(void); static void upscale_mp_ready(void);
 static int upscale_ready(void) {
@@ -79,6 +82,7 @@ static int upscale_ready(void) {
     const char *e = getenv("TOTK_UPSCALER"), *s = getenv("TOTK_FSR_SHARPNESS");
     upscale.mode = upscale_mode_of(e);
     upscale.sharpness = upscale_sharpness(s);
+    upscale.sfx_res = upscale_sfx_res(getenv("TOTK_SCALEFX_RES"));
     /* all of them, so the menu can switch while playing */
     {
         VkDescriptorSetLayoutBinding b[2] = {
@@ -116,7 +120,8 @@ static int upscale_ready(void) {
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE};
         VK_CHECK(vkCreateSampler(device, &si, NULL, &upscale.sampler));
     }
-    if (upscale.mode != UP_FSR1) LOG("[upscale] present upscaler: %s", upscale_names[upscale.mode]);
+    if (upscale.mode == UP_SCALEFX) LOG("[upscale] present upscaler: ScaleFX, output %s", upscale.sfx_res ? (upscale.sfx_res == 3 ? "3x" : "2x") : "screen size");
+    else if (upscale.mode != UP_FSR1) LOG("[upscale] present upscaler: %s", upscale_names[upscale.mode]);
     else if (upscale.sharpness < 0) LOG("[upscale] present upscaler: FSR 1 (EASU, no sharpening)");
     else LOG("[upscale] present upscaler: FSR 1 (EASU + RCAS, sharpness %.2f stops)", upscale.sharpness);
     return upscale.mode;
@@ -229,7 +234,7 @@ static void upscale_mp_ready(void) {
     VK_CHECK(vkCreateSampler(device, &si, NULL, &upscale.point));
 }
 /* Super-xBR or ScaleFX: the picture copied to an image of its own size, the passes, then a linear blit of the last
-   (2x or 3x) into dst's rect */
+   (Super-xBR 2x; ScaleFX the screen's size, 2x or 3x) into dst's rect */
 static int upscale_present_mp(image_entry *e, int sw, int sh, VkImage dst, int x, int y, int dw, int dh) {
     int m = upscale.mode == UP_SCALEFX;
     upscale_image_make_as(&upscale.orig, (uint32_t)sw, (uint32_t)sh, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -250,6 +255,8 @@ static int upscale_present_mp(image_entry *e, int sw, int sh, VkImage dst, int x
         const upscale_mp_pass *ps = &upscale_mp[m].pass[p];
         upscale_image *o = &upscale.mp_img[p];
         uint32_t ow = (uint32_t)(sw * ps->scale), oh = (uint32_t)(sh * ps->scale);
+        /* ScaleFX's last pass filters its 3x subpixels to any size: the screen's spares writing the 3x picture */
+        if (m && p == n - 1) { ow = upscale.sfx_res ? (uint32_t)(sw * upscale.sfx_res) : (uint32_t)dw; oh = upscale.sfx_res ? (uint32_t)(sh * upscale.sfx_res) : (uint32_t)dh; }
         upscale_image_make_as(o, ow, oh, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
         b.image = o->image; b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT; b.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT; b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
