@@ -1,0 +1,67 @@
+# Draft for .github/ISSUE_TEMPLATE/bug_report.yml in the public repository
+name: Bug report
+description: Something does not work, looks wrong, or crashes.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The app can collect most of what we need: see [Reporting a bug](https://github.com/winterskycode/freudentranen/wiki/Reporting-a-bug).
+        Please do not attach or link game files or keys. Bug reports from the app never contain them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. One problem per report.
+      placeholder: Climbed the tower at Lookout Landing; the screen went black but the sound kept playing.
+    validations:
+      required: true
+  - type: dropdown
+    id: often
+    attributes:
+      label: How often
+      options:
+        - Every time
+        - Sometimes
+        - Once so far
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where in the game
+      description: A place name, or "title screen", "loading", "startup screen", "setup".
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Model and Android version.
+      placeholder: AYN Odin 3, Android 15
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: The release, for example 20261104-2350 (shown in Obtainium, or the APK's name).
+    validations:
+      required: true
+  - type: textarea
+    id: changed
+    attributes:
+      label: Settings, driver or mods you changed
+      description: Especially anything changed just before the problem started. "Defaults" is fine.
+  - type: textarea
+    id: report
+    attributes:
+      label: Bug report from the app
+      description: |
+        Save one from the in-game menu (Save bug report), or use the crash report the startup screen made, then Tools › Share.
+        Drag the zip here, or paste a link if it is larger than 25 MB. If it does not include your save, export it from Tools › Saves and attach that too.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I am using the newest release.
+        - label: I searched the open issues for this problem.
