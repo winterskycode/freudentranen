@@ -334,7 +334,7 @@ public class LauncherActivity extends Activity {
             else if (Game.SETUP) { setupBack = "home"; setupFocus = -1; show("setup"); }
             else if (!Environment.isExternalStorageManager()) startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName())));
         });
-        if (ready && !prepared) menuRow(nav, "Prepare shaders", "once, about 4 min", Ui.GOLD_TEXT, v -> { preparing = true; launch(); preparing = false; });
+        if (ready && !prepared) menuRow(nav, "Prepare shaders", "once, a few minutes", Ui.GOLD_TEXT, v -> { preparing = true; launch(); preparing = false; });
         int changes = layout.changes();
         menuRow(nav, "Settings", "graphics, frame rate, system", Ui.CREAM, v -> { tab = 0; show("settings"); });
         menuRow(nav, "Controls", changes > 0 ? changes + (changes == 1 ? " action" : " actions") + " moved" : "game defaults", Ui.CREAM, v -> { controlsBack = "home"; padRow = 0; show("controls"); });

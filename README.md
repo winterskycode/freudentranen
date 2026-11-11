@@ -23,7 +23,7 @@ Then:
    updates. You can also download the APK from [Releases](https://github.com/winterskycode/freudentranen/releases).
 2. Open the app. On the Game files page, pick your `prod.keys`, then the folder that holds the game and the update.
 3. Press Continue. The first start takes a little longer, and shaders are built as you play. Prepare shaders on the
-   startup screen builds them ahead of time (once, about 4 minutes), which means fewer hitches early on.
+   startup screen builds them ahead of time (once, in a few minutes), which means fewer hitches early on.
 
 ## Features
 - **Native:** the game's own code runs on the device, with a Vulkan renderer for its NVN graphics.
