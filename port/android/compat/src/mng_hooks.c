@@ -37,22 +37,24 @@ __attribute__((weak)) void mtl_wb_fence_done(void) {}
 __attribute__((weak)) void mtl_take_submit_thread(void) {}
 /* Packaging tool for the iPhone's pipeline archive (loader.c "pipeline-archive"): Mac only. */
 __attribute__((weak)) int mtl_pipeline_archive_tool(int argc, char **argv) { (void)argc; (void)argv; fprintf(stderr, "pipeline-archive: Mac only\n"); return 2; }
-/* zeldaVR stereo B2 (hle_nvn.c, Metal backend): stereo is never on here (game_patches_v143.c's Android stubs), so the
-   submit path never takes these; they exist for the link. */
+/* Stereo by replay (hle_nvn.c, Metal backend): never on here, so the submit path replays once and takes none of the
+   others; they exist for the link. */
+__attribute__((weak)) int mtl_stereo_replay(void) { return 0; }
+__attribute__((weak)) int mtl_stereo_project(void) { return 0; }
 __attribute__((weak)) void mtl_eye_pass(int e) { (void)e; }
-__attribute__((weak)) void vr_b2_pair_begin(void) {}
-__attribute__((weak)) void vr_b2_eye_begin(void) {}
+__attribute__((weak)) void *mtl_ucap_dup(const void *base) { (void)base; return NULL; }
+__attribute__((weak)) int mtl_ucap_eye(void *cap, int eye) { (void)cap; (void)eye; return 0; }
+__attribute__((weak)) void mtl_ucap_free(void *c) { (void)c; }
+__attribute__((weak)) void mtl_eye_capture(int eye) { (void)eye; }
+/* Live button prompt icons (Metal, totk_prompt_icons.m): the Android prompts are the field prompt patches, so no atlas
+   is kept and a pool's removal has nothing to drop. */
+__attribute__((weak)) void totk_prompt_remove_pool(const void *memory, size_t size) { (void)memory; (void)size; }
+/* input.c's "settings <page>" test command opens the Mac's settings panel; the Android menu is vk/overlay.cpp. */
+__attribute__((weak)) void runtime_settings_page(int page) { (void)page; }
 /* input.c's live VR resolution command: rejected, there is no headset output here. */
 __attribute__((weak)) int vr_set_resolution(int w, int h) { (void)w; (void)h; return 0; }
 /* loader.c tool modes of the Mac build: seed-shaders (nvn_mtl.m) and the Quest field-of-view probe. */
 __attribute__((weak)) void runtime_shader_seed(const char *corpus, const char *list) { (void)corpus; (void)list; fprintf(stderr, "seed-shaders: Mac only\n"); exit(2); }
 __attribute__((weak)) void runtime_totk_projection_probe(void) { fprintf(stderr, "probe-quest-fov: Mac only\n"); }
-__attribute__((weak)) void mtl_eye_capture(int eye) { (void)eye; }
-__attribute__((weak)) void mtl_eye_done(int left, int last) { (void)left; (void)last; }
-__attribute__((weak)) int mtl_b2_right_first(void) { return 0; }
-__attribute__((weak)) int mtl_b2_submit_uniforms_only(void) { return 0; }
-__attribute__((weak)) void *mtl_ucap_overlay(const void *base, const void *over) { (void)base; (void)over; return NULL; }
-__attribute__((weak)) void mtl_ucap_free(void *c) { (void)c; }
-__attribute__((weak)) void vr_b2_present_eye(int eye) { (void)eye; }
 /* the VR compositor's camera search hook (totk_vr.m on the Mac) */
 void (*g_vr_find_camera)(const float *);
