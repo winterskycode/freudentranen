@@ -24,7 +24,7 @@ TOTK_SHADOW_RES	Graphics	-	720	720|1024|1440|2048	720 (original)|1024|1440|2048	
 TOTK_SHADOW_CASCADES	Graphics	-	4	4|3|2	Far (original)|Medium|Near	Shadow distance	How far away the sun casts shadows. Near and Medium drop the shadows of distant hills and trees and lighten the load a little. Close shadows do not change.
 =	Frame rate	H	-	-	-	Speed	
 TOTK_FPS_CAP	Frame rate	LQ	120	30|40|45|60|70|80|90|100|110|120	30|40|45|60|70|80|90|100|110|120	Frame rate limit	The most pictures shown each second, counting generated ones. A lower limit saves power and heat. The game always runs at normal speed.
-TOTK_DISPLAY_HZ	Frame rate	L	120	120|60	120 Hz|60 Hz	Screen refresh rate	How often the screen updates. 120 Hz looks smoother when the frame rate is uneven. 60 Hz saves power. If the device gets very hot, Android drops the screen to 60 Hz by itself.
+TOTK_DISPLAY_HZ	Frame rate	L	120	120|60	120 Hz|60 Hz	Screen refresh rate	How often the screen updates. 120 Hz looks smoother when the frame rate is uneven. 60 Hz saves power. Some devices drop the screen to 60 Hz by themselves when they get very hot.
 =	Frame rate	H	-	-	-	Frame generation	
 TOTK_FG	Frame rate	LQ	off	off|builtin|fsr|lsfg|lsfg3|lsfg4|lsfga	Off|Built-in ×2|FSR 3.1 ×2|LSFG ×2|LSFG ×3|LSFG ×4|LSFG adaptive	Frame generation	Adds pictures between the ones the game draws, so motion looks smoother, with a little more input delay. Built-in is the lightest. FSR 3.1 looks better. LSFG needs your Lossless.dll, chosen in Tools > Lossless Scaling on the startup screen. Generation pauses if heat drops the screen to 60 Hz.
 TOTK_FG_HUD	Frame rate	L	real	real|generated	Real frames|Generated	Game HUD	How the game’s HUD looks with frame generation. Real frames stays sharp but moves at the game’s frame rate. Generated moves smoothly, but moving text can smear.	TOTK_FG=builtin|lsfg|lsfg3|lsfg4|lsfga
@@ -44,8 +44,8 @@ TOTK_VOLUME	System	LQ	100	100|80|60|40|20|0	100 %|80 %|60 %|40 %|20 %|Muted	Volu
 =	System	H	-	-	-	Performance overlay	
 TOTK_HUD_FPS	System	LQ	off	off|on	Off|On	Show frame rate	Shows the frame rate on screen, counting every picture shown.
 TOTK_HUD_FRAMETIME	System	L	off	off|on	Off|On	Show frame time	Shows how long each frame takes, with a small graph. Red bars are too slow for 60 frames per second.
-TOTK_HUD_REFRESH	System	L	off	off|on	Off|On	Show screen refresh rate	Shows how often the screen is updating right now. It falls to 60 Hz if the device gets very hot.
-TOTK_HUD_TEMP	System	L	off	off|on	Off|On	Show temperature	Shows the hottest of the CPU and GPU temperatures. Around 95 °C the device starts to slow itself down.
+TOTK_HUD_REFRESH	System	L	off	off|on	Off|On	Show screen refresh rate	Shows how often the screen is updating right now. Some devices drop it to 60 Hz when they get very hot.
+TOTK_HUD_TEMP	System	L	off	off|on	Off|On	Show temperature	Shows the hottest of the CPU and GPU temperatures. Many devices slow themselves down when they get very hot.
 TOTK_HUD_SHADERS	System	L	off	off|on	Off|On	Show shader activity	Shows how many shaders are being built right now. A stutter while this is above zero is a shader being built.
 TOTK_HUD_DRIVER	System	L	off	off|on	Off|On	Show graphics driver	Shows the graphics driver and its version.
 TOTK_HUD_CORNER	System	L	bottom-left	bottom-left|bottom-right|top-left|top-right	Bottom left|Bottom right|Top left|Top right	Overlay corner	Which corner of the screen the performance overlay sits in.
