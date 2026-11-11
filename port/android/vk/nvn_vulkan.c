@@ -2419,7 +2419,8 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         VkPresentTimeGOOGLE present_time; VkPresentTimesInfoGOOGLE present_times;
         /* a present id on every present when the extension is there: Android records a present's timing only then, and
            the on-screen histogram, TL_SHOWN and the latency estimate (pace_learn) need the timings also without pacing */
-        if (pace_ext && pace_get_past) { present_time = (VkPresentTimeGOOGLE){++pace_id, pace_on() && pace_desired > 0 ? (uint64_t)pace_desired : 0}; pace_submit[pace_id % 64] = present_start;
+        if (pace_ext && pace_get_past) { present_time = (VkPresentTimeGOOGLE){++pace_id, pace_on() && pace_desired > 0 ? (uint64_t)pace_desired : 0}; pace_submit[pace_id % 64] = present_start; pace_ticket[pace_id % 64] = screen_acquire_ticket;
+            if (totk_tl_at) totk_tl_at(TL_PLAN, present_start, pace_id, present_time.desiredPresentTime);
             present_times = (VkPresentTimesInfoGOOGLE){.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE, .swapchainCount = 1, .pTimes = &present_time}; pi.pNext = &present_times; }
         result = vkQueuePresentKHR(queue, &pi);present_ns=dm_android_clock_ns(CLOCK_MONOTONIC)-present_start;present_block_ns+=acquire_ns+present_ns+previous_acquire_ns;
         pace_learn();

@@ -16,13 +16,22 @@ static PFN_vkGetRefreshCycleDurationGOOGLE pace_get_refresh;
 static PFN_vkGetPastPresentationTimingGOOGLE pace_get_past;
 static VkSwapchainKHR pace_chain;
 /* ns; anchor: a past refresh */
-static uint64_t pace_refresh, pace_anchor, pace_last_target, pace_latency = 12000000;
-static uint32_t pace_id;
+static uint64_t pace_refresh, pace_anchor, pace_last_target;
+/* From a present until its picture is drawn (its GPU work done: a high estimate), and from then until the screen shows it
+   when nothing holds it back. A picture that is not ready before the refresh the next one is due at is dropped, so the plan
+   leads by both. */
+static uint64_t pace_gpu = 8000000, pace_comp;
+static uint32_t pace_id, pace_seen_id, pace_ready_id;
 /* the next present's "not before" time (0: as soon as possible, -1: no timing) */
 static int64_t pace_desired = -1;
 /* by present id % 64: submit time, for the latency estimate */
 static uint64_t pace_submit[64];
-static uint64_t pace_frames, pace_late;
+/* by present id % 64: the command buffer that draws it, and when the GPU finished it (0 not known) */
+static uint64_t pace_ticket[64], pace_done[64];
+/* by command buffer ticket % 1024, from the completion thread (nvn_vulkan_async.inc) */
+static _Atomic uint64_t pace_fence_ticket[1024], pace_fence_ns[1024];
+static void pace_fence_passed(uint64_t ticket, uint64_t ns) { atomic_store(&pace_fence_ns[ticket % 1024], ns); atomic_store(&pace_fence_ticket[ticket % 1024], ticket); }
+static uint64_t pace_frames, pace_late, pace_missed;
 
 static int pace_on(void) {
     /* opt-in (TOTK_PACING=1): it misjudges caps that do not divide the refresh rate */
@@ -60,8 +69,21 @@ static int pace_pictures_fit(int cap_hz) {
 static void pace_learn(void) {
     /* the histogram and TL_SHOWN also without pacing */
     if (!pace_ext || !pace_get_refresh || !pace_get_past || !swapchain) return;
+    /* each present's GPU time, once its fence has passed */
+    if (pace_id - pace_ready_id > 48) pace_ready_id = pace_id - 1;
+    while (pace_ready_id < pace_id) {
+        uint32_t id = pace_ready_id + 1; uint64_t ticket = pace_ticket[id % 64], seen = atomic_load(&pace_fence_ticket[ticket % 1024]);
+        if (seen < ticket) break;
+        pace_done[id % 64] = 0;
+        if (seen == ticket) { uint64_t done = atomic_load(&pace_fence_ns[ticket % 1024]), submit = pace_submit[id % 64]; pace_done[id % 64] = done;
+            if (totk_tl_at) totk_tl_at(TL_READY, done, id, atomic_load(&pace_fence_ticket[(ticket - 1) % 1024]) == ticket - 1 ? atomic_load(&pace_fence_ns[(ticket - 1) % 1024]) : 0);
+            uint64_t g = done > submit ? done - submit : 0; if (g > 100000000) g = 100000000;
+            /* quick to rise, slow to fall: the slow frames are the ones that drop pictures */
+            pace_gpu = g > pace_gpu ? (pace_gpu + g) / 2 : pace_gpu - (pace_gpu - g) / 32; }
+        pace_ready_id = id;
+    }
     if (pace_chain == swapchain) pace_refresh_poll();
-    if (pace_chain != swapchain) { pace_chain = swapchain; pace_anchor = 0; VkRefreshCycleDurationGOOGLE r;
+    if (pace_chain != swapchain) { pace_chain = swapchain; pace_anchor = 0; pace_seen_id = 0; VkRefreshCycleDurationGOOGLE r;
         if (!pace_get_refresh(device, swapchain, &r)) { pace_refresh = r.refreshDuration; LOG("[pacing] refresh %.2f ms", r.refreshDuration / 1e6); } }
     VkPastPresentationTimingGOOGLE past[16]; uint32_t n = 16;
     VkResult pr = pace_get_past(device, swapchain, &n, past);
@@ -80,8 +102,15 @@ static void pace_learn(void) {
                 (unsigned long long)hist[1], (unsigned long long)hist[2], (unsigned long long)hist[3], (unsigned long long)hist[4], (unsigned long long)hist[5]); memset(hist, 0, sizeof hist); } }
         last_actual = past[i].actualPresentTime;
         pace_anchor = past[i].actualPresentTime;
-        uint64_t submit = pace_submit[past[i].presentID % 64], allowed = submit > past[i].desiredPresentTime ? submit : past[i].desiredPresentTime;
-        if (submit && past[i].actualPresentTime > allowed) { uint64_t l = past[i].actualPresentTime - allowed; if (l < 100000000) pace_latency = (pace_latency * 7 + l) / 8; }
+        if (!pace_on() || !pace_refresh) { pace_seen_id = past[i].presentID; continue; }
+        /* Android reports only the pictures that reached the screen: a missing present id was dropped */
+        if (pace_seen_id && past[i].presentID > pace_seen_id + 1) pace_missed += past[i].presentID - pace_seen_id - 1;
+        if (past[i].presentID > pace_seen_id) pace_seen_id = past[i].presentID;
+        /* the compositor's part, from pictures shown later than planned (held back by nothing but their own readiness) */
+        uint64_t done = pace_done[past[i].presentID % 64], actual = past[i].actualPresentTime, desired = past[i].desiredPresentTime;
+        if (!done || actual <= done || (desired && actual <= desired + pace_refresh)) continue;
+        uint64_t c = actual - done; if (c > 4 * pace_refresh) continue;
+        pace_comp = pace_comp ? (pace_comp * 7 + c) / 8 : c;
     }
 }
 /* the first refresh at or after t */
@@ -102,20 +131,27 @@ static uint64_t pace_grid_round(uint64_t t) {
 static void pace_plan(int generated, double game_ms, int64_t *desired) {
     for (int i = 0; i <= generated; i++) desired[i] = -1;
     if (!pace_on() || !pace_refresh || !pace_anchor) return;
-    uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), earliest = pace_grid_after(now + pace_latency);
-    if (pace_last_target && pace_grid_after(pace_last_target + pace_refresh) > earliest) earliest = pace_grid_after(pace_last_target + pace_refresh);
+    /* the compositor's estimate is from refreshes: half a refresh of it is the rounding up to one */
+    uint64_t comp = pace_comp > pace_refresh / 2 ? pace_comp - pace_refresh / 2 : 0, lead = pace_gpu + (pace_comp ? comp : pace_refresh / 2);
+    uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), soonest = pace_grid_after(now + lead), earliest = soonest;
+    /* the refresh after the last picture's, rounded to the nearest: the grid is re-learnt from measured times that wander by
+       a fraction of a millisecond, and rounding up would now and then skip a refresh, which only ever moves the plan later:
+       at a steady frame rate, seconds ahead, past the times the compositor honours */
+    uint64_t after_last = pace_last_target ? pace_grid_round(pace_last_target + pace_refresh) : 0;
+    if (after_last > earliest) earliest = after_last;
     if (!generated) { desired[0] = 0; pace_last_target = earliest; return; }
     uint64_t step = (uint64_t)(game_ms * 1e6 / (generated + 1)); if (step < pace_refresh) step = pace_refresh;
     uint64_t t = pace_last_target ? pace_grid_round(pace_last_target + step) : earliest;
     pace_frames++; if (t < earliest) { t = earliest; pace_late++; }
-    /* no drift into the future */
-    if (t > pace_grid_round(earliest + step)) t = pace_grid_round(earliest + step);
+    /* never more than a step after the soonest refresh a picture presented now can reach: a plan that got ahead comes back,
+       at the cost of at most one dropped picture, instead of keeping the queue full */
+    if (t > pace_grid_round(soonest + step)) t = pace_grid_round(soonest + step);
     for (int i = 0; i <= generated; i++) {
         if (i) { uint64_t next = pace_grid_round(t + step); t = next < t + pace_refresh ? t + pace_refresh : next; }
         /* half a refresh early: that refresh */
         desired[i] = (int64_t)(t - pace_refresh / 2);
     }
     pace_last_target = t;
-    if (!(pace_frames % 600)) LOG("[pacing] %llu generated frames, %llu late (shown as soon as possible); latency %.1f ms, refresh %.2f ms",
-        (unsigned long long)pace_frames, (unsigned long long)pace_late, pace_latency / 1e6, pace_refresh / 1e6);
+    if (!(pace_frames % 600)) LOG("[pacing] %llu generated frames, %llu late (shown as soon as possible); %llu pictures not shown; GPU %.1f ms, compositor %.1f ms, refresh %.2f ms",
+        (unsigned long long)pace_frames, (unsigned long long)pace_late, (unsigned long long)pace_missed, pace_gpu / 1e6, pace_comp / 1e6, pace_refresh / 1e6);
 }

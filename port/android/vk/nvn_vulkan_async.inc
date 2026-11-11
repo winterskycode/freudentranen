@@ -655,7 +655,7 @@ static void *async_completion_main(void *unused) {
         async_batch *batch=async_first;uint64_t ticket=batch->ticket;
         // The worker alone waits/retires; this fence cannot be reset before the slot becomes FREE.
         pthread_mutex_unlock(&queue_lock);
-        VK_CHECK(vkWaitForFences(device,1,&batch->fence,VK_TRUE,UINT64_MAX));if(totk_tl)totk_tl(TL_FENCE,ticket,0);
+        VK_CHECK(vkWaitForFences(device,1,&batch->fence,VK_TRUE,UINT64_MAX));if(totk_tl)totk_tl(TL_FENCE,ticket,0);pace_fence_passed(ticket,dm_android_clock_ns(CLOCK_MONOTONIC));
         drawstat_batch_done((unsigned)(batch-async_batches));
         passtime_batch_done((unsigned)(batch-async_batches));
         pthread_mutex_lock(&queue_lock);
