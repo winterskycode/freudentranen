@@ -531,7 +531,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImag
    the previous picture's share; 0: the current picture alone, warped). Between two frames (fill 0) the defaults take the
    current picture alone and nearly the best candidate only: blending the previous picture and the other candidates in
    left generated pictures about 4.5% less edge detail than real ones (a sharpness flicker at half the rate), 1.2% this
-   way. Past the last frame (fill) the softer weights stay. */
+   way. Past the last frame (fill) the softer weights stay. The match threshold (push[21]) is set here too. */
 static void fg_tune(float *push, int fill) {
     static int read; static const char *sharp, *fallback, *bicubic, *blend;
     if (!read) { read = 1; sharp = getenv("TOTK_FG_SHARP"); fallback = getenv("TOTK_FG_FALLBACK"); bicubic = getenv("TOTK_FG_BICUBIC"); blend = getenv("TOTK_FG_BLEND");
@@ -540,6 +540,13 @@ static void fg_tune(float *push, int fill) {
     push[29] = fallback ? (float)atof(fallback) : 1.0f;
     push[30] = bicubic ? (float)(atoi(bicubic) != 0) : 1.0f;
     push[31] = blend ? (float)atof(blend) : fill ? 1.0f : 0.0f;
+    push[21] = 0.08f;
+    /* live words (<files>/exp.live) for A/B while playing: fgsharp=, fgfallback=, fgblend=, fgthresh= (the match
+       threshold, push[21]) */
+    if (live_exp[0]) {
+        static const char *const words[] = {"fgsharp=", "fgfallback=", "fgblend=", "fgthresh="}; static const int slot[] = {28, 29, 31, 21};
+        for (int i = 0; i < 4; i++) { const char *w = exp_word(live_exp, words[i], 0); if (w && ((*w >= '0' && *w <= '9') || *w == '.')) push[slot[i]] = (float)atof(w); }
+    }
 }
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
@@ -585,7 +592,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* <files>/fgdebug: tint by decision */
     if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
-    push[20] = 1.0f; push[21] = 0.08f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
+    push[20] = 1.0f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
