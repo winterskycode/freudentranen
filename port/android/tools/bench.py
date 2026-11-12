@@ -345,10 +345,6 @@ def run(args):
                 if not end or 'route_done' not in end:
                     raise SystemExit(f'{name}: the flight did not finish: {end}')
                 f = lambda l: int(re.search(r'frame=(\d+)', l)[1])
-                # the window's file is written on the present path (a ~300 ms stall): moving Link across the map during it
-                # crashed the game in its actor jobs (4 of 4 such crashes, all at the move after Lookout Landing)
-                if args.timeline and not wait(rf'\[timeline\] wrote [0-9]+ events to [^ ]+-{tag}$', 120):
-                    print(f'  {name}: the timeline window was not written', flush=True)
                 segments.append(dict(scene=name, tag=tag, begin=f(measure), end=f(end)))
                 print(f'  {name}: frames {f(measure)}..{f(end)}', flush=True)
                 shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
