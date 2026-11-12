@@ -46,8 +46,10 @@ vec2 motion(vec2 uv) {
     }
     ivec2 ds = textureSize(depth, 0);
     float d = texelFetch(depth, clamp(ivec2(uv * vec2(ds)), ivec2(0), ds - 1), 0).r;
-    // sky / cleared depth: no camera reprojection
-    if (d >= 1.0) return vec2(0.0);
+    // The sky (and cleared depth) is at the far plane: reprojected there it follows the camera's turn, and the camera's
+    // own movement is negligible against that distance. Left unmoved, the sky jumps once a game frame while the scene
+    // in front of it moves every picture.
+    d = min(d, 1.0);
     vec4 c = p.reproj * vec4(uv.x * 2.0 - 1.0, p.opt.x * (1.0 - uv.y * 2.0), d * 2.0 - 1.0, 1.0);
     if (c.w <= 1e-7) return vec2(0.0);
     vec2 n = c.xy / c.w;
