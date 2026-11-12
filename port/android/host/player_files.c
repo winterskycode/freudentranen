@@ -5,6 +5,7 @@
 #include "patcher.h"
 #include "tables.h"
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,8 +126,24 @@ uint8_t *player_module_copy(const char *name, size_t *size) {
 }
 int player_image_fd(void) { return dup(update_fd); }
 uint64_t player_romfs_size(void) { return tokc_romfs_size(game); }
+/* TOTK_ROMFS_IO=1 (diagnostic): the game files' reads, a line for each second with reads in it: count, MB, the time
+   spent in them summed over threads, the slowest */
+static int romfs_io_on(void) { static int on = -1; if (on < 0) { const char *e = getenv("TOTK_ROMFS_IO"); on = e && atoi(e) > 0; } return on; }
+static void romfs_io_note(size_t bytes, uint64_t ns) {
+    static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER; static uint64_t sec, calls, total, time_ns, worst;
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); uint64_t now = (uint64_t)ts.tv_sec;
+    pthread_mutex_lock(&mu);
+    if (now != sec) {
+        if (calls) fprintf(stderr, "[romfs-io] t=%llu: %llu reads, %.1f MB, %.0f ms in reads, slowest %.1f ms\n", (unsigned long long)sec, (unsigned long long)calls, total / 1048576.0, time_ns / 1e6, worst / 1e6);
+        sec = now; calls = total = time_ns = worst = 0; }
+    calls++; total += bytes; time_ns += ns; if (ns > worst) worst = ns;
+    pthread_mutex_unlock(&mu);
+}
 ssize_t player_romfs_pread(void *buf, size_t n, off_t off) {
+    uint64_t t0 = 0; struct timespec ts;
+    if (romfs_io_on()) { clock_gettime(CLOCK_MONOTONIC, &ts); t0 = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec; }
     int64_t r = tokc_romfs_pread(game, buf, n, (uint64_t)off);
+    if (t0) { clock_gettime(CLOCK_MONOTONIC, &ts); romfs_io_note(r > 0 ? (size_t)r : 0, (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec - t0); }
     return r < 0 ? -1 : (ssize_t)r;
 }
 const char *player_game_file(const char *name) { return !strcmp(name, "romfs-config.txt") ? romfs_config : NULL; }
