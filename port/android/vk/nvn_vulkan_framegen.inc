@@ -161,7 +161,7 @@ static int fg_shown = -1, fg_adaptive;
 static void fg_parse(const char *v, int *use_lsfg, int *hz, int *mult) {
     /* fill<rate>: the game renders up to the rate, and only refreshes it misses get a picture (nvn_vulkan_fgfill.inc) */
     if (v && !strncmp(v, "fill", 4)) { fg_fill = 1; fg_fsr = 0; fg_adaptive = 0; *use_lsfg = 0; *hz = atoi(v + 4); *mult = 1; return; }
-    *use_lsfg = v && !strncmp(v, "lsfg", 4); fg_fsr = v && !strncmp(v, "fsr", 3); *hz = v ? atoi(*use_lsfg ? v + 4 : fg_fsr ? v + 3 : v) : 0; *mult = 2; fg_adaptive = 0;
+    fg_fill = 0; *use_lsfg = v && !strncmp(v, "lsfg", 4); fg_fsr = v && !strncmp(v, "fsr", 3); *hz = v ? atoi(*use_lsfg ? v + 4 : fg_fsr ? v + 3 : v) : 0; *mult = 2; fg_adaptive = 0;
     const char *x = *use_lsfg ? strchr(v, 'x') : NULL;
     if (x && x[1] == 'a') { *mult = 1; fg_adaptive = 1; } else if (x && atoi(x + 1) >= 2) *mult = atoi(x + 1);
 }
