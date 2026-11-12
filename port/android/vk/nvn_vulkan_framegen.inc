@@ -156,22 +156,18 @@ static int fg_menu_frame(void) { return fg.gdraws < FG_MENU_GBUFFER_DRAWS; }
    second (the player's frame rate cap). fg_shown_hz: those pictures a second, 0 without frame generation; the in-game
    menu changes it (ov_apply). */
 /* fg_adaptive: lsfg<rate>xa<cap>, as many pictures for each game frame as its time holds slots of fg_target_hz (0, or
-   above the display's rate: the display's refreshes; nvn_vulkan_lsfg.inc). fill_slot_hz: the fill thread's slots
-   (nvn_vulkan_fgfill.inc), the game's own cap unless fill<cap>r<rate> holds the game lower. */
-static int fg_shown = -1, fg_adaptive, fg_target_hz, fill_slot_hz;
+   above the display's rate: the display's refreshes; nvn_vulkan_lsfg.inc). */
+static int fg_shown = -1, fg_adaptive, fg_target_hz;
 static void fg_parse(const char *v, int *use_lsfg, int *hz, int *mult) {
-    fg_fill = 0; fg_fsr = 0; fg_adaptive = 0; fg_target_hz = 0; fill_slot_hz = 0; *use_lsfg = 0; *hz = 0; *mult = 2;
+    fg_fill = 0; fg_fsr = 0; fg_adaptive = 0; fg_target_hz = 0; *use_lsfg = 0; *hz = 0; *mult = 2;
     if (!v) return;
-    if (!strncmp(v, "fill", 4)) {
-        const char *r = strchr(v, 'r');
-        fg_fill = 1; fill_slot_hz = atoi(v + 4); *hz = r ? atoi(r + 1) : fill_slot_hz; *mult = 1; return;
-    }
+    if (!strncmp(v, "fill", 4)) { fg_fill = 1; *hz = atoi(v + 4); *mult = 1; return; }
     *use_lsfg = !strncmp(v, "lsfg", 4); fg_fsr = !strncmp(v, "fsr", 3); *hz = atoi(*use_lsfg ? v + 4 : fg_fsr ? v + 3 : v);
     const char *x = *use_lsfg ? strchr(v, 'x') : NULL;
     if (x && x[1] == 'a') { *mult = 1; fg_adaptive = 1; fg_target_hz = atoi(x + 2); } else if (x && atoi(x + 1) >= 2) *mult = atoi(x + 1);
 }
 /* the pictures shown a second for a parsed TOTK_FRAMEGEN */
-static int fg_shown_of(int hz, int mult) { return hz <= 0 ? 0 : fg_fill ? fill_slot_hz : fg_adaptive && fg_target_hz > 0 ? fg_target_hz : hz * mult; }
+static int fg_shown_of(int hz, int mult) { return hz <= 0 ? 0 : fg_fill ? hz : fg_adaptive && fg_target_hz > 0 ? fg_target_hz : hz * mult; }
 static int fg_shown_hz(void) { if (fg_shown < 0) { int l, hz, m; fg_parse(getenv("TOTK_FRAMEGEN"), &l, &hz, &m); fg_shown = fg_shown_of(hz, m); } return fg_shown; }
 /* the overlay's frame cap: kept for after menu mode while it lasts */
 static void fg_cap_set(int hz) { if (fg.menu_cap) fg.menu_cap = hz; else if (nvn_frame_cap_set) nvn_frame_cap_set(hz); }

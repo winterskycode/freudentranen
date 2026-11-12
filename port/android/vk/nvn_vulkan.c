@@ -2607,11 +2607,10 @@ static void *fill_thread(void *arg) {
         { uint64_t t = dm_android_clock_ns(CLOCK_MONOTONIC);
           if (!report) report = t + 10000000000ull;
           else if (t > report) { report = t + 10000000000ull;
-              if (tried[0] + tried[1] + tried[2] + tried[3] + tried[4]) LOG("[framegen] fill slots (10 s): %llu taken by a game frame, %llu without kept inputs, %llu at the run limit, %llu not made, %llu made; lead %.1f ms, slots %d Hz",
-                  (unsigned long long)tried[0], (unsigned long long)tried[1], (unsigned long long)tried[2], (unsigned long long)tried[3], (unsigned long long)tried[4], leads ? lead_sum / 1e6 / leads : 0.0, fill_slot_hz);
+              if (tried[0] + tried[1] + tried[2] + tried[3] + tried[4]) LOG("[framegen] fill slots (10 s): %llu taken by a game frame, %llu without kept inputs, %llu at the run limit, %llu not made, %llu made; lead %.1f ms",
+                  (unsigned long long)tried[0], (unsigned long long)tried[1], (unsigned long long)tried[2], (unsigned long long)tried[3], (unsigned long long)tried[4], leads ? lead_sum / 1e6 / leads : 0.0);
               memset(tried, 0, sizeof tried); lead_sum = leads = 0; } }
-        /* the slots of the frame rate cap; the game's own cap is lower in the x1.5, x3 and x4 modes */
-        int hz = fill_slot_hz > 0 ? fill_slot_hz : nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
+        int hz = nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
         if (!fg_fill || fg.on <= 0 || fg.menu || hz <= 0 || !pace_refresh || !pace_last_target || !present_last || overlay_wants_present()) {
             fill_sleep_until(dm_android_clock_ns(CLOCK_MONOTONIC) + 10000000ull); continue; }
         uint64_t period = 1000000000ull / (uint64_t)hz;

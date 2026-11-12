@@ -1,11 +1,11 @@
-/* Frame generation fill mode (TOTK_FRAMEGEN=fill<cap>[r<rate>], the menu's Homemade fill, x1.5, x3 and x4): the game
-   renders up to the cap (or the lower rate), and a slot of the cap that no game frame reaches in time gets a picture
-   extrapolated from the last two game frames (framegen_interp.comp past t = 1), at most FILL_RUN in a row (x4: three). Real frames on time are shown untouched, so it
+/* Frame generation fill mode (TOTK_FRAMEGEN=fill<rate>, the menu's Homemade fill): the game renders up to the rate,
+   and a refresh slot of that rate that no game frame reaches in time gets a picture extrapolated from the last two game
+   frames (framegen_interp.comp past t = 1), at most FILL_RUN in a row. Real frames on time are shown untouched, so it
    adds no delay; it costs GPU time only when the game falls behind, and it bridges short stalls.
    The inputs of game frame N are kept at its end (fill_keep): the game overwrites its depth, the object motion and the
    scene snapshots while it renders N+1, which is when a picture is needed. The fill thread (fill_thread, nvn_vulkan.c)
    decides and presents under present_serial, so it never interleaves with a game frame's presents. */
-#define FILL_RUN 3
+#define FILL_RUN 2
 static struct {
     image_entry scene[2], depth, motion;
     /* scene[k] is the last kept frame's, scene[k ^ 1] the one before; n: frames kept in a row */
