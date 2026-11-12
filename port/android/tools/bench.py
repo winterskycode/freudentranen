@@ -240,7 +240,10 @@ def run(args):
     # it: at 45 + LSFG x2 the Depths read 45.0 in every run), unless --as-played keeps the player's settings
     uncapped = [] if args.as_played else ['TOTK_UNCAPPED_HZ=240', 'TOTK_FRAMEGEN=0']
     env = [f'TOTK_PROFILE_DIR={FILES}/bench-profile', 'TOTK_SURVEY=1', 'TOTK_SLOT_OWNER=claude',
-           f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', 'TOTK_VK_FRAMEPROF=1', *uncapped, *args.env]
+           f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', *uncapped, *args.env]
+    # the frame profile times every draw and logs every frame, which costs the frame rate it measures: only on request
+    if args.frameprof:
+        env.append('TOTK_VK_FRAMEPROF=1')
     # one TOTK_TIMELINE window in each scene's flight, started by files/timeline.tsv.go (totk_timeline.c)
     if args.timeline:
         env.append(f'TOTK_TIMELINE={FILES}/timeline.tsv:go:{args.timeline}')
@@ -259,13 +262,17 @@ def run(args):
     try:
         if not wait(r'benchmark camera: look-at', 120):
             raise SystemExit('no benchmark camera (TOTK_SURVEY=1 session not set up: see totk.log)')
-        # through the title: A every 2 s until the world draws (the frame profile's draw count)
-        start = time.time()
+        # through the title: A every 2 s until the survey finds the player away from the origin, where he waits while
+        # the title and the save load are up
+        start, n = time.time(), 0
         while time.time() - start < 240:
-            line = (log_grep(r'\[frameprof\] frame=').strip().splitlines() or [''])[-1]
-            m = re.search(r'draws=(\d+)', line)
-            if m and int(m[1]) > 1500: break
-            if line: send('a')
+            n += 1
+            send(f'survey pos w{n}')
+            line = wait(rf'\[survey\] tag=w{n} status=', 5)
+            if line and 'status=position' in line:
+                x, _, z = xyz_of(line)
+                if abs(x) + abs(z) > 1: break
+            send('a')
             time.sleep(2)
         else:
             raise SystemExit('the save never loaded')
@@ -383,6 +390,8 @@ def main():
     ap.add_argument('--laps', type=int, default=1, help='laps per scene (a second lap shows the place without first-visit loading)')
     ap.add_argument('--clock', action='store_true', help='set each scene\'s hour (experimental: on Android the clock search '
                     'finds another timer of the same rate, 2026-10-28, and would write the hour into it)')
+    ap.add_argument('--frameprof', action='store_true', help='the backend\'s per-frame profile in totk.log '
+                    '(TOTK_VK_FRAMEPROF): costs frame rate, so runs with it compare only with each other')
     ap.add_argument('--timeline', type=int, default=0, metavar='FRAMES', help='a TOTK_TIMELINE window of FRAMES frames 3 s into '
                     'each scene\'s flight, saved as timeline.tsv-<scene> (scratch analysis: GPU busy / idle by cause)')
     ap.add_argument('--gputrace', action='store_true', help='Turnip\'s GPU trace for 12 s of each flight, saved as gputrace-<scene>.csv')
