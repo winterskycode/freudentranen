@@ -29,7 +29,7 @@ static APerformanceHintSession *session;
 static int available, failed, dirty;
 static int32_t tids[MAX_TIDS]; static size_t ntids;
 static int64_t target_ns;
-static uint64_t last_frame, reports, report_errors, work_sum;
+static uint64_t last_frame, last_sleep, reports, report_errors, work_sum, interval_sum;
 
 static uint64_t monotonic_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec; }
 
@@ -60,8 +60,9 @@ void dm_android_perf_hint_thread(void) {
     pthread_mutex_unlock(&hint_lock);
 }
 
-/* hle_nvn.c: the uncapped clock's ceiling, 60 when paced */
+/* hle_nvn.c: the uncapped clock's ceiling, 60 when paced; the time the game has slept for it, in total */
 extern int nvn_frame_cap_get(void) __attribute__((weak));
+extern uint64_t nvn_frame_sleep_ns(void) __attribute__((weak));
 static int64_t wanted_target(void) {
     int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 60;
     return (int64_t)(1e9 / (cap > 0 ? cap : 60));
@@ -90,21 +91,27 @@ static void session_update_locked(void) {
     }
 }
 
+/* Once a game frame: its work is the time since the last game frame without the time the game slept for its frame cap.
+   The whole interval would read as a full frame of work under any cap (33.3 ms against a 33.3 ms target at 30), and the
+   governor answers that with top clocks: on the Odin the prime cores averaged 3.7 of 4.3 GHz at a 30 cap with a third
+   of their time busy, 1.8 W more than with frame generation, whose extra presents used to halve the interval. */
 void dm_android_perf_hint_frame(void) {
     pthread_once(&load_once, load_api);
     if (!available) return;
-    uint64_t now = monotonic_ns();
+    uint64_t now = monotonic_ns(), slept = nvn_frame_sleep_ns ? nvn_frame_sleep_ns() : 0;
     pthread_mutex_lock(&hint_lock);
     session_update_locked();
-    uint64_t work = last_frame ? now - last_frame : 0; last_frame = now;
-    if (session && work && work < 1000000000ull) {
+    uint64_t interval = last_frame ? now - last_frame : 0, sleep = slept - last_sleep; last_frame = now; last_sleep = slept;
+    uint64_t work = interval > sleep + 500000 ? interval - sleep : interval ? 500000 : 0;
+    if (session && work && interval < 1000000000ull) {
         int64_t want = wanted_target();
         /* the cap changed */
         if (want != target_ns && !api.update_target(session, want)) target_ns = want;
-        if (api.report(session, (int64_t)work)) report_errors++; else { reports++; work_sum += work; }
+        if (api.report(session, (int64_t)work)) report_errors++; else { reports++; work_sum += work; interval_sum += interval; }
         if (reports && reports % 1200 == 0)
-            fprintf(stderr, "[adpf] %llu reports (%llu errors), mean frame %.2f ms against target %.2f ms, %zu threads\n",
-                    (unsigned long long)reports, (unsigned long long)report_errors, work_sum / 1e6 / (double)reports, target_ns / 1e6, ntids);
+            fprintf(stderr, "[adpf] %llu reports (%llu errors), mean work %.2f ms of %.2f ms frames against target %.2f ms, %zu threads\n",
+                    (unsigned long long)reports, (unsigned long long)report_errors, work_sum / 1e6 / (double)reports,
+                    interval_sum / 1e6 / (double)reports, target_ns / 1e6, ntids);
     }
     pthread_mutex_unlock(&hint_lock);
 }

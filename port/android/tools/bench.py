@@ -119,8 +119,9 @@ class Power:
     into the battery: charging lowers the device's share, a battery helping out adds to it). Samples carry the host's
     time, so a scene's are the ones between its flight's start and end."""
     PS = '/sys/class/power_supply'
+    KG = '/sys/class/kgsl/kgsl-3d0'
     LOOP = (f'while :; do echo $(cat {PS}/usb/voltage_now {PS}/usb/current_now {PS}/battery/voltage_now '
-            f'{PS}/battery/current_now 2>/dev/null); sleep 0.2; done')
+            f'{PS}/battery/current_now 2>/dev/null) $(cat {KG}/gpu_busy_percentage {KG}/gpuclk 2>/dev/null | tr -d %); sleep 0.2; done')
 
     def __init__(self):
         self.samples = []
@@ -130,19 +131,71 @@ class Power:
     def _read(self):
         for line in self.proc.stdout:
             p = line.split()
-            if len(p) == 4 and all(x.lstrip('-').isdigit() for x in p):
-                uv, ua, bv, ba = (int(x) for x in p)
-                self.samples.append((time.time(), (uv * ua - bv * ba) / 1e12, -bv * ba / 1e12))
+            if len(p) in (4, 6) and all(x.lstrip('-').isdigit() for x in p):
+                uv, ua, bv, ba = (int(x) for x in p[:4])
+                gpu = (int(p[4]), int(p[5]) / 1e6) if len(p) == 6 else None
+                self.samples.append((time.time(), (uv * ua - bv * ba) / 1e12, -bv * ba / 1e12, gpu))
 
     def window(self, t0, t1):
         """Average watts between host times t0 and t1, and the share of samples where the battery supplied over 0.5 W."""
-        w = [(p, b) for t, p, b in self.samples if t0 <= t <= t1]
+        w = [(p, b, g) for t, p, b, g in self.samples if t0 <= t <= t1]
         if not w: return {}
-        return dict(power_w=round(sum(p for p, _ in w) / len(w), 2), battery_w=round(sum(b for _, b in w) / len(w), 2),
-                    battery_help=round(sum(b > 0.5 for _, b in w) / len(w), 2), power_samples=len(w))
+        r = dict(power_w=round(sum(p for p, _, _ in w) / len(w), 2), battery_w=round(sum(b for _, b, _ in w) / len(w), 2),
+                 battery_help=round(sum(b > 0.5 for _, b, _ in w) / len(w), 2), power_samples=len(w))
+        g = [x for _, _, x in w if x]
+        if g: r.update(gpu_busy=round(sum(x[0] for x in g) / len(g) / 100, 2), gpu_mhz=round(sum(x[1] for x in g) / len(g)))
+        return r
 
     def stop(self):
         self.proc.kill()
+
+
+def sched_snapshot():
+    """The game's threads' CPU time, each CPU cluster's time at each clock speed, and each CPU's busy time, from a plain
+    shell (the game's /proc entries are readable). GPU load and clock come with the power samples."""
+    pid = shell(f'pidof {APP}:game', check=False).strip().split()
+    if not pid: return None
+    out = shell(f'cat /proc/{pid[0]}/task/*/stat; echo ===; for p in /sys/devices/system/cpu/cpufreq/policy*; do echo P ${{p##*/}}; '
+                'cat $p/stats/time_in_state; done; echo ===; grep "^cpu[0-9]" /proc/stat; echo ===; '
+                'true', check=False)
+    parts = out.split('===')
+    if len(parts) < 3: return None
+    threads = {}
+    for line in parts[0].splitlines():
+        m = re.match(r'(\d+) \((.*)\) (.*)', line)
+        if m:
+            f = m[3].split()
+            threads[int(m[1])] = (m[2], int(f[11]) + int(f[12]))
+    freqs, cur = {}, None
+    for line in parts[1].splitlines():
+        p = line.split()
+        if len(p) == 2 and p[0] == 'P': cur = p[1]; freqs[cur] = []
+        elif len(p) == 2 and cur: freqs[cur].append((int(p[0]), int(p[1])))
+    cpus = {l.split()[0]: [int(x) for x in l.split()[1:]] for l in parts[2].splitlines() if l.startswith('cpu')}
+    return dict(t=time.time(), threads=threads, freqs=freqs, cpus=cpus)
+
+
+def sched_delta(a, b):
+    """Between two snapshots: the busiest threads (share of one core, by name), each cluster's average clock and share of
+    time at 80%+ of its top speed, and each CPU's busy share."""
+    if not a or not b: return {}
+    secs = max(b['t'] - a['t'], 1e-3)
+    by_name = {}
+    for tid, (name, t) in b['threads'].items():
+        if tid in a['threads']: by_name[name] = by_name.get(name, 0) + (t - a['threads'][tid][1]) / 100.0 / secs
+    top = sorted(by_name.items(), key=lambda kv: -kv[1])[:12]
+    clusters = {}
+    for pol, rows in b['freqs'].items():
+        before = dict(a['freqs'].get(pol, []))
+        d = [(f, t - before.get(f, 0)) for f, t in rows]; tot = sum(t for _, t in d) or 1; hi = max(f for f, _ in d)
+        clusters[pol] = dict(avg_ghz=round(sum(f * t for f, t in d) / tot / 1e6, 2), top_ghz=round(hi / 1e6, 2),
+                             high_share=round(sum(t for f, t in d if f >= hi * 0.8) / tot, 2))
+    busy = {}
+    for c, y in b['cpus'].items():
+        x = a['cpus'].get(c)
+        if x: dl = [j - i for i, j in zip(x, y)]; busy[c] = round(1 - (dl[3] + dl[4]) / (sum(dl[:8]) or 1), 2)
+    return dict(threads_cores=round(sum(by_name.values()), 2), top_threads=[(n, round(v, 3)) for n, v in top],
+                clusters=clusters, cpu_busy=busy)
 
 
 def scene_heat():
@@ -368,6 +421,7 @@ def run(args):
                     raise SystemExit(f'{name}: route not accepted: {begin}')
                 measure = wait(rf'\[survey\] tag={tag} status=(route_measure|route_done|no_player|invalid_rotation)', 180)
                 t_measure = time.time()
+                snap0 = sched_snapshot() if args.sched else None
                 if not measure or 'route_measure' not in measure:
                     shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
                     adb('pull', f'/data/local/tmp/bench-{tag}.png', str(out), check=False)
@@ -388,12 +442,14 @@ def run(args):
                 length = ORBIT_S * 11 / 12 + 1.5 * ORBIT_S / 12
                 end = wait(rf'\[survey\] tag={tag} status=(route_done|no_player|invalid_rotation)', length + 60)
                 t_end = time.time()
+                snap1 = sched_snapshot() if args.sched else None
                 if not end or 'route_done' not in end:
                     raise SystemExit(f'{name}: the flight did not finish: {end}')
                 f = lambda l: int(re.search(r'frame=(\d+)', l)[1])
                 # the log is polled once a second: a second off each end keeps the window inside the flight
                 pw = power.window(t_measure + 1, t_end - 1)
-                segments.append(dict(scene=name, tag=tag, begin=f(measure), end=f(end), **pw, **scene_heat()))
+                segments.append(dict(scene=name, tag=tag, begin=f(measure), end=f(end), **pw, **scene_heat(),
+                                     **({'sched': sched_delta(snap0, snap1)} if args.sched else {})))
                 print(f'  {name}: frames {f(measure)}..{f(end)}' + (f", {pw['power_w']:.2f} W" if pw else ''), flush=True)
                 shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
     finally:
@@ -438,6 +494,14 @@ def print_report(r, out=None):
             print(f"{s['scene']:18} {s['avg_fps']:7.1f} {s['low1_fps']:7.1f} {s['low01_fps']:7.1f} {s['worst_ms']:6.1f}ms {s['over33']:6d} {s['frames']:7d}{heat}")
     t = r['total']
     print(f"{'all':18} {t['avg_fps']:7.1f}{'':>40}{t['frames']:7d}" + (f" {t['power_w']:6.2f}" if 'power_w' in t else ''))
+    for s in r['scenes']:
+        sc = s.get('sched')
+        if sc:
+            cl = ', '.join(f"{p} {c['avg_ghz']:.2f}/{c['top_ghz']:.2f} GHz ({100 * c['high_share']:.0f}% high)" for p, c in sc['clusters'].items())
+            gp = f"; GPU {100 * s['gpu_busy']:.0f}% busy at {s['gpu_mhz']} MHz" if s.get('gpu_busy') is not None else ''
+            print(f"{s['scene']}: threads {sc['threads_cores']:.2f} cores; {cl}{gp}")
+            print('   ' + ', '.join(f'{n} {100 * v:.0f}%' for n, v in sc['top_threads'][:8]))
+            print('   CPUs busy: ' + ' '.join(f"{c[3:]}:{100 * v:.0f}%" for c, v in sorted(sc['cpu_busy'].items())))
     if t.get('battery_help'):
         print(f"the battery supplied part of the power in {100 * t['battery_help']:.0f}% of the samples (USB alone was not enough)")
     print(f"before: {r['before']}\nafter:  {r['after']}" + (f'\n{out}' if out else ''))
@@ -480,6 +544,8 @@ def main():
     ap.add_argument('--stall', type=int, nargs=2, metavar=('MS', 'AT'), help='diagnostic: one present sleeps MS milliseconds '
                     'AT seconds into each scene\'s flight (<files>/stall)')
     ap.add_argument('--gputrace', action='store_true', help='Turnip\'s GPU trace for 12 s of each flight, saved as gputrace-<scene>.csv')
+    ap.add_argument('--sched', action='store_true', help='per scene: the game\'s threads\' CPU time, each CPU cluster\'s clock '
+                    'residency, each CPU\'s and the GPU\'s busy share (where the power goes)')
     ap.add_argument('--compare', nargs=2, metavar='RUN')
     args = ap.parse_args()
     if args.compare:

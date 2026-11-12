@@ -2206,7 +2206,7 @@ static void load_cap(uint64_t draws) {
     static int cap = -1, low = 0, applied = 0, saved = 0, loading = 0;
     if (cap < 0) { const char *e = getenv("TOTK_LOAD_CAP"); cap = e ? atoi(e) : 30; }
     if (draws < 50) { if (++low >= 20 && !loading) { loading = 1; LOG("[load] loading screen: waiters spin until it ends"); idle_keepers(1); if (runtime_sync_spin_boost) runtime_sync_spin_boost(1); if (cap) { saved = nvn_frame_cap_get(); if (saved <= 0 || saved > cap) { nvn_frame_cap_set(cap); applied = 1; } } } }
-    else { low = 0; if (loading) { loading = 0; idle_keepers(0); if (runtime_sync_spin_boost) runtime_sync_spin_boost(0); if (applied) { nvn_frame_cap_set(saved); applied = 0; } } }
+    else { low = 0; if (loading) { loading = 0; LOG("[load] loading screen over"); idle_keepers(0); if (runtime_sync_spin_boost) runtime_sync_spin_boost(0); if (applied) { nvn_frame_cap_set(saved); applied = 0; } } }
 }
 /* TOTK_IDLE_KEEPERS=<n> (default 0 = off): while a loading screen shows (the load_cap detector), n threads at SCHED_IDLE,
    one per host core from cpu 0, spin so the cores never enter their deep idle state (cpuidle exit latency on the Odin:
@@ -2523,7 +2523,6 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     static uint64_t texel_hits,texel_creations,texel_reads,texel_forwarded;
     if(ticket==1){texel_hits=texel_view_hits;texel_creations=texel_view_creations;texel_reads=texel_cpu_read_bytes;texel_forwarded=texel_forward_bytes;}
     else if(!inner&&ticket%60==0){unsigned frames=ticket==60?59:60;LOG("[vulkan-texel] frame=%llu view_hits/new=%.1f/%.1f CPU_read=%.2f MB/frame forwarded=%.2f MB/frame",(unsigned long long)ticket,(texel_view_hits-texel_hits)/(double)frames,(texel_view_creations-texel_creations)/(double)frames,(texel_cpu_read_bytes-texel_reads)/(frames*1048576.),(texel_forward_bytes-texel_forwarded)/(frames*1048576.));texel_hits=texel_view_hits;texel_creations=texel_view_creations;texel_reads=texel_cpu_read_bytes;texel_forwarded=texel_forward_bytes;}
-    dm_android_perf_hint_frame();
     static uint64_t texture_calls_previous,texture_blocks_previous,texture_ns_previous;
     if(ticket==1||ticket%60==0){uint64_t calls=atomic_load(&present_texture_wait_calls),blocks=atomic_load(&present_texture_wait_blocks),ns=atomic_load(&present_texture_wait_ns);
         if(ticket!=1){unsigned frames=ticket==60?59:60;LOG("[vulkan-texture-reuse-wait] frame=%llu calls/frame=%.2f initially_pending/frame=%.2f wall_ms/frame=%.3f completion=GPU_fence_and_guest_publication",(unsigned long long)ticket,(calls-texture_calls_previous)/(double)frames,(blocks-texture_blocks_previous)/(double)frames,(ns-texture_ns_previous)/(frames*1e6));}
@@ -2543,6 +2542,8 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     { static uint64_t prev; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
       if (prev && now > prev) { float ms = (now - prev) / 1e6f; present_ms = present_ms ? present_ms * 0.9f + ms * 0.1f : ms; present_fps = present_ms > 0 ? 1000.0f / present_ms : 0; }
       prev = now; }
+    /* the performance hint: once a game frame (generated and repeated pictures are not frames of work) */
+    dm_android_perf_hint_frame();
     image_entry *gen[LSFG_MAX_OUT]; int ngen = lsfg_prepare(t, crop, gen);
     /* frame generation: the picture between the previous and this frame first */
     image_entry *mid = lsfg_enabled() ? NULL : fg_prepare(t, crop);
