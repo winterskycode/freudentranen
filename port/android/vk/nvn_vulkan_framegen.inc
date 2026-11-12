@@ -527,25 +527,25 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 static image_entry *mo_image(void);
 static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
 /* framegen_interp.comp's tuning (push[28..31]): TOTK_FG_SHARP (how sharply the better candidate wins), TOTK_FG_FALLBACK
-   (scale of the unwarped current picture's weight), TOTK_FG_BICUBIC=0 (bilinear colour sampling), TOTK_FG_BLEND (scale of
-   the previous picture's share; 0: the current picture alone, warped). Between two frames (fill 0) the defaults take the
+   (scale of the unwarped current picture's weight), TOTK_FG_HEAD (the scene motion's head start, a share of the match
+   threshold), TOTK_FG_BLEND (scale of the previous picture's share; 0: the current picture alone, warped). Between two frames (fill 0) the defaults take the
    current picture alone and nearly the best candidate only: blending the previous picture and the other candidates in
    left generated pictures about 4.5% less edge detail than real ones (a sharpness flicker at half the rate), 1.2% this
    way. Past the last frame (fill) the softer weights stay. The match threshold (push[21]) is set here too. */
 static void fg_tune(float *push, int fill) {
-    static int read; static const char *sharp, *fallback, *bicubic, *blend;
-    if (!read) { read = 1; sharp = getenv("TOTK_FG_SHARP"); fallback = getenv("TOTK_FG_FALLBACK"); bicubic = getenv("TOTK_FG_BICUBIC"); blend = getenv("TOTK_FG_BLEND");
-        if (sharp || fallback || bicubic || blend) LOG("[framegen] tuning: sharpness %s, fallback %s, bicubic %s, blend %s", sharp ? sharp : "default", fallback ? fallback : "default", bicubic ? bicubic : "default", blend ? blend : "default"); }
+    static int read; static const char *sharp, *fallback, *head, *blend;
+    if (!read) { read = 1; sharp = getenv("TOTK_FG_SHARP"); fallback = getenv("TOTK_FG_FALLBACK"); head = getenv("TOTK_FG_HEAD"); blend = getenv("TOTK_FG_BLEND");
+        if (sharp || fallback || head || blend) LOG("[framegen] tuning: sharpness %s, fallback %s, head start %s, blend %s", sharp ? sharp : "default", fallback ? fallback : "default", head ? head : "default", blend ? blend : "default"); }
     push[28] = sharp ? (float)atof(sharp) : fill ? 0.35f : 0.05f;
     push[29] = fallback ? (float)atof(fallback) : 1.0f;
-    push[30] = bicubic ? (float)(atoi(bicubic) != 0) : 1.0f;
+    push[30] = head ? (float)atof(head) : 0.5f;
     push[31] = blend ? (float)atof(blend) : fill ? 1.0f : 0.0f;
     push[21] = 0.08f;
-    /* live words (<files>/exp.live) for A/B while playing: fgsharp=, fgfallback=, fgblend=, fgthresh= (the match
-       threshold, push[21]) */
+    /* live words (<files>/exp.live) for A/B while playing: fgsharp=, fgfallback=, fghead=, fgblend=, fgthresh= (the
+       match threshold, push[21]) */
     if (live_exp[0]) {
-        static const char *const words[] = {"fgsharp=", "fgfallback=", "fgblend=", "fgthresh="}; static const int slot[] = {28, 29, 31, 21};
-        for (int i = 0; i < 4; i++) { const char *w = exp_word(live_exp, words[i], 0); if (w && ((*w >= '0' && *w <= '9') || *w == '.')) push[slot[i]] = (float)atof(w); }
+        static const char *const words[] = {"fgsharp=", "fgfallback=", "fghead=", "fgblend=", "fgthresh="}; static const int slot[] = {28, 29, 30, 31, 21};
+        for (int i = 0; i < 5; i++) { const char *w = exp_word(live_exp, words[i], 0); if (w && ((*w >= '0' && *w <= '9') || *w == '.')) push[slot[i]] = (float)atof(w); }
     }
 }
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
