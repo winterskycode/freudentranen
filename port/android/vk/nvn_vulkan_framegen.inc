@@ -532,6 +532,15 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImag
    current picture alone and nearly the best candidate only: blending the previous picture and the other candidates in
    left generated pictures about 4.5% less edge detail than real ones (a sharpness flicker at half the rate), 1.2% this
    way. Past the last frame (fill) the softer weights stay. The match threshold (push[21]) is set here too. */
+/* The interpolation's depth dilation radius (TOTK_FG_DILATE, live word fgdilate=; 0 off): the nearest depth in the 2r x 2r
+   depth texels around a pixel. Panning past the lanterns on the Odin (the generated picture against the halfway point of
+   its neighbours): error 9.4 at 0, 7.1 at 1, 6.1 at 2, 5.7 at 3, for 2.53, 2.63, 2.83 and 3.30 ms of GPU a picture. */
+static int fg_dilation(void) {
+    static int env = -2; if (env == -2) { const char *e = getenv("TOTK_FG_DILATE"); env = e ? atoi(e) : -1; }
+    const char *w = live_exp[0] ? exp_word(live_exp, "fgdilate=", 0) : NULL;
+    int r = w && *w >= '0' && *w <= '9' ? atoi(w) : env >= 0 ? env : 2;
+    return r < 0 ? 0 : r > 3 ? 3 : r;
+}
 static void fg_tune(float *push, int fill) {
     static int read; static const char *sharp, *fallback, *head, *blend;
     if (!read) { read = 1; sharp = getenv("TOTK_FG_SHARP"); fallback = getenv("TOTK_FG_FALLBACK"); head = getenv("TOTK_FG_HEAD"); blend = getenv("TOTK_FG_BLEND");
@@ -592,7 +601,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* <files>/fgdebug: tint by decision */
     if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
-    push[20] = 1.0f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
+    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 2.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
@@ -761,6 +770,11 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     /* no scene this frame (no UI drawn): the older one is not the previous frame's */
     else fg.scene_valid[fg.cur ^ 1] = 0;
     fg.view[0] = fg.view[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0;
-    if (fg.frames && !(fg.frames % 300)) LOG("[framegen] %llu game frames: %llu generated, %llu without room on the panel, %llu without inputs, %llu camera cuts, %llu scene snapshots, %llu with the HUD on top; canvas %llu; %llu menus; %llu anti-aliased without UI",
-        (unsigned long long)fg.frames, (unsigned long long)fg.made, (unsigned long long)fg.panel_limited, (unsigned long long)fg.no_input, (unsigned long long)fg.cuts, (unsigned long long)fg.snapshots, (unsigned long long)fg.hud_less, (unsigned long long)fg.canvas, (unsigned long long)fg.menus, (unsigned long long)fg.aa_hudless);
+    if (fg.frames && !(fg.frames % 300)) {
+        /* the GPU time of a generated picture over the last 300 game frames */
+        static double gen_ns; static uint64_t gen_made; double per = fg.made > gen_made ? (fg_gen_gpu_ns - gen_ns) / (double)(fg.made - gen_made) / 1e6 : 0;
+        gen_ns = fg_gen_gpu_ns; gen_made = fg.made;
+        LOG("[framegen] %llu game frames: %llu generated, %llu without room on the panel, %llu without inputs, %llu camera cuts, %llu scene snapshots, %llu with the HUD on top; canvas %llu; %llu menus; %llu anti-aliased without UI; %.2f ms GPU a generated picture",
+        (unsigned long long)fg.frames, (unsigned long long)fg.made, (unsigned long long)fg.panel_limited, (unsigned long long)fg.no_input, (unsigned long long)fg.cuts, (unsigned long long)fg.snapshots, (unsigned long long)fg.hud_less, (unsigned long long)fg.canvas, (unsigned long long)fg.menus, (unsigned long long)fg.aa_hudless, per);
+    }
 }
