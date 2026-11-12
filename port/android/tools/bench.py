@@ -105,7 +105,19 @@ def device_state():
     skin = re.search(r'mValue=([\d.]+), mType=\d+, mName=skin', hal)
     fan = shell('f=/sys/class/gpio5_pwm2; if [ -e $f/duty ]; then echo "fan $(cat $f/state) $(( $(cat $f/duty) * 100 / $(cat $f/period) ))% '
                 '$(cat $f/speed)rpm mode $(settings get system fan_mode) perf $(settings get system performance_mode)"; else echo "no fan"; fi').strip()
-    return dict(thermal=thermal(), cpu_c=top(0), gpu_c=top(1), skin_c=float(skin[1]) if skin else None, fan=fan)
+    return dict(thermal=thermal(), cpu_c=top(0), gpu_c=top(1), skin_c=float(skin[1]) if skin else None, fan=fan, cpu_max=cpu_limits())
+
+
+def cpu_limits():
+    """Each CPU cluster's top speed as set, against its hardware top: 'policy0 3532800/3532800 ...' (kHz)."""
+    out = shell('for p in /sys/devices/system/cpu/cpufreq/policy*; do echo "${p##*/} $(cat $p/scaling_max_freq)/$(cat $p/cpuinfo_max_freq)"; done',
+                check=False)
+    return ' '.join(out.split())
+
+
+def cpu_capped(limits):
+    """The clusters running below their hardware top speed (a user's underclock, or heat when the device is warm)."""
+    return [f for f, cur, hw in re.findall(r'(policy\d+) (\d+)/(\d+)', limits) if int(cur) < int(hw)]
 
 
 def orbit(center, t0=0.0):
@@ -233,6 +245,10 @@ def run(args):
         print(f'WARNING: still warm after 10 minutes: {st}', flush=True)
     before = device_state()
     print('before:', before, flush=True)
+    # runs measure the device at its full speed: a CPU speed limit (a performance app's underclock) left on would make
+    # them incomparable; the device is cool here, so a lowered top speed is a setting, not heat
+    if cpu_capped(before['cpu_max']) and not args.allow_cpu_limit:
+        raise SystemExit(f"CPU speed limited ({before['cpu_max']}): set the stock clocks, or --allow-cpu-limit to measure an underclock")
     if before['fan'] != 'no fan' and (not before['fan'].startswith('fan 1') or ' mode 4 ' not in before['fan'] + ' '):
         print('WARNING: fan off or not in mode 4: frame times will not compare with other runs (profile.sh)', flush=True)
     profile(save)
@@ -387,6 +403,8 @@ def main():
     ap.add_argument('--env', action='append', default=[], help='an extra debug.env line, e.g. TOTK_ASYNC_PREEMPT=1 (repeatable)')
     ap.add_argument('--as-played', action='store_true', help="keep the player's frame rate cap and frame generation "
                     '(default: uncapped, no frame generation)')
+    ap.add_argument('--allow-cpu-limit', action='store_true', help='run with CPU clusters capped below their top speed '
+                    '(to measure an underclock; otherwise the run stops)')
     ap.add_argument('--laps', type=int, default=1, help='laps per scene (a second lap shows the place without first-visit loading)')
     ap.add_argument('--clock', action='store_true', help='set each scene\'s hour (experimental: on Android the clock search '
                     'finds another timer of the same rate, 2026-10-28, and would write the hour into it)')
