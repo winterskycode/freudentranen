@@ -2194,17 +2194,18 @@ static void hitch_log(double interval_ms, uint64_t pipes, uint64_t sync_count, d
         if (f) { time_t now = time(NULL); char when[64]; strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", localtime(&now)); fprintf(f, "# session %s\n", when); } }
     if (f) { time_t now = time(NULL); char when[32]; strftime(when, sizeof when, "%H:%M:%S", localtime(&now)); fprintf(f, "%s %s\n", when, line); if (hitches % 8 == 0) fflush(f); }
 }
-/* TOTK_LOAD_CAP=<hz> (default 0 = off): a loading screen -- 20 frames in a row with fewer than 50 draws -- runs at this
-   frame cap; the cap in force comes back with the first frame that draws again. Loading is bound by the three virtual
-   cores (threads.c): every frame the loading screen renders takes core time from the loaders (cold starts of the bench
-   save: loading screen 10.3 s at the default cap, 12.5 s uncapped). */
+/* TOTK_LOAD_CAP=<hz> (default 30, 0 = off): a loading screen -- 20 frames in a row with fewer than 50 draws; the inventory
+   and the map draw more -- runs at this frame cap; the cap in force comes back with the first frame that draws again.
+   Loading is bound by the three virtual cores (threads.c): every frame the loading screen renders takes core time from
+   the loaders. The bench save's loading screen: 13.1-13.4 s -> 10.1-10.2 s on a Snapdragon 8 Gen 2 (AYN Thor), no
+   change on the Odin (11.5-12.2 s either way). */
 static void idle_keepers(int on);
 /* threads.c: one more spinning waiter while loading */
 void runtime_sync_spin_boost(int on) __attribute__((weak));
 static void load_cap(uint64_t draws) {
     static int cap = -1, low = 0, applied = 0, saved = 0, loading = 0;
-    if (cap < 0) { const char *e = getenv("TOTK_LOAD_CAP"); cap = e ? atoi(e) : 0; }
-    if (draws < 50) { if (++low >= 20 && !loading) { loading = 1; LOG("[load] loading screen: waiters spin until it ends"); idle_keepers(1); if (runtime_sync_spin_boost) runtime_sync_spin_boost(1); if (cap) { saved = nvn_frame_cap_get(); nvn_frame_cap_set(cap); applied = 1; } } }
+    if (cap < 0) { const char *e = getenv("TOTK_LOAD_CAP"); cap = e ? atoi(e) : 30; }
+    if (draws < 50) { if (++low >= 20 && !loading) { loading = 1; LOG("[load] loading screen: waiters spin until it ends"); idle_keepers(1); if (runtime_sync_spin_boost) runtime_sync_spin_boost(1); if (cap) { saved = nvn_frame_cap_get(); if (saved <= 0 || saved > cap) { nvn_frame_cap_set(cap); applied = 1; } } } }
     else { low = 0; if (loading) { loading = 0; idle_keepers(0); if (runtime_sync_spin_boost) runtime_sync_spin_boost(0); if (applied) { nvn_frame_cap_set(saved); applied = 0; } } }
 }
 /* TOTK_IDLE_KEEPERS=<n> (default 0 = off): while a loading screen shows (the load_cap detector), n threads at SCHED_IDLE,
