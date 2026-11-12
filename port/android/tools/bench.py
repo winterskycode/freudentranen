@@ -19,8 +19,14 @@ through the title, flies every scene, and reports per scene the average FPS, the
 and 0.1% lows and the worst frame, with temperatures and the fan and performance modes (frame times only compare in
 the same mode: profile.sh). The scenes' hours are not set (--clock), so time of day and weather follow the save and the
 run's pace: compare runs made from the same cool start. Results go to work/android/v143/bench/<time>-<label>/ (report.json, frames.txt, totk.log).
+
+Power: the whole device's draw, sampled five times a second over adb (Power), averaged over each scene's flight with the
+temperatures and fan at its end. With bypass charging (the Odin's "device charging separation") the battery idles and USB
+carries everything; the battery's share is counted too, so the figure holds while charging or when USB is not enough.
+To compare settings by watts, give them with --env: e.g. TOTK_UNCAPPED_HZ=40 for 40 fps, TOTK_UNCAPPED_HZ=30 and
+TOTK_FRAMEGEN=30 for Homemade x2 at 60 (vk/frame_rule.h has the values).
 """
-import argparse, json, math, re, subprocess, sys, time
+import argparse, json, math, re, subprocess, sys, threading, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -106,6 +112,43 @@ def device_state():
     fan = shell('f=/sys/class/gpio5_pwm2; if [ -e $f/duty ]; then echo "fan $(cat $f/state) $(( $(cat $f/duty) * 100 / $(cat $f/period) ))% '
                 '$(cat $f/speed)rpm mode $(settings get system fan_mode) perf $(settings get system performance_mode)"; else echo "no fan"; fi').strip()
     return dict(thermal=thermal(), cpu_c=top(0), gpu_c=top(1), skin_c=float(skin[1]) if skin else None, fan=fan, cpu_max=cpu_limits())
+
+
+class Power:
+    """The device's power draw, sampled on a thread: USB voltage x current, minus the battery's voltage x current (positive
+    into the battery: charging lowers the device's share, a battery helping out adds to it). Samples carry the host's
+    time, so a scene's are the ones between its flight's start and end."""
+    PS = '/sys/class/power_supply'
+    LOOP = (f'while :; do echo $(cat {PS}/usb/voltage_now {PS}/usb/current_now {PS}/battery/voltage_now '
+            f'{PS}/battery/current_now 2>/dev/null); sleep 0.2; done')
+
+    def __init__(self):
+        self.samples = []
+        self.proc = subprocess.Popen(['adb', 'shell', self.LOOP], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in self.proc.stdout:
+            p = line.split()
+            if len(p) == 4 and all(x.lstrip('-').isdigit() for x in p):
+                uv, ua, bv, ba = (int(x) for x in p)
+                self.samples.append((time.time(), (uv * ua - bv * ba) / 1e12, -bv * ba / 1e12))
+
+    def window(self, t0, t1):
+        """Average watts between host times t0 and t1, and the share of samples where the battery supplied over 0.5 W."""
+        w = [(p, b) for t, p, b in self.samples if t0 <= t <= t1]
+        if not w: return {}
+        return dict(power_w=round(sum(p for p, _ in w) / len(w), 2), battery_w=round(sum(b for _, b in w) / len(w), 2),
+                    battery_help=round(sum(b > 0.5 for _, b in w) / len(w), 2), power_samples=len(w))
+
+    def stop(self):
+        self.proc.kill()
+
+
+def scene_heat():
+    """Temperatures and fan speed at a scene's end."""
+    st = device_state(); rpm = re.search(r'(\d+)rpm', st['fan'])
+    return dict(cpu_c=st['cpu_c'], gpu_c=st['gpu_c'], skin_c=st['skin_c'], fan_rpm=int(rpm[1]) if rpm else None)
 
 
 def cpu_limits():
@@ -271,6 +314,7 @@ def run(args):
     as_app('rm -f files/profile/totk.log files/input.now files/bench-frames.txt files/bench-route-* files/timeline.tsv* files/gputrace.csv')
     put('files/debug.env', '\n'.join(env) + '\n')
     shell(f'am start -W --display 0 -n {APP}/.LauncherActivity')
+    power = Power()
     time.sleep(3)
     # the launcher misses a press while it is still getting ready (a first start on the Xperia)
     for _ in range(6):
@@ -323,6 +367,7 @@ def run(args):
                 if not begin or 'route_begin' not in begin:
                     raise SystemExit(f'{name}: route not accepted: {begin}')
                 measure = wait(rf'\[survey\] tag={tag} status=(route_measure|route_done|no_player|invalid_rotation)', 180)
+                t_measure = time.time()
                 if not measure or 'route_measure' not in measure:
                     shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
                     adb('pull', f'/data/local/tmp/bench-{tag}.png', str(out), check=False)
@@ -342,13 +387,17 @@ def run(args):
                 # T[n-2] + 1.5 (T[n-1] - T[n-2]), world_survey.c route_length
                 length = ORBIT_S * 11 / 12 + 1.5 * ORBIT_S / 12
                 end = wait(rf'\[survey\] tag={tag} status=(route_done|no_player|invalid_rotation)', length + 60)
+                t_end = time.time()
                 if not end or 'route_done' not in end:
                     raise SystemExit(f'{name}: the flight did not finish: {end}')
                 f = lambda l: int(re.search(r'frame=(\d+)', l)[1])
-                segments.append(dict(scene=name, tag=tag, begin=f(measure), end=f(end)))
-                print(f'  {name}: frames {f(measure)}..{f(end)}', flush=True)
+                # the log is polled once a second: a second off each end keeps the window inside the flight
+                pw = power.window(t_measure + 1, t_end - 1)
+                segments.append(dict(scene=name, tag=tag, begin=f(measure), end=f(end), **pw, **scene_heat()))
+                print(f'  {name}: frames {f(measure)}..{f(end)}' + (f", {pw['power_w']:.2f} W" if pw else ''), flush=True)
                 shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
     finally:
+        power.stop()
         after = device_state()
         (out/'totk.log').write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'cat', 'files/profile/totk.log'], capture_output=True).stdout)
         (out/'frames.txt').write_bytes(subprocess.run(['adb', 'exec-out', 'run-as', APP, 'cat', 'files/bench-frames.txt'], capture_output=True).stdout)
@@ -368,6 +417,11 @@ def run(args):
                   scenes=[dict(s, **(stats(frames, s['begin'], s['end']) or {})) for s in segments])
     allf = [s for s in report['scenes'] if 'frames' in s]
     report['total'] = dict(frames=sum(s['frames'] for s in allf), avg_fps=round(sum(s['frames'] for s in allf) / max(sum(s['seconds'] for s in allf), 1e-9), 1))
+    pws = [s for s in allf if 'power_w' in s]
+    if pws:
+        secs = sum(s['seconds'] for s in pws)
+        report['total']['power_w'] = round(sum(s['power_w'] * s['seconds'] for s in pws) / max(secs, 1e-9), 2)
+        report['total']['battery_help'] = round(sum(s['battery_help'] * s['seconds'] for s in pws) / max(secs, 1e-9), 2)
     for s in segments:
         subprocess.run(['adb', 'pull', f'/data/local/tmp/bench-{s["tag"]}.png', str(out)], capture_output=True)
     (out/'report.json').write_text(json.dumps(report, indent=1) + '\n')
@@ -376,11 +430,16 @@ def run(args):
 
 def print_report(r, out=None):
     print(f"\n{r.get('label') or ''} {' '.join(r.get('env') or [])}".strip())
-    print(f"{'scene':18} {'avg':>7} {'1% low':>7} {'0.1%':>7} {'worst':>8} {'>33ms':>6} {'frames':>7}")
+    print(f"{'scene':18} {'avg':>7} {'1% low':>7} {'0.1%':>7} {'worst':>8} {'>33ms':>6} {'frames':>7} {'watts':>6} {'CPU C':>6} {'GPU C':>6} {'fan':>5}")
     for s in r['scenes']:
         if 'frames' in s:
-            print(f"{s['scene']:18} {s['avg_fps']:7.1f} {s['low1_fps']:7.1f} {s['low01_fps']:7.1f} {s['worst_ms']:6.1f}ms {s['over33']:6d} {s['frames']:7d}")
-    print(f"{'all':18} {r['total']['avg_fps']:7.1f}{'':>40}{r['total']['frames']:7d}")
+            heat = (f" {s['power_w']:6.2f}" if 'power_w' in s else f" {'':>6}") + ''.join(f" {s[k]:6.1f}" if s.get(k) is not None else f" {'':>6}" for k in ('cpu_c', 'gpu_c'))
+            heat += f" {s['fan_rpm']:5d}" if s.get('fan_rpm') is not None else ''
+            print(f"{s['scene']:18} {s['avg_fps']:7.1f} {s['low1_fps']:7.1f} {s['low01_fps']:7.1f} {s['worst_ms']:6.1f}ms {s['over33']:6d} {s['frames']:7d}{heat}")
+    t = r['total']
+    print(f"{'all':18} {t['avg_fps']:7.1f}{'':>40}{t['frames']:7d}" + (f" {t['power_w']:6.2f}" if 'power_w' in t else ''))
+    if t.get('battery_help'):
+        print(f"the battery supplied part of the power in {100 * t['battery_help']:.0f}% of the samples (USB alone was not enough)")
     print(f"before: {r['before']}\nafter:  {r['after']}" + (f'\n{out}' if out else ''))
 
 
@@ -395,6 +454,8 @@ def compare(a, b):
             print(f"{s['scene']:18} {s['avg_fps']:7.1f} {t['avg_fps']:7.1f} {100 * (t['avg_fps'] / s['avg_fps'] - 1):+6.1f}% "
                   f"{s['low1_fps']:7.1f} {t['low1_fps']:7.1f} {s['low01_fps']:7.1f} {t['low01_fps']:7.1f}")
     print(f"{'all':18} {ra['total']['avg_fps']:7.1f} {rb['total']['avg_fps']:7.1f} {100 * (rb['total']['avg_fps'] / ra['total']['avg_fps'] - 1):+6.1f}%")
+    if 'power_w' in ra['total'] and 'power_w' in rb['total']:
+        print(f"{'watts':18} {ra['total']['power_w']:7.2f} {rb['total']['power_w']:7.2f} {100 * (rb['total']['power_w'] / ra['total']['power_w'] - 1):+6.1f}%")
     print(f"fan A: {ra['before']['fan']}\nfan B: {rb['before']['fan']}")
 
 
