@@ -422,10 +422,10 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     bg->AddRectFilled(ImVec2(w * 0.68f, 0), ImVec2(w, h), a2);
     begin_page("quick"); rows_begin();
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    float x = w - u(440) + u(36), iw = u(440 - 36 - 40), y = u(40);
-    text(dl, S.title, ImVec2(x, y), kGoldText, "Paused"); y += u(40);
+    float x = w - u(440) + u(36), iw = u(440 - 36 - 40), y = u(28);
+    text(dl, S.title, ImVec2(x, y), kGoldText, "Paused"); y += u(38);
     /* the frame rate is on the HUD already */
-    ornament(dl, ImVec2(x, y + u(6)), u(220)); y += u(28);
+    ornament(dl, ImVec2(x, y + u(4)), u(220)); y += u(20);
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     auto item = [&](const char *id, const char *label, float hgt, ImU32 col, bool chevron) {
         Row r = row(id, iw, u(hgt));
@@ -444,7 +444,7 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     if (S.set.controls && item("layout", "Controls", 42, kCream, true)) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_QUICK; S.pad_row = 0; S.focus_first = true; }
     rule();
     for (Option &o : g_options) {
-        if (!o.has('Q') || o.page()) continue;
+        if (!o.has('Q') || o.page() || !shown(o)) continue;
         Row r = row(o.key.c_str(), iw, u(38));
         float mid = (r.a.y + r.b.y) / 2; ImVec2 ls = text_size(S.body, o.label.c_str());
         text(dl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : kCream, o.label.c_str());
