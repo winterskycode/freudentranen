@@ -327,6 +327,9 @@ def run(args):
                     shell(f'screencap -p /data/local/tmp/bench-{tag}.png', check=False)
                     adb('pull', f'/data/local/tmp/bench-{tag}.png', str(out), check=False)
                     raise SystemExit(f'{name}: the camera never started (did Link land at the point? {out}/bench-{tag}.png): {measure}')
+                if args.stall:
+                    import threading
+                    threading.Timer(args.stall[1], put, ('files/stall', str(args.stall[0]))).start()
                 if args.timeline:
                     time.sleep(3)
                     put('files/timeline.tsv.go', tag)
@@ -417,6 +420,8 @@ def main():
                     '(TOTK_VK_FRAMEPROF): costs frame rate, so runs with it compare only with each other')
     ap.add_argument('--timeline', type=int, default=0, metavar='FRAMES', help='a TOTK_TIMELINE window of FRAMES frames 3 s into '
                     'each scene\'s flight, saved as timeline.tsv-<scene> (scratch analysis: GPU busy / idle by cause)')
+    ap.add_argument('--stall', type=int, nargs=2, metavar=('MS', 'AT'), help='diagnostic: one present sleeps MS milliseconds '
+                    'AT seconds into each scene\'s flight (<files>/stall)')
     ap.add_argument('--gputrace', action='store_true', help='Turnip\'s GPU trace for 12 s of each flight, saved as gputrace-<scene>.csv')
     ap.add_argument('--compare', nargs=2, metavar='RUN')
     args = ap.parse_args()
