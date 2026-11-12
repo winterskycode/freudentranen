@@ -116,8 +116,9 @@ def cpu_limits():
 
 
 def cpu_capped(limits):
-    """The clusters running below their hardware top speed (a user's underclock, or heat when the device is warm)."""
-    return [f for f, cur, hw in re.findall(r'(policy\d+) (\d+)/(\d+)', limits) if int(cur) < int(hw)]
+    """The clusters capped more than 5% below their hardware top speed (a user's underclock, or heat when the device is
+    warm). Some devices keep a cluster a step below its top by default (the Thor: 2707 of 2803 MHz), which is not one."""
+    return [f for f, cur, hw in re.findall(r'(policy\d+) (\d+)/(\d+)', limits) if int(cur) < int(hw) * 0.95]
 
 
 def orbit(center, t0=0.0):
