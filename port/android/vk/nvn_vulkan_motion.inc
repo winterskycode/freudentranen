@@ -33,7 +33,7 @@ static int mo_on(void) { return mvs_motion(); }
 /* Last frame's camera. The scene camera block (c4, 2,368 bytes) holds this frame's view (rows 0-2, 3x4) and
    view-projection (rows 3-6) and, at rows 21-23 and 24-27, last frame's: its copy for last frame is this frame's block
    with those moved up, the projection (rows 7-10) kept. A block whose last frame's view is not close to this frame's
-   (a cut, mvs_similar) gets none, and its draws keep this frame's camera. Noted from the submit capture, once a frame
+   (a cut, mo_cam_near) gets none, and its draws keep this frame's camera. Noted from the submit capture, once a frame
    per block address; the copy goes in the command buffer's uniform arena once per block and command buffer
    (chunk_epoch). */
 #define MO_CAMS 32
@@ -42,6 +42,19 @@ typedef struct { uint64_t addr; int ok; uint64_t epoch; VkDescriptorBufferInfo i
 static mo_cam mo_cams[MO_CAMS]; static unsigned mo_ncams;
 /* per summary: camera bindings given last frame's camera, and without one */
 static uint64_t mo_cam_hits, mo_cam_misses;
+/* Two views (3x4, row-major) of one camera without a cut between them: the eye moved under 8 units and turned under 25
+   degrees, as fg_prepare's cut test. The views' translation column is the eye turned by the view, thousands of units
+   from the origin, so comparing the numbers themselves takes a slight turn for a cut. */
+static int mo_cam_near(const uint8_t *a_bytes, const uint8_t *b_bytes) {
+    float a[12], b[12]; memcpy(a, a_bytes, sizeof a); memcpy(b, b_bytes, sizeof b);
+    double d2 = 0, turn = 0;
+    for (int c = 0; c < 3; c++) {
+        double ea = 0, eb = 0;
+        for (int r = 0; r < 3; r++) { ea -= (double)a[r * 4 + c] * a[r * 4 + 3]; eb -= (double)b[r * 4 + c] * b[r * 4 + 3]; }
+        d2 += (ea - eb) * (ea - eb); turn += (double)a[8 + c] * b[8 + c];
+    }
+    return d2 <= 64.0 && turn >= cos(25.0 * M_PI / 180.0);
+}
 static void mo_note_camera(void) {
     const p_bind_buf *u = &state.ubo[0][1];
     if (!u->addr || u->size != MO_CAM_SIZE) return;
@@ -50,7 +63,7 @@ static void mo_note_camera(void) {
     mo_cam *c = &mo_cams[mo_ncams++]; c->addr = u->addr; c->epoch = UINT64_MAX;
     memcpy(c->bytes, uniform_read_scratch, MO_CAM_SIZE);
     memcpy(c->view_z, c->bytes + 2 * 16, 16); { float f; memcpy(&f, c->bytes + 7 * 16, 4); c->fx = f * (float)(fg.depth ? fg.depth->texture.d.width : 1280) * 0.5f; }
-    int changed; c->ok = mvs_similar(c->bytes + 21 * 16, c->bytes, 3 * 16, &changed);
+    c->ok = mo_cam_near(c->bytes + 21 * 16, c->bytes);
     /* this frame's jitter on the projection, as the draw's own copy has it (taa_uniform): the motion comes out unjittered */
     if (c->ok) { memcpy(c->bytes, c->bytes + 21 * 16, 7 * 16); taa_uniform((uintptr_t)u->addr, MO_CAM_SIZE, c->bytes); }
 }
