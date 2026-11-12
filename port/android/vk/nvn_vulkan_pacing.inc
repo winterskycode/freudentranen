@@ -36,10 +36,19 @@ static uint64_t pace_frames, pace_late, pace_missed;
 /* frame generation fill mode (nvn_vulkan_fgfill.inc): real frames go on the frame cap's grid too, so the pictures that
    fill missed refreshes and the real ones share one schedule; it turns pacing on */
 static int fg_fill;
+static int fg_enabled(void); static int fg_shown_hz(void); static int lsfg_enabled(void);
 static int pace_on(void) {
-    /* opt-in (TOTK_PACING=1): it misjudges caps that do not divide the refresh rate */
+    /* every frame (TOTK_PACING=1, opt-in: it misjudges caps that do not divide the refresh rate), or fill mode */
     static int on = -1; if (on < 0) { const char *e = getenv("TOTK_PACING"); on = e && atoi(e) > 0; }
-    return (on || fg_fill) && pace_ext && pace_get_refresh && pace_get_past;
+    if (!(pace_ext && pace_get_refresh && pace_get_past)) return 0;
+    if (on || fg_fill) return 1;
+    /* Frame generation whose pictures a second divide the measured refresh rate (60 on 120 Hz): unpaced, a generated
+       picture and the real one after it were handed over back to back, and on 120 Hz the generated one stayed a refresh
+       and the real one three (Odin, every method: 300 / 272 of 600 pictures); paced, 584 of 600 stayed two. */
+    int shown = fg_shown_hz();
+    if (shown <= 0 || !pace_refresh || !(fg_enabled() || lsfg_enabled())) return 0;
+    double per = 1e9 / (double)pace_refresh / shown;
+    return per >= 0.95 && fabs(per - (double)(int)(per + 0.5)) < 0.05;
 }
 /* The panel's rate can change under us: at critical thermal status Android votes the display down to 60 Hz (DisplayModeDirector's
    skin temperature observer), and no app can overrule it. Frame generation must follow: two pictures a game frame on a

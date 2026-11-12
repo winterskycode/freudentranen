@@ -34,7 +34,7 @@ TOTK_LSFG_FLOW	Frame rate	L	0.75	1|0.75|0.5|0.25	Full|0.75|0.5|0.25	LSFG flow sc
 TOTK_LSFG_PERF	Frame rate	L	1	1|0	On|Off	LSFG performance mode	A lighter version of LSFG. It uses less GPU time but shows slightly more visual errors.	TOTK_FG=lsfg
 =	Frame rate	H	-	-	-	Advanced	
 TOTK_UNCAPPED_INTERVAL	Frame rate	-	1	1|0	Up to the limit|Original (30–40)	Frame rate mode	Up to the limit lets the game run as fast as the frame rate limit allows. Original keeps the Switch’s 30 to 40 frames per second.
-TOTK_PACING	Frame rate	X	0	0|1	Off|On	Even frame pacing	Gives every frame the same time on screen. This can look steadier, but it adds input delay.
+TOTK_PACING	Frame rate	X	0	0|1	Off|On	Even frame pacing	Gives every frame of the game the same time on screen. This can look steadier, but it adds input delay. Frame generation paces its own pictures whenever they divide the screen’s refresh rate, with this off too.
 =	Controls	H	-	-	-	Buttons	
 @controls	Controls	PQ	-	-	-	Button mapping	Choose which button does each action, such as jumping or attacking. Menu buttons follow Face buttons instead.
 TOTK_FACE_BUTTONS	Controls	L	label	position|label	By position|By label	Face buttons	How A, B, X and Y match the Switch’s. By position uses the same places as a Switch, so the right-hand button is A. By label uses the letter printed on each button.
