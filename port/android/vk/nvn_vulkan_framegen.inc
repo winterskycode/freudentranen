@@ -548,7 +548,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
     if ((crop && (crop[0] || crop[1])) || fg.last.texture.d.width != t->d.width || fg.last.texture.d.height != t->d.height || fg.last_w != sw || fg.last_h != sh) { fg.no_input++; return NULL; }
     if (async_recording_owned) mtl_sub_commit();
-    mtl_sub_begin();
+    mtl_sub_begin(); async_current->gen = 1;
     fg_pipeline();
     image_entry *fin = image_get(t);
     fg_image(&fg.out, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
@@ -713,6 +713,8 @@ static void dynres_frame(void) {
 static void taa_frame_end(void);
 #include "nvn_vulkan_fgfill.inc"
 static void fg_frame_end(const tex_t *t, const int crop[4]) {
+    /* fill mode keeps this frame's object motion: mo_frame below starts the next frame's */
+    image_entry *motion = fg_fill && fg.on > 0 ? mo_image() : NULL;
     dynres_frame(); taa_frame_end(); mvs_frame(); mo_frame();
     /* the debug files, once a frame (per draw would be ~7,600 clock reads a frame) */
     fg_dump_poll(); magenta_poll(); shader_override_poll();
@@ -722,7 +724,7 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     /* LSFG: for the HUD composite's translucent UI */
     if (fg.on > 0 || (fg.lsfg > 0 && fg.scene_done && !fg_hud_generated())) fg_keep_picture(t, crop);
     else fg.last_ok = 0;
-    if (fg_fill && fg.on > 0) fill_keep(t, crop);
+    if (fg_fill && fg.on > 0) fill_keep(t, crop, motion);
     if (fg_dump_state == 2) { fg_dump_image(image_get(t), fg.out.texture.d.width, fg.out.texture.d.height, "real"); fg_dump_state = 0; }
     else if (fg_dump_state == 1 && fg.made && fg.out.image) { fg_dump_image(&fg.out, fg.out.texture.d.width, fg.out.texture.d.height, "mid"); fg_dump_state = 2; }
     int known = 0; for (int i = 0; i < fg.nswap; i++) known |= fg.swap[i] == t->serial;

@@ -46,7 +46,9 @@ typedef struct {
    the pipeline thread), pipelines queued and not yet built, draws skipped for a pipeline not yet built, shaders
    translated at run time (misses of the translated set). */
 /* screen_hz: the panel's current rate, 0 unknown */
-typedef struct { uint64_t pipelines, pipelines_queued, draws_skipped, shaders_translated; uint32_t screen_hz; } overlay_stats;
+/* real_fps: the game's own frames a second (the fps given with it counts generated pictures too); real_ms the time
+   between game frames, gen_ms the GPU time frame generation took of it */
+typedef struct { uint64_t pipelines, pipelines_queued, draws_skipped, shaders_translated; uint32_t screen_hz; float real_fps, real_ms, gen_ms; } overlay_stats;
 
 void overlay_configure(const overlay_vk *vk, const overlay_settings *settings);
 /* Records the overlay into image (in TRANSFER_DST_OPTIMAL before and after) when the menu is open or the HUD is on;

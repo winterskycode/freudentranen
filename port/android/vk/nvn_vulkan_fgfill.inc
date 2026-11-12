@@ -29,10 +29,10 @@ static int fill_cut(const float *cam, const float *prev) {
     double turn = cam[8] * prev[8] + cam[9] * prev[9] + cam[10] * prev[10];
     return dx * dx + dy * dy + dz * dz > 64.0 || turn < cos(25.0 * M_PI / 180.0);
 }
-static void fill_keep(const tex_t *t, const int crop[4]) {
+static void fill_keep(const tex_t *t, const int crop[4], image_entry *mo) {
     fill.frames++;
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
-    image_entry *scene = fg_scene(sw, sh, 0), *mo = mo_image();
+    image_entry *scene = fg_scene(sw, sh, 0);
     if (!scene || !fg.depth || !fg.cam_ok || !fg.last_ok || fg_menu_frame() || (crop && (crop[0] || crop[1]))) { fill.valid = 0; fill.n = 0; fill.no_input++; return; }
     if (fg.prev_ok && fill_cut(fg.cam, fg.prev_cam)) { fill.n = 0; fill.cuts++; }
     if (async_recording_owned) mtl_sub_commit();
@@ -62,7 +62,7 @@ static image_entry *fill_make(double tval) {
     for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) { double s = 0; for (int k = 0; k < 4; k++) s += vp[r * 4 + k] * ic[k * 4 + c]; m[r * 4 + c] = s; }
     uint32_t sw = fill.w, sh = fill.h;
     image_entry *a = &fill.scene[fill.k ^ 1], *b = &fill.scene[fill.k];
-    mtl_sub_begin();
+    mtl_sub_begin(); async_current->gen = 1;
     fg_pipeline();
     fg_image(&fg.out, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     image_access(a, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);

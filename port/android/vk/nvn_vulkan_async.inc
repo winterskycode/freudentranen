@@ -38,6 +38,8 @@ typedef struct async_batch {
     post_op *posts,*copies;
     dm_pending_ranges pending_ranges;
     uint64_t ticket,temporary_base;
+    /* a frame generation batch (marked after mtl_sub_begin): its GPU time also counts as generation (fg_gen_gpu_ns) */
+    int gen;
     uintptr_t known_copy_low,known_copy_high;
     uint32_t query_count;
     /* occlusion queries this slot used last (reset before reuse); its first use resets them all */
@@ -538,7 +540,8 @@ static void async_publish_locked(async_batch *batch) {
         batch->ipp_n=0;}
     if(batch->times){
         uint64_t times[2];memcpy(times,batch->query_readback.mapped,sizeof times);
-        gpu_total_ns+=timestamp_delta(times[0],times[1],gpu_timestamp_bits)*gpu_timestamp_period;
+        double span=timestamp_delta(times[0],times[1],gpu_timestamp_bits)*gpu_timestamp_period;
+        gpu_total_ns+=span;if(batch->gen)fg_gen_gpu_ns+=span;
         /* GPU clock: offset found offline */
         if(totk_tl_at)totk_tl_at(TL_GPU,(uint64_t)(times[0]*gpu_timestamp_period),batch->ticket,(uint64_t)(times[1]*gpu_timestamp_period));
     }

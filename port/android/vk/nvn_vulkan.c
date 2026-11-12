@@ -137,6 +137,9 @@ static VkQueryPool draw_queries;
 static VkQueryPool batch_times;
 static uint32_t gpu_timestamp_bits;
 static double gpu_timestamp_period,gpu_total_ns,fence_wait_total_ns;
+/* frame generation's share of the GPU: the GPU time of the batches fg_prepare and fill_make mark as theirs (the
+   overlay's split of the frame time) */
+static double fg_gen_gpu_ns;
 // mtl_wait's blocked time accumulates atomically on its own: a caller (the game thread's SyncWait) must not contend for queue_lock just to
 // record a reading, since in translation-thread mode the translation thread holds it for a whole submit.
 static _Atomic uint64_t fence_wait_unlocked_ns;
@@ -1572,6 +1575,7 @@ void mtl_sub_begin(void) {
     counter_gpu_batch_begin(async_current);
     if(batch_times){vkCmdResetQueryPool(command,batch_times,0,2);vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,batch_times,0);}
     async_current->chunk_started=dm_android_clock_ns(CLOCK_MONOTONIC);
+    async_current->gen=0;
     /* the frame's first batch */
     { static uint64_t swept=UINT64_MAX;if(presents!=swept){swept=presents;gpu_watch_changed("frame",presents);image_writeback_sweep();} }
 }
@@ -2293,6 +2297,8 @@ static void renderdoc_poll(void) {
 static float present_fps, present_ms;
 /* pictures shown per game frame (generated ones too), smoothed: the HUD counts them all */
 static float present_shown = 1;
+/* frame generation's GPU time per game frame, averaged (the overlay's frame time split) */
+static float present_gen_ms;
 /* source: present this image (the whole of it) instead of t's picture, without counting a game frame (frame generation) */
 static uint64_t present_one(const tex_t *t, double period, const int crop[4], image_entry *source, int repeat) {
     /* not a game frame: no counters, hooks or statistics */
@@ -2406,7 +2412,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (!repeat) rec_picture(e, sx, sy, sw, sh);
         if (screen_color_attachment) { dv_drain();
             uint64_t q = atomic_load(&async_pso_queued), done = atomic_load(&async_pso_built) + atomic_load(&async_pso_failed);
-            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz()};
+            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms};
             overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask = 0; barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);
@@ -2541,6 +2547,8 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     image_entry *mid = lsfg_enabled() ? NULL : fg_prepare(t, crop);
     /* pictures shown per game frame for the overlay's count: fill mode's come from its own thread, since the last frame */
     present_shown = present_shown * 0.9f + (1.0f + (ngen > 0 ? (float)ngen : mid ? 1.0f : fg_fill ? (float)fill.run : 0.0f)) * 0.1f;
+    /* the GPU time spent generating since the last game frame (batches complete later: a running average evens it out) */
+    { static double last; double g = fg_gen_gpu_ns - last; last = fg_gen_gpu_ns; present_gen_ms = present_gen_ms * 0.9f + (float)(g / 1e6) * 0.1f; }
     /* nvn_vulkan_pacing.inc: even parts of a game frame at the frame cap */
     int64_t desired[LSFG_MAX_OUT + 1]; int planned = ngen > 0 ? ngen : mid ? 1 : 0;
     { int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0; pace_plan(planned, cap > 0 ? 1000.0 / cap : 1000.0 / 30, desired); }
