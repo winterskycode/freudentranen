@@ -10,6 +10,19 @@ emulator, and it needs no PC.
 
 **Bring your own copy.** This repository and the app hold no game content: no game code, data, keys or firmware.
 
+## Highlights
+- **60 FPS Hyrule, in your hands.** Much of the world runs at 60 FPS or more on our main test device, the AYN Odin 3 (Snapdragon 8 Elite),
+  and those are real, fully rendered frames. Even a Snapdragon 8 Gen 2 device like the AYN Thor gets 30 to 40.
+- **Smooth, not just fast.** Frames are evenly paced, so motion feels fluid instead of jittery.
+- **Less stutter when you explore.** Prepare your shaders once, and new places and effects come in without the usual
+  first-time hitches.
+- **Make it yours.** Eleven upscaling filters, from crisp FSR and NIS to retro pixel-art looks, anti-aliasing,
+  supersampling up to 1440p, sharper shadows and frame rate limits up to 120. Tune it for looks, speed or battery.
+- **Frame generation, three ways.** Homemade, made for this game and reading its real motion; AMD FSR 3.1; or your own
+  copy of Lossless Scaling up to ×4. All stack on top of the real frames to fill a 120 Hz screen, with a clean HUD.
+- **Room to run cooler.** The game leaves the CPU room to spare, so devices that let you lower the CPU speed can run
+  quieter and cooler at about the same frame rate. [How](https://github.com/winterskycode/freudentranen/wiki/Heat-and-battery).
+
 ## Install
 You will need:
 - An Android 13 or newer device with a Snapdragon (Adreno) GPU and a controller, built in or paired. See
@@ -28,9 +41,10 @@ Then:
 ## Features
 - **Native:** the game's own code runs on the device, with a Vulkan renderer for its NVN graphics.
 - **Frame rate:** limits from 30 to 120 FPS, above the Switch's 30 FPS cap.
-- **Frame generation:** built-in, AMD FSR 3.1, or lsfg-vk with your own copy of Lossless Scaling.
-- **Image quality:** render resolution up to 2560×1440, FSR 1 upscaling, SMAA, anisotropic filtering, and higher
-  resolution shadows. Arm ASR upscaling is experimental.
+- **Frame generation:** Homemade (our own), AMD FSR 3.1, or lsfg-vk with your own copy of Lossless Scaling.
+- **Image quality:** render resolution up to 2560×1440; FSR 1, NIS, SGSR, CAS, Lanczos, bicubic, bilinear, nearest,
+  MMPX, Super-xBR and ScaleFX upscaling; SMAA and SMAA T2x; anisotropic filtering up to 16×; shadows up to 2048 with a
+  choice of shadow distance. Arm ASR upscaling is experimental.
 - **GPU drivers:** the bundled Turnip driver, your device's own, or one installed from a zip.
 - **Controls:** remappable field controls, motion aiming, and Xbox, Switch or PlayStation button prompts.
 - **Mods:** RomFS mods, installed and managed in the app.
