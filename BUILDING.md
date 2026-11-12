@@ -82,6 +82,12 @@ the previous build signed with the same key.
 
 The APK runs on Android 13 (API 33) or newer, on 64-bit ARM.
 
+`release.sh` builds in a folder of its own, `work/android/v143/build-release`, with profile-guided optimisation and ThinLTO
+(`-DTOTK_PGO=$PWD/port/android/pgo/totk.proftext -DTOTK_LTO=ON`). On our test device the translation thread used about 15%
+fewer CPU cycles a frame. The profile comes from a run of the benchmark route; `port/android/tools/pgo.sh` makes a new one
+on the connected device. A profile from older code still builds but helps less where the code changed, so make a new one
+after large changes to the translation or the runtime.
+
 ## Updating MacNativeGames
 
 The `android` branch of our fork is upstream MacNativeGames with the Android changes merged in, and `port/setup.sh` pins

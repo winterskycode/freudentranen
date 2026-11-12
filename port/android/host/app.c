@@ -194,6 +194,7 @@ static void start_game(ANativeActivity *activity) {
     snprintf(path, sizeof path, "%s/aoc", data_root); default_env("TOTK_AOC", path);
     /* the in-game menu's overlay.env */
     default_env("TOTK_FILES_DIR", activity->internalDataPath);
+    { void totk_pgo_start(void); totk_pgo_start(); }
     /* the field controls (actions_parse; the launcher and the in-game menu write it) */
     snprintf(path, sizeof path, "%s/actions.txt", activity->internalDataPath); default_env("TOTK_CONTROLS", path);
     default_env("TOTK_SHARED_FONTS", "/sdcard/tok/fonts");

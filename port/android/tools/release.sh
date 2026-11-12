@@ -37,11 +37,13 @@ if ! "$ROOT/tools/dotnet/dotnet" --list-sdks 2>/dev/null | grep -q "^$DOTNET_VER
 fi
 DOTNET=$ROOT/tools/dotnet/dotnet sh "$ROOT/port/xlate/publish_android.sh" | tail -1
 step "native libraries"
-B=$ROOT/work/android/v143/build-host
+# its own build folder: profile-guided and ThinLTO (pgo/totk.proftext, tools/pgo.sh), which day-to-day builds leave out
+B=$ROOT/work/android/v143/build-release
 cmake -G Ninja -S "$ROOT/port/android" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DTOTK_VERSION=v143 -DCMAKE_BUILD_TYPE=Release > /dev/null
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DTOTK_VERSION=v143 -DCMAKE_BUILD_TYPE=Release \
+  -DTOTK_PGO="$ROOT/port/android/pgo/totk.proftext" -DTOTK_LTO=ON > /dev/null
 step "APK $TAG (version code $CODE)"
-TOTK_VERSION_NAME=$TAG TOTK_VERSION_CODE=$CODE sh "$T/build_apk.sh"
+TOTK_BUILD_DIR=$B TOTK_VERSION_NAME=$TAG TOTK_VERSION_CODE=$CODE sh "$T/build_apk.sh"
 
 step "checks"
 APK=$ROOT/work/android/v143/apk/totk.apk

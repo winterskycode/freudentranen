@@ -68,6 +68,37 @@ if(TOTK_CFLAGS_EXTRA)
     list(APPEND CFLAGS ${TOTK_CFLAGS_EXTRA_LIST})
 endif()
 
+# Profile-guided optimisation and ThinLTO of our C code in libtotk.so (tools/pgo.sh). TOTK_PGO=generate: an instrumented
+# library that writes <files>/pgo/totk.profraw while the game runs (host/pgo.c); TOTK_PGO=<file.profdata>: optimised with that
+# merged profile; TOTK_PGO=<file.proftext>: the text form (pgo/totk.proftext, as committed), whose source paths start with
+# @PGO_ROOT@ so it matches any checkout: filled in with this checkout and converted here. TOTK_LTO=ON: ThinLTO across the C
+# objects of the library.
+set(TOTK_PGO "" CACHE STRING "generate, or a merged .profdata or .proftext to optimise with")
+option(TOTK_LTO "ThinLTO for libtotk.so" OFF)
+set(TOTK_LINK_OPTIONS "")
+if(TOTK_PGO STREQUAL "generate")
+    list(APPEND CFLAGS -fprofile-generate)
+    list(APPEND DEFINES TOTK_PGO_GENERATE=1)
+    list(APPEND TOTK_LINK_OPTIONS -fprofile-generate)
+elseif(TOTK_PGO)
+    set(PGO_DATA ${TOTK_PGO})
+    if(TOTK_PGO MATCHES "\\.proftext$")
+        get_filename_component(PGO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+        configure_file(${TOTK_PGO} ${CMAKE_BINARY_DIR}/totk.proftext @ONLY)
+        get_filename_component(PGO_TOOLS ${CMAKE_C_COMPILER} DIRECTORY)
+        set(PGO_DATA ${CMAKE_BINARY_DIR}/totk.profdata)
+        execute_process(COMMAND ${PGO_TOOLS}/llvm-profdata merge -o ${PGO_DATA} ${CMAKE_BINARY_DIR}/totk.proftext RESULT_VARIABLE PGO_MERGED)
+        if(NOT PGO_MERGED EQUAL 0)
+            message(FATAL_ERROR "llvm-profdata could not convert ${TOTK_PGO}")
+        endif()
+    endif()
+    list(APPEND CFLAGS -fprofile-use=${PGO_DATA} -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled)
+endif()
+if(TOTK_LTO)
+    list(APPEND CFLAGS -flto=thin)
+    list(APPEND TOTK_LINK_OPTIONS -flto=thin)
+endif()
+
 # The game code and host.
 add_library(totk_core OBJECT ${SOURCES})
 target_include_directories(totk_core PRIVATE ${INCLUDES})
@@ -105,11 +136,12 @@ set_source_files_properties(${LSFG_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/vk/lsfg_
 target_compile_options(totk_lsfg PRIVATE -O2 -fvisibility=hidden -fexceptions -frtti -Wno-everything)
 
 add_library(totk SHARED $<TARGET_OBJECTS:totk_core> $<TARGET_OBJECTS:totk_vk> $<TARGET_OBJECTS:totk_overlay> $<TARGET_OBJECTS:totk_lsfg> ${HOST}/app.c ${HOST}/prompts_romfs.c
-    ${HOST}/recorder.c ${HOST}/report.c)
+    ${HOST}/recorder.c ${HOST}/report.c ${HOST}/pgo.c)
 target_include_directories(totk PRIVATE ${INCLUDES} ${DEPS}/include)
 target_compile_definitions(totk PRIVATE ${DEFINES})
 target_compile_options(totk PRIVATE $<$<COMPILE_LANGUAGE:C>:${CFLAGS} -Wunused-function>)
 target_link_libraries(totk PRIVATE ${LIBS} mediandk ${DEPS}/lib/libzstd.a)
+target_link_options(totk PRIVATE ${TOTK_LINK_OPTIONS})
 # Playing from the player's own NSPs (setup/README.md): Tears of the Kingdom only
 if(NOT TOTK_VERSION MATCHES "^botw")
     set(CAPSTONE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/deps/src/capstone CACHE PATH "the pinned Capstone source (deps/build_deps.sh)")
