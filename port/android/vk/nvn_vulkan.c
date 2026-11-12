@@ -2525,6 +2525,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
     return completion_ticket;
 }
 static const tex_t *present_last; static double present_last_period; static int present_last_crop[4], present_last_has_crop;
+static void fill_start(void);
 void runtime_audio_hold(int on) __attribute__((weak));
 uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     pthread_mutex_lock(&present_serial);
@@ -2538,10 +2539,13 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     image_entry *gen[LSFG_MAX_OUT]; int ngen = lsfg_prepare(t, crop, gen);
     /* frame generation: the picture between the previous and this frame first */
     image_entry *mid = lsfg_enabled() ? NULL : fg_prepare(t, crop);
-    present_shown = present_shown * 0.9f + (1.0f + (ngen > 0 ? (float)ngen : mid ? 1.0f : 0.0f)) * 0.1f;
+    /* pictures shown per game frame for the overlay's count: fill mode's come from its own thread, since the last frame */
+    present_shown = present_shown * 0.9f + (1.0f + (ngen > 0 ? (float)ngen : mid ? 1.0f : fg_fill ? (float)fill.run : 0.0f)) * 0.1f;
     /* nvn_vulkan_pacing.inc: even parts of a game frame at the frame cap */
     int64_t desired[LSFG_MAX_OUT + 1]; int planned = ngen > 0 ? ngen : mid ? 1 : 0;
     { int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0; pace_plan(planned, cap > 0 ? 1000.0 / cap : 1000.0 / 30, desired); }
+    /* fill mode: this game frame's slot, and its own thread from the first frame on */
+    if (fg_fill) { fill.real_prev = fill.real_last; fill.real_last = pace_last_target; fill.run = 0; fill_start(); }
     if (mid) { pace_desired = desired[0]; present_one(t, period, crop, mid, 0); }
     for (int i = 0; i < ngen; i++) { pace_desired = desired[i]; present_one(t, period, crop, gen[i], 0); }
     pace_desired = desired[planned];
@@ -2575,6 +2579,61 @@ static void *overlay_present_thread(void *arg) {
         pthread_mutex_unlock(&present_serial);
     }
     return NULL;
+}
+/* Frame generation fill mode (nvn_vulkan_fgfill.inc): shortly before each refresh slot of the frame cap that no game
+   frame has claimed, a picture extrapolated to that slot's time from the last two game frames, at most FILL_RUN in a row.
+   Every decision and present happens under present_serial: a game frame either claims its slot first, or comes after
+   the fill picture on the shared schedule (pace_last_target). */
+#define FILL_MAKE_NS 3000000ull
+static void fill_sleep_until(uint64_t t) {
+    struct timespec ts = {(time_t)(t / 1000000000ull), (long)(t % 1000000000ull)};
+    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
+}
+static void *fill_thread(void *arg) {
+    (void)arg; pthread_setname_np(pthread_self(), "totk-fgfill");
+    for (;;) {
+        int hz = nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
+        if (!fg_fill || fg.on <= 0 || fg.menu || hz <= 0 || !pace_refresh || !pace_last_target || !present_last || overlay_wants_present()) {
+            fill_sleep_until(dm_android_clock_ns(CLOCK_MONOTONIC) + 10000000ull); continue; }
+        uint64_t period = 1000000000ull / (uint64_t)hz;
+        pthread_mutex_lock(&present_serial); uint64_t last = pace_last_target; pthread_mutex_unlock(&present_serial);
+        uint64_t comp = pace_comp > pace_refresh / 2 ? pace_comp - pace_refresh / 2 : 0, lead = pace_gpu + (pace_comp ? comp : pace_refresh / 2) + FILL_MAKE_NS;
+        /* the next slot of the cap after the last picture that a picture made now can still reach */
+        uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), slot = pace_grid_round(last + period);
+        while (slot < now + lead) slot = pace_grid_round(slot + period);
+        fill_sleep_until(slot - lead);
+        pthread_mutex_lock(&present_serial);
+        /* a game frame (or the menu) took the slot meanwhile */
+        if (pace_last_target != last || !fg_fill || fg.menu || overlay_wants_present()) { pthread_mutex_unlock(&present_serial); continue; }
+        if (fill.run >= FILL_RUN || !fill.valid) {
+            if (fill.run >= FILL_RUN) fill.run_limited++;
+            pthread_mutex_unlock(&present_serial);
+            /* wait for the game: the next frame moves pace_last_target */
+            fill_sleep_until(dm_android_clock_ns(CLOCK_MONOTONIC) + 2000000ull); continue;
+        }
+        /* the game's own frame time (between its presents), not the slots its frames landed on: a fill picture shown d
+           after the last game frame's slot shows the game d later */
+        uint64_t interval = present_ms > 0 ? (uint64_t)(present_ms * 1e6) : period;
+        if (interval < period / 2) interval = period / 2;
+        if (interval > 4 * period) interval = 4 * period;
+        double tval = 1.0 + (double)(slot > fill.real_last ? slot - fill.real_last : period) / (double)interval;
+        if (tval > 1.0 + FILL_RUN) tval = 1.0 + FILL_RUN;
+        image_entry *pic = fill_make(tval);
+        if (pic) {
+            pace_desired = (int64_t)(slot - pace_refresh / 2);
+            present_one(present_last, present_last_period, present_last_has_crop ? present_last_crop : NULL, pic, 0);
+            pace_desired = -1; pace_last_target = slot; fill.run++;
+        }
+        if (fill.made && !(fill.made % 600) && pic) LOG("[framegen] fill: %llu pictures over %llu game frames, %llu runs at the limit of %d, %llu frames without inputs, %llu camera cuts",
+            (unsigned long long)fill.made, (unsigned long long)fill.frames, (unsigned long long)fill.run_limited, FILL_RUN, (unsigned long long)fill.no_input, (unsigned long long)fill.cuts);
+        pthread_mutex_unlock(&present_serial);
+    }
+    return NULL;
+}
+static void fill_start(void) {
+    static int started; if (started++) return;
+    pthread_t th; if (!pthread_create(&th, NULL, fill_thread, NULL)) pthread_detach(th);
+    LOG("[framegen] fill mode: pictures for the refreshes the game misses, at most %d in a row", FILL_RUN);
 }
 void mtl_overlay_start(void) {
     static int started; if (started++) return;

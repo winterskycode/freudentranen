@@ -94,10 +94,13 @@ static void fg_image_levels(image_entry *e, VkFormat format, uint32_t w, uint32_
     if (type == UINT32_MAX) die("No Vulkan memory for frame generation");
     VkMemoryAllocateInfo mi = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = type};
     VK_CHECK(vkAllocateMemory(device, &mi, NULL, &e->memory.memory)); VK_CHECK(vkBindImageMemory(device, e->image, e->memory.memory, 0));
-    e->format = format; e->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    /* depth formats: the fill mode keeps a copy of the frame's depth (nvn_vulkan_fgfill.inc) */
+    VkImageAspectFlags aspect = format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D16_UNORM ? VK_IMAGE_ASPECT_DEPTH_BIT
+        : format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    e->format = format; e->aspect = aspect;
     e->texture.d.width = w; e->texture.d.height = h; e->texture.d.depth = 1; e->texture.d.levels = levels; e->texture.d.target = NVN_TEXTURE_TARGET_2D; e->texture.L.layers = 1;
     VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = e->image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, levels, 0, 1}};
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = e->image, .subresourceRange = {aspect, 0, levels, 0, 1}};
     vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
@@ -156,6 +159,8 @@ static int fg_menu_frame(void) { return fg.gdraws < FG_MENU_GBUFFER_DRAWS; }
    at the cap */
 static int fg_shown = -1, fg_adaptive;
 static void fg_parse(const char *v, int *use_lsfg, int *hz, int *mult) {
+    /* fill<rate>: the game renders up to the rate, and only refreshes it misses get a picture (nvn_vulkan_fgfill.inc) */
+    if (v && !strncmp(v, "fill", 4)) { fg_fill = 1; fg_fsr = 0; fg_adaptive = 0; *use_lsfg = 0; *hz = atoi(v + 4); *mult = 1; return; }
     *use_lsfg = v && !strncmp(v, "lsfg", 4); fg_fsr = v && !strncmp(v, "fsr", 3); *hz = v ? atoi(*use_lsfg ? v + 4 : fg_fsr ? v + 3 : v) : 0; *mult = 2; fg_adaptive = 0;
     const char *x = *use_lsfg ? strchr(v, 'x') : NULL;
     if (x && x[1] == 'a') { *mult = 1; fg_adaptive = 1; } else if (x && atoi(x + 1) >= 2) *mult = atoi(x + 1);
@@ -520,9 +525,12 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 /* At the game's present, before the real picture: the generated picture (an image_entry to present), or NULL. */
 #include "nvn_vulkan_fsrfg.inc"
 static image_entry *mo_image(void);
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[28], uint32_t sw, uint32_t sh);
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
+    /* fill mode makes its pictures between game frames, on its own thread */
+    if (fg_fill) return NULL;
     /* behind the boot logo: about 300 ms the first time, then from the pipeline cache */
     if (fsr_fg_enabled()) fsr_pipelines();
     /* from the first menu frame on, not three frames in */
@@ -565,24 +573,9 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     push[20] = 1.0f; push[21] = 0.08f; push[22] = debug ? 1.0f : 0.0f; push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
-    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0;
+    push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
-    else {
-    VkDescriptorImageInfo img[5] = {
-        {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
-        obj ? (VkDescriptorImageInfo){fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL} : (VkDescriptorImageInfo){fg.linear, attachment_view(fin, NULL, fin->format), VK_IMAGE_LAYOUT_GENERAL},
-        {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}};
-    VkDescriptorSet set = descriptor_allocate(fg.set_layout);
-    VkWriteDescriptorSet w[5];
-    for (int i = 0; i < 5; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
-        .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
-    vkUpdateDescriptorSets(device, 5, w, 0, NULL);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
-    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof push, push);
-    vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
-    }
+    else fg_dispatch(a, b, obj ? obj : fin, depth_view, push, sw, sh);
     if (scene_prev) fg_hud_composite(&fg.out, fin, scene, sw, sh);
     mtl_sub_commit();
     fg.made++;
@@ -592,6 +585,27 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
         fg_dump_image(image_get(t), sw, sh, "final"); fg_dump_image(&fg.last, sw, sh, "prev");
         if (scene) fg_dump_image(scene, sw, sh, "scene"); if (scene_prev) fg_dump_image(scene_prev, sw, sh, "scene-prev"); }
     return &fg.out;
+}
+/* The generation pass into fg.out: pictures a (previous) and b (current), the object motion image (or any image when
+   push[26] says there is none), the depth view, and the push constants (framegen_interp.comp). */
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[28], uint32_t sw, uint32_t sh) {
+    {
+    VkDescriptorImageInfo img[5] = {
+        {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
+        {fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL},
+        {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}};
+    VkDescriptorSet set = descriptor_allocate(fg.set_layout);
+    VkWriteDescriptorSet w[5];
+    for (int i = 0; i < 5; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+        .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
+    vkUpdateDescriptorSets(device, 5, w, 0, NULL);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
+    /* push is a pointer here: the 28 floats of framegen_interp.comp's push constants */
+    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 28 * sizeof *push, push);
+    vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
+    }
 }
 
 /* TOTK_FRAMEGEN_DUMP: when <files>/fgdump.trigger exists, the next generated picture and the real picture after it are
@@ -697,6 +711,7 @@ static void dynres_frame(void) {
     dynres.w = dynres.h = 0;
 }
 static void taa_frame_end(void);
+#include "nvn_vulkan_fgfill.inc"
 static void fg_frame_end(const tex_t *t, const int crop[4]) {
     dynres_frame(); taa_frame_end(); mvs_frame(); mo_frame();
     /* the debug files, once a frame (per draw would be ~7,600 clock reads a frame) */
@@ -707,6 +722,7 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     /* LSFG: for the HUD composite's translucent UI */
     if (fg.on > 0 || (fg.lsfg > 0 && fg.scene_done && !fg_hud_generated())) fg_keep_picture(t, crop);
     else fg.last_ok = 0;
+    if (fg_fill && fg.on > 0) fill_keep(t, crop);
     if (fg_dump_state == 2) { fg_dump_image(image_get(t), fg.out.texture.d.width, fg.out.texture.d.height, "real"); fg_dump_state = 0; }
     else if (fg_dump_state == 1 && fg.made && fg.out.image) { fg_dump_image(&fg.out, fg.out.texture.d.width, fg.out.texture.d.height, "mid"); fg_dump_state = 2; }
     int known = 0; for (int i = 0; i < fg.nswap; i++) known |= fg.swap[i] == t->serial;

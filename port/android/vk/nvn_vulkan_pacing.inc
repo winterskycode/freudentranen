@@ -33,10 +33,13 @@ static _Atomic uint64_t pace_fence_ticket[1024], pace_fence_ns[1024];
 static void pace_fence_passed(uint64_t ticket, uint64_t ns) { atomic_store(&pace_fence_ns[ticket % 1024], ns); atomic_store(&pace_fence_ticket[ticket % 1024], ticket); }
 static uint64_t pace_frames, pace_late, pace_missed;
 
+/* frame generation fill mode (nvn_vulkan_fgfill.inc): real frames go on the frame cap's grid too, so the pictures that
+   fill missed refreshes and the real ones share one schedule; it turns pacing on */
+static int fg_fill;
 static int pace_on(void) {
     /* opt-in (TOTK_PACING=1): it misjudges caps that do not divide the refresh rate */
     static int on = -1; if (on < 0) { const char *e = getenv("TOTK_PACING"); on = e && atoi(e) > 0; }
-    return on && pace_ext && pace_get_refresh && pace_get_past;
+    return (on || fg_fill) && pace_ext && pace_get_refresh && pace_get_past;
 }
 /* The panel's rate can change under us: at critical thermal status Android votes the display down to 60 Hz (DisplayModeDirector's
    skin temperature observer), and no app can overrule it. Frame generation must follow: two pictures a game frame on a
@@ -139,7 +142,7 @@ static void pace_plan(int generated, double game_ms, int64_t *desired) {
        at a steady frame rate, seconds ahead, past the times the compositor honours */
     uint64_t after_last = pace_last_target ? pace_grid_round(pace_last_target + pace_refresh) : 0;
     if (after_last > earliest) earliest = after_last;
-    if (!generated) { desired[0] = 0; pace_last_target = earliest; return; }
+    if (!generated && !fg_fill) { desired[0] = 0; pace_last_target = earliest; return; }
     uint64_t step = (uint64_t)(game_ms * 1e6 / (generated + 1)); if (step < pace_refresh) step = pace_refresh;
     uint64_t t = pace_last_target ? pace_grid_round(pace_last_target + step) : earliest;
     pace_frames++; if (t < earliest) { t = earliest; pace_late++; }

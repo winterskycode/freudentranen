@@ -1,12 +1,14 @@
-// Frame generation: the picture halfway between the previous and this game frame (nvn_vulkan_framegen.inc), from the
-// two scenes (no UI; the HUD goes on top afterwards, framegen_hud.comp) or the two finished pictures.
+// Frame generation: the picture at a point in time between the previous and this game frame, or past this one
+// (nvn_vulkan_framegen.inc), from the two scenes (no UI; the HUD goes on top afterwards, framegen_hud.comp) or the two
+// finished pictures.
 // Two motion candidates per pixel:
 //  - the scene's: object motion where the motion pass drew (nvn_vulkan_motion.inc: last frame's normalised position of
 //    what moved itself), else this frame's G-buffer depth reprojected with the previous frame's view-projection
 //    (reproj = VP_prev * inverse(VP_cur), the Mac port's convention: GL clip space, depth not reversed);
 //  - none: the HUD, and whatever moves with the camera (Link while it orbits him), stay where they are.
-// A point at uv now was at uv + m in the previous frame; halfway it is at uv + m/2, so the output takes the current
-// picture at o - m/2 and the previous one at o + m/2. Each candidate is scored by how well a 3x3 patch of the current
+// A point at uv now was at uv + m in the previous frame; at time t (0 the previous frame, 1 this one, above 1 past it)
+// it is at uv + (1 - t) m, so the output takes the current picture at o - (1 - t) m and the previous one at o + t m, and
+// blends them by nearness in time (past this frame, the current picture alone: extrapolation). Each candidate is scored by how well a 3x3 patch of the current
 // picture matches the previous one along it; the candidates and the current picture alone (for disocclusion and things
 // moving on their own) are blended by those scores.
 #version 450
@@ -20,7 +22,7 @@ layout(push_constant) uniform P {
     // the pictures are scenes (linear canvas values, sRGB-encoded here)
     vec4 opt;
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this
-    // frame's object motion
+    // frame's object motion, w: the picture's time t
     vec4 scale;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D prev_pic;
@@ -68,9 +70,10 @@ void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;
     vec2 uv = (vec2(o) + 0.5) * p.size.zw;
+    float t = p.scale.w, wp = clamp(1.0 - t, 0.0, 1.0);
     vec2 m = motion(uv);
-    m = motion(uv - 0.5 * m);
-    vec2 uc = uv - 0.5 * m, up = uv + 0.5 * m;
+    m = motion(uv - (1.0 - t) * m);
+    vec2 uc = uv - (1.0 - t) * m, up = uv + t * m;
     bool inside = all(greaterThanEqual(up, vec2(0.0))) && all(lessThanEqual(up, vec2(1.0)));
     float em = inside ? mismatch(uc, up) : 1e9;
     float es = mismatch(uv, uv);
@@ -79,7 +82,7 @@ void main() {
     // generated picture to the next, which shows as a flickering outline; weights fade between them instead.
     float k = 1.0 / (0.35 * p.opt.y);
     float wm = inside ? exp(-em * k) : 0.0, ws = exp(-es * k), wc = exp(-p.opt.y * k);
-    vec3 col = (wm * 0.5 * (cur(uc) + prv(up)) + ws * 0.5 * (cur(uv) + prv(uv)) + wc * cur(uv)) / (wm + ws + wc);
+    vec3 col = (wm * mix(cur(uc), prv(up), wp) + ws * mix(cur(uv), prv(uv), wp) + wc * cur(uv)) / (wm + ws + wc);
     // <files>/fgdebug: red current picture, green scene motion, blue no motion
     if (p.opt.z != 0.0) col = mix(col, vec3(wc, wm, ws) / (wm + ws + wc), 0.35);
     imageStore(dst, o, vec4(col, 1.0));
