@@ -72,7 +72,7 @@ static image_entry *fill_make(double tval) {
     if (fill.has_motion) image_access(&fill.motion, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
     image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     VkImageView depth_view = image_view_formatted(&fill.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fill.depth.format)->view;
-    float push[28];
+    float push[32]; fg_tune(push, 1);
     for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
     push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
     push[20] = 1.0f; push[21] = 0.08f; push[22] = 0.0f; push[23] = 1.0f;

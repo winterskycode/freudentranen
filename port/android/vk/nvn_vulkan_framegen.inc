@@ -430,7 +430,7 @@ static void fg_pipeline(void) {
         .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
     VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 5, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &fg.set_layout));
-    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 112};
+    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 128};
     VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &fg.set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
     VK_CHECK(vkCreatePipelineLayout(device, &pl, NULL, &fg.layout));
     static const uint32_t code[] = {
@@ -525,7 +525,22 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 /* At the game's present, before the real picture: the generated picture (an image_entry to present), or NULL. */
 #include "nvn_vulkan_fsrfg.inc"
 static image_entry *mo_image(void);
-static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[28], uint32_t sw, uint32_t sh);
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
+/* framegen_interp.comp's tuning (push[28..31]): TOTK_FG_SHARP (how sharply the better candidate wins), TOTK_FG_FALLBACK
+   (scale of the unwarped current picture's weight), TOTK_FG_BICUBIC=0 (bilinear colour sampling), TOTK_FG_BLEND (scale of
+   the previous picture's share; 0: the current picture alone, warped). Between two frames (fill 0) the defaults take the
+   current picture alone and nearly the best candidate only: blending the previous picture and the other candidates in
+   left generated pictures about 4.5% less edge detail than real ones (a sharpness flicker at half the rate), 1.2% this
+   way. Past the last frame (fill) the softer weights stay. */
+static void fg_tune(float *push, int fill) {
+    static int read; static const char *sharp, *fallback, *bicubic, *blend;
+    if (!read) { read = 1; sharp = getenv("TOTK_FG_SHARP"); fallback = getenv("TOTK_FG_FALLBACK"); bicubic = getenv("TOTK_FG_BICUBIC"); blend = getenv("TOTK_FG_BLEND");
+        if (sharp || fallback || bicubic || blend) LOG("[framegen] tuning: sharpness %s, fallback %s, bicubic %s, blend %s", sharp ? sharp : "default", fallback ? fallback : "default", bicubic ? bicubic : "default", blend ? blend : "default"); }
+    push[28] = sharp ? (float)atof(sharp) : fill ? 0.35f : 0.05f;
+    push[29] = fallback ? (float)atof(fallback) : 1.0f;
+    push[30] = bicubic ? (float)(atoi(bicubic) != 0) : 1.0f;
+    push[31] = blend ? (float)atof(blend) : fill ? 1.0f : 0.0f;
+}
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
@@ -562,7 +577,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     image_access(fg.depth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
     image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     VkImageView depth_view = image_view_formatted(fg.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fg.depth->format)->view;
-    float push[28];
+    float push[32]; fg_tune(push, 0);
     /* GLSL mat4 is column-major */
     for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
     push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
@@ -574,6 +589,8 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
+    /* TOTK_FG_T (diagnostic): the generated picture's time instead of the midpoint */
+    { static float ft = -1; if (ft < 0) { const char *e = getenv("TOTK_FG_T"); ft = e ? (float)atof(e) : 0.0f; } if (ft > 0) push[27] = ft; }
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
     else fg_dispatch(a, b, obj ? obj : fin, depth_view, push, sw, sh);
     if (scene_prev) fg_hud_composite(&fg.out, fin, scene, sw, sh);
@@ -588,7 +605,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
 }
 /* The generation pass into fg.out: pictures a (previous) and b (current), the object motion image (or any image when
    push[26] says there is none), the depth view, and the push constants (framegen_interp.comp). */
-static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[28], uint32_t sw, uint32_t sh) {
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh) {
     {
     VkDescriptorImageInfo img[5] = {
         {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
@@ -602,8 +619,8 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImag
     vkUpdateDescriptorSets(device, 5, w, 0, NULL);
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
-    /* push is a pointer here: the 28 floats of framegen_interp.comp's push constants */
-    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 28 * sizeof *push, push);
+    /* push is a pointer here: the 32 floats of framegen_interp.comp's push constants */
+    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 32 * sizeof *push, push);
     vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
     }
 }

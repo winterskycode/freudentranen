@@ -6,6 +6,9 @@ VK=$(cd "$(dirname "$0")/../vk" && pwd)
 GLSLC=${GLSLC:-$(command -v glslc || echo /opt/android-sdk/ndk/29.0.14206865/shader-tools/linux-x86_64/glslc)}
 for src in "$VK"/shaders/*.comp; do
     name=$(basename "$src" .comp)
+    # Arm ASR's passes need its FFXM_* defines and the third_party/asr/gpu include tree: their .inc files are built
+    # separately with glslangValidator
+    case $name in asr_*) continue ;; esac
     "$GLSLC" -O --target-env=vulkan1.1 -I "$VK/third_party/fsr1" -I "$VK/third_party/smaa" -mfmt=num -o "$VK/${name}_spv.inc" "$src"
     echo "built ${name}_spv.inc"
 done

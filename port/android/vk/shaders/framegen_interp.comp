@@ -24,6 +24,11 @@ layout(push_constant) uniform P {
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this
     // frame's object motion, w: the picture's time t
     vec4 scale;
+    // x: how sharply the weights favour the better-matching candidate (the share of the threshold one weight unit
+    // spans), y: scale of the current picture's own weight (the fallback where neither candidate matches), z: 1 for
+    // bicubic sampling of the output's colours, 0 for bilinear, w: the previous picture's share scale (1: blended by
+    // nearness in time, 0: the current picture alone, warped)
+    vec4 tune;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D prev_pic;
 layout(set = 0, binding = 1) uniform sampler2D cur_pic;
@@ -55,6 +60,21 @@ vec3 enc(vec3 c) {
 }
 vec3 cur(vec2 uv) { return enc(textureLod(cur_pic, uv * p.scale.xy, 0.0).rgb); }
 vec3 prv(vec2 uv) { return enc(textureLod(prev_pic, uv * p.scale.xy, 0.0).rgb); }
+// Catmull-Rom (bicubic) sampling for the output's colours: a bilinear sample at a fractional position softens detail, and
+// generated pictures one in two softer than the real ones flicker in sharpness (about 5% less edge energy measured with
+// bilinear). Five bilinear fetches (the corners of the 4x4 footprint dropped), in the picture's own texels.
+vec3 bicubic(sampler2D s, vec2 uv) {
+    vec2 ts = vec2(textureSize(s, 0)), pos = uv * p.scale.xy * ts, c = floor(pos - 0.5) + 0.5, f = pos - c;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f), w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2, t0 = (c - 1.0) / ts, t3 = (c + 2.0) / ts, t12 = (c + w2 / w12) / ts;
+    vec3 r = textureLod(s, vec2(t12.x, t0.y), 0.0).rgb * (w12.x * w0.y) + textureLod(s, vec2(t0.x, t12.y), 0.0).rgb * (w0.x * w12.y)
+           + textureLod(s, t12, 0.0).rgb * (w12.x * w12.y) + textureLod(s, vec2(t3.x, t12.y), 0.0).rgb * (w3.x * w12.y)
+           + textureLod(s, vec2(t12.x, t3.y), 0.0).rgb * (w12.x * w3.y);
+    float n = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+    return enc(max(r / n, vec3(0.0)));
+}
+vec3 curs(vec2 uv) { return p.tune.z != 0.0 ? bicubic(cur_pic, uv) : cur(uv); }
+vec3 prvs(vec2 uv) { return p.tune.z != 0.0 ? bicubic(prev_pic, uv) : prv(uv); }
 // mean absolute difference of 3x3 patches around uc (current) and up (previous)
 float mismatch(vec2 uc, vec2 up) {
     float e = 0.0;
@@ -70,7 +90,7 @@ void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;
     vec2 uv = (vec2(o) + 0.5) * p.size.zw;
-    float t = p.scale.w, wp = clamp(1.0 - t, 0.0, 1.0);
+    float t = p.scale.w, wp = clamp(1.0 - t, 0.0, 1.0) * p.tune.w;
     vec2 m = motion(uv);
     m = motion(uv - (1.0 - t) * m);
     vec2 uc = uv - (1.0 - t) * m, up = uv + t * m;
@@ -80,10 +100,12 @@ void main() {
     // Soft choice: each candidate weighted by how well it matches, the current picture by the threshold. A hard pick
     // flips edge pixels (Link against a background that moves with the camera, water) between the three from one
     // generated picture to the next, which shows as a flickering outline; weights fade between them instead.
-    float k = 1.0 / (0.35 * p.opt.y);
-    float wm = inside ? exp(-em * k) : 0.0, ws = exp(-es * k), wc = exp(-p.opt.y * k);
-    vec3 col = (wm * mix(cur(uc), prv(up), wp) + ws * mix(cur(uv), prv(uv), wp) + wc * cur(uv)) / (wm + ws + wc);
+    // Exponents relative to the best score: with sharp weights the absolute ones underflow, and 0/0 drew black specks.
+    float k = 1.0 / (p.tune.x * p.opt.y), best = min(min(em, es), p.opt.y);
+    float wm = inside ? exp(-(em - best) * k) : 0.0, ws = exp(-(es - best) * k), wc = exp(-(p.opt.y - best) * k) * p.tune.y;
+    float wsum = wm + ws + wc;
+    vec3 col = wsum > 1e-6 ? (wm * mix(curs(uc), prvs(up), wp) + ws * mix(curs(uv), prvs(uv), wp) + wc * curs(uv)) / wsum : curs(uv);
     // <files>/fgdebug: red current picture, green scene motion, blue no motion
-    if (p.opt.z != 0.0) col = mix(col, vec3(wc, wm, ws) / (wm + ws + wc), 0.35);
+    if (p.opt.z != 0.0) col = mix(col, vec3(wc, wm, ws) / max(wsum, 1e-6), 0.35);
     imageStore(dst, o, vec4(col, 1.0));
 }
