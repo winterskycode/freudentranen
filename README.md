@@ -20,6 +20,8 @@ emulator, and it needs no PC.
   supersampling up to 1440p, sharper shadows and frame rate limits up to 120. Tune it for looks, speed or battery.
 - **Frame generation, three ways.** Homemade, made for this game and reading its real motion; AMD FSR 3.1; or your own
   copy of Lossless Scaling up to ×4. All stack on top of the real frames to fill a 120 Hz screen, with a clean HUD.
+- **Motion aiming.** Tilt the device to aim, like the gyro controls on a Switch, using its own motion sensors. One
+  switch in the menu turns it off.
 - **Room to run cooler.** The game leaves the CPU room to spare, so devices that let you lower the CPU speed can run
   quieter and cooler at about the same frame rate. [How](https://github.com/winterskycode/freudentranen/wiki/Heat-and-battery).
 
