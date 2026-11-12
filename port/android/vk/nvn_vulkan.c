@@ -1922,7 +1922,7 @@ static void ov_apply(const char *key, const char *value) {
     else if (!strcmp(key, "TOTK_SCALEFX_RES")) { upscale_ready(); upscale.sfx_res = upscale_sfx_res(value); LOG("[upscale] ScaleFX output: %s", value); }
     else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }
     else if (!strcmp(key, "TOTK_SMAA_ULTRA")) smaa_ultra_on = atoi(value) > 0;
-    /* 0, <rate> (built-in) or lsfg<rate>x<multiplier>: the game's rendered rate (fg_parse) */
+    /* the method and the game's rendered rate (vk/frame_rule.h, fg_parse) */
     else if (!strcmp(key, "TOTK_FRAMEGEN")) {
         int use_lsfg, hz, mult; fg_parse(value, &use_lsfg, &hz, &mult);
         fg_enabled(); fg.on = !use_lsfg && hz > 0; fg.prev_ok = fg.last_ok = 0;
@@ -1931,7 +1931,7 @@ static void ov_apply(const char *key, const char *value) {
         /* chosen but cannot run: the game renders every frame shown */
         int lsfg_off = lsfg.on && (!lsfg_device_ok || lsfg.failed);
         if (lsfg_off) LOG("[lsfg] not available on this device / driver (see [lsfg] at start)");
-        fg_shown = hz > 0 ? hz * (use_lsfg ? mult : 2) : 0;
+        fg_shown = fg_shown_of(hz, mult);
         if (hz > 0) fg_cap_set(lsfg_off ? fg_shown : hz);
     }
     else if (!strcmp(key, "TOTK_RECORD")) recorder_set(!strcmp(value, "on"));
@@ -2600,22 +2600,34 @@ static void fill_sleep_until(uint64_t t) {
 }
 static void *fill_thread(void *arg) {
     (void)arg; pthread_setname_np(pthread_self(), "totk-fgfill");
+    /* every 10 s while filling: what became of the slots tried (a game frame took it, the inputs were not kept yet, the
+       run limit, a picture that could not be made, one made) and the lead a picture needs */
+    uint64_t tried[5] = {0}, report = 0, lead_sum = 0, leads = 0;
     for (;;) {
-        int hz = nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
+        { uint64_t t = dm_android_clock_ns(CLOCK_MONOTONIC);
+          if (!report) report = t + 10000000000ull;
+          else if (t > report) { report = t + 10000000000ull;
+              if (tried[0] + tried[1] + tried[2] + tried[3] + tried[4]) LOG("[framegen] fill slots (10 s): %llu taken by a game frame, %llu without kept inputs, %llu at the run limit, %llu not made, %llu made; lead %.1f ms, slots %d Hz",
+                  (unsigned long long)tried[0], (unsigned long long)tried[1], (unsigned long long)tried[2], (unsigned long long)tried[3], (unsigned long long)tried[4], leads ? lead_sum / 1e6 / leads : 0.0, fill_slot_hz);
+              memset(tried, 0, sizeof tried); lead_sum = leads = 0; } }
+        /* the slots of the frame rate cap; the game's own cap is lower in the x1.5, x3 and x4 modes */
+        int hz = fill_slot_hz > 0 ? fill_slot_hz : nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
         if (!fg_fill || fg.on <= 0 || fg.menu || hz <= 0 || !pace_refresh || !pace_last_target || !present_last || overlay_wants_present()) {
             fill_sleep_until(dm_android_clock_ns(CLOCK_MONOTONIC) + 10000000ull); continue; }
         uint64_t period = 1000000000ull / (uint64_t)hz;
         pthread_mutex_lock(&present_serial); uint64_t last = pace_last_target; pthread_mutex_unlock(&present_serial);
         uint64_t comp = pace_comp > pace_refresh / 2 ? pace_comp - pace_refresh / 2 : 0, lead = pace_gpu + (pace_comp ? comp : pace_refresh / 2) + FILL_MAKE_NS;
+        lead_sum += lead; leads++;
         /* the next slot of the cap after the last picture that a picture made now can still reach */
         uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), slot = pace_grid_round(last + period);
         while (slot < now + lead) slot = pace_grid_round(slot + period);
         fill_sleep_until(slot - lead);
         pthread_mutex_lock(&present_serial);
         /* a game frame (or the menu) took the slot meanwhile */
-        if (pace_last_target != last || !fg_fill || fg.menu || overlay_wants_present()) { pthread_mutex_unlock(&present_serial); continue; }
+        if (pace_last_target != last || !fg_fill || fg.menu || overlay_wants_present()) { tried[0]++; pthread_mutex_unlock(&present_serial); continue; }
         if (fill.run >= FILL_RUN || !fill.valid) {
             if (fill.run >= FILL_RUN) fill.run_limited++;
+            tried[fill.run >= FILL_RUN ? 2 : 1]++;
             pthread_mutex_unlock(&present_serial);
             /* wait for the game: the next frame moves pace_last_target */
             fill_sleep_until(dm_android_clock_ns(CLOCK_MONOTONIC) + 2000000ull); continue;
@@ -2628,6 +2640,7 @@ static void *fill_thread(void *arg) {
         double tval = 1.0 + (double)(slot > fill.real_last ? slot - fill.real_last : period) / (double)interval;
         if (tval > 1.0 + FILL_RUN) tval = 1.0 + FILL_RUN;
         image_entry *pic = fill_make(tval);
+        tried[pic ? 4 : 3]++;
         if (pic) {
             pace_desired = (int64_t)(slot - pace_refresh / 2);
             present_one(present_last, present_last_period, present_last_has_crop ? present_last_crop : NULL, pic, 0);

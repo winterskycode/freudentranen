@@ -92,7 +92,7 @@ static void load_env(const char *path) {
 static void default_env(const char *name, const char *value) { if (!getenv(name)) setenv(name, value, 1); }
 /* The frame rate settings as the backend's (vk/frame_rule.h), before debug.env, whose switches win. */
 static void frame_settings(void) {
-    char hz[16], framegen[32]; frame_rule(getenv("TOTK_FPS_CAP"), getenv("TOTK_FG"), hz, framegen);
+    char hz[16], framegen[32]; frame_rule(getenv("TOTK_FPS_CAP"), getenv("TOTK_FG"), getenv("TOTK_FG_MODE"), hz, framegen);
     setenv("TOTK_UNCAPPED_HZ", hz, 1); setenv("TOTK_FRAMEGEN", framegen, 1);
 }
 

@@ -76,6 +76,8 @@ static void lsfg_settings(void) {
     const char *p = getenv("TOTK_LSFG_PERF"), *f = getenv("TOTK_LSFG_FLOW"), *m = getenv("TOTK_LSFG_MULT"), *g = getenv("TOTK_FRAMEGEN");
     const char *x = g && !strncmp(g, "lsfg", 4) ? strchr(g, 'x') : NULL;
     lsfg.perf = !(p && !atoi(p)); lsfg.flow = f ? (float)atof(f) : 0.75f;
+    /* fg_target_hz (adaptive's slots) comes from the shared parse */
+    fg_shown_hz();
     if (x && x[1] == 'a') { lsfg.adaptive = 1; lsfg.mult = LSFG_MAX_OUT + 1; } else lsfg.mult = x ? atoi(x + 1) : m ? atoi(m) : 2;
     lsfg_clamp();
 }
@@ -171,8 +173,9 @@ static void lsfg_time_begin(void) {
     vkCmdResetQueryPool(command, lsfg_time.pool, q, 2); vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, lsfg_time.pool, q);
 }
 static void lsfg_time_end(void) { vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, lsfg_time.pool, (unsigned)(lsfg_time.frames % 4) * 2 + 1); lsfg_time.frames++; }
-/* Adaptive (TOTK_FRAMEGEN=lsfg<cap>xa, TOTK_FG=lsfga): the pictures shown a second match the display's refresh rate
-   whatever the game's rate. Each game frame gets as many pictures as its duration holds refreshes, an accumulator
+/* Adaptive (TOTK_FRAMEGEN=lsfg<rate>xa<cap>, the LSFG fill and x1.5 modes): the pictures shown a second match the frame
+   rate cap (fg_target_hz), or the display's refresh rate when that is lower, whatever the game's rate. Each game frame
+   gets as many pictures as its duration holds slots of that rate (refreshes, or every few at a lower cap), an accumulator
    carrying the fraction (a 90 fps game on a 120 Hz panel alternates 1 and 2), the generated ones at even fractions of
    the interval. The duration leaves out the time the translation thread spent blocked in the previous presents (the
    compositor pacing a burst): counted, our own throttling would feed back into the count and hold the game below
@@ -182,6 +185,7 @@ static int lsfg_adaptive_count(void) {
     int hz = mtl_display_hz(); if (hz <= 0) { const char *e = getenv("TOTK_DISPLAY_HZ"); hz = e && atoi(e) > 0 ? atoi(e) : 60; }
     /* measured once presents have timings, else the rate asked for */
     double refresh = pace_refresh ? (double)pace_refresh : 1e9 / hz;
+    if (fg_target_hz > 0 && 1e9 / fg_target_hz > refresh) refresh = 1e9 / fg_target_hz;
     int max = lsfg.generated + 1;
     if (!lsfg.ad_last) { lsfg.ad_last = now; return 1; }
     double d = (double)(now - lsfg.ad_last) - (double)block; lsfg.ad_last = now;

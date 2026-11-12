@@ -1,25 +1,40 @@
 /* The frame rate settings, one rule for the start (host/app.c frame_settings) and the in-game menu (vk/overlay.cpp
-   frame_apply). The frame rate cap counts every picture shown, generated ones included (TOTK_FPS_CAP), and frame
-   generation is a method with a multiplier (TOTK_FG: off, builtin (x2), fill, fsr (x2), lsfg (x2), lsfg3, lsfg4). The game renders the
-   cap divided by the multiplier, rounded down so the pictures shown stay within the cap (TOTK_UNCAPPED_HZ), and the
-   backend takes the method with that rate (TOTK_FRAMEGEN: 0, <rate> for the built-in one, fsr<rate>, lsfg<rate>x<multiplier>; the
-   backend's fg_parse reads it back). fill: the game renders the cap itself, and pictures go only where it falls behind (fill<rate>). The refresh rate is its own setting: no combination is refused or corrected. */
+   frame_apply). The frame rate cap counts every picture shown, generated ones included (TOTK_FPS_CAP). Frame generation
+   is a method (TOTK_FG: off, homemade, fsr, lsfg) and a mode (TOTK_FG_MODE: fill, 1.5, 2, 3, 4; FSR 3.1 always 2).
+   A multiplier mode renders the cap divided by it, rounded down so the pictures shown stay within the cap
+   (TOTK_UNCAPPED_HZ); fill renders the cap itself and adds pictures only where the game falls behind it. The backend
+   takes the method as TOTK_FRAMEGEN, which its fg_parse reads back:
+     0                       off
+     <rate>                  homemade x2: a picture halfway between game frames
+     fill<cap>               homemade fill: slots of the cap the game misses get a picture extrapolated from its last two
+     fill<cap>r<rate>        homemade x1.5, x3, x4: the same, with the game held to the rate
+     fsr<rate>               FSR 3.1 x2
+     lsfg<rate>x<mult>       LSFG x2, x3, x4
+     lsfg<rate>xa<cap>       LSFG fill (rate = cap) and x1.5: as many pictures for each game frame as its time holds
+                             slots of the cap (or of the display, when that is slower)
+   The refresh rate is its own setting: no combination is refused or corrected. Values from older versions (builtin,
+   lsfg3, ...) read as off. */
 #pragma once
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static inline void frame_rule(const char *cap_setting, const char *fg, char uncapped_hz[16], char framegen[32]) {
+static inline void frame_rule(const char *cap_setting, const char *fg, const char *mode, char uncapped_hz[16], char framegen[32]) {
     if (!fg) fg = "off";
-    int cap = cap_setting && atoi(cap_setting) > 0 ? atoi(cap_setting) : 120, lsfg = !strncmp(fg, "lsfg", 4), adaptive = !strcmp(fg, "lsfga");
-    /* adaptive (lsfga): the game renders at the cap and LSFG fills the display's refreshes with as many pictures as each frame needs */
-    int fsr = !strcmp(fg, "fsr"), fill = !strcmp(fg, "fill"), mult = adaptive || fill ? 1 : !strcmp(fg, "builtin") || fsr ? 2 : lsfg ? (atoi(fg + 4) >= 2 ? atoi(fg + 4) : 2) : 1, rendered = cap / mult;
+    int cap = cap_setting && atoi(cap_setting) > 0 ? atoi(cap_setting) : 120;
+    int homemade = !strcmp(fg, "homemade"), fsr = !strcmp(fg, "fsr"), lsfg = !strcmp(fg, "lsfg");
+    int fill = !fsr && mode && !strcmp(mode, "fill"), half = !fsr && mode && !strcmp(mode, "1.5");
+    int mult = fsr ? 2 : fill || half ? 1 : mode && atoi(mode) >= 2 && atoi(mode) <= 4 ? atoi(mode) : 2;
+    /* x1.5: two game frames for every three pictures */
+    int rendered = !(homemade || fsr || lsfg) || fill ? cap : half ? cap * 2 / 3 : cap / mult;
     if (rendered < 1) rendered = 1;
     snprintf(uncapped_hz, 16, "%d", rendered);
-    if (adaptive) snprintf(framegen, 32, "lsfg%dxa", rendered);
-    else if (fill) snprintf(framegen, 32, "fill%d", rendered);
-    else if (mult == 1) snprintf(framegen, 32, "0");
-    else if (lsfg) snprintf(framegen, 32, "lsfg%dx%d", rendered, mult);
+    if (homemade && (fill || half || mult > 2)) {
+        if (rendered == cap) snprintf(framegen, 32, "fill%d", cap); else snprintf(framegen, 32, "fill%dr%d", cap, rendered);
+    }
+    else if (homemade) snprintf(framegen, 32, "%d", rendered);
     else if (fsr) snprintf(framegen, 32, "fsr%d", rendered);
-    else snprintf(framegen, 32, "%d", rendered);
+    else if (lsfg && (fill || half)) snprintf(framegen, 32, "lsfg%dxa%d", rendered, cap);
+    else if (lsfg) snprintf(framegen, 32, "lsfg%dx%d", rendered, mult);
+    else snprintf(framegen, 32, "0");
 }

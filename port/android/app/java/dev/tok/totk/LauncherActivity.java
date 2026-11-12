@@ -283,7 +283,7 @@ public class LauncherActivity extends Activity {
             : Game.SETUP && !romfs.exists() ? "The game files are not set up. Press A to set them up."
             : !romfs.exists() ? "The game files (RomFS) are missing from " + DATA + "." : romfs.length() != Game.ROMFS_SIZE ? "The game files (RomFS) are not version " + Game.VERSION + "." : !files ? "Part of the prepared game data is missing: the game code or the file index." : null;
         String summary = driverLabel(driverChoice()) + " · " + value("TOTK_FPS_CAP") + " fps · " + name("TOTK_UPSCALER")
-            + (value("TOTK_AA").equals("off") ? "" : " · " + name("TOTK_AA")) + (value("TOTK_FG").equals("off") ? "" : " · " + name("TOTK_FG"));
+            + (value("TOTK_AA").equals("off") ? "" : " · " + name("TOTK_AA")) + (value("TOTK_FG").equals("off") ? "" : " · " + name("TOTK_FG") + (value("TOTK_FG").equals("fsr") ? "" : " " + name("TOTK_FG_MODE")));
 
         page.addView(new Backdrop(this, true), new FrameLayout.LayoutParams(-1, -1));
         // written by the game's prepare mode (vk/nvn_vulkan_prepare.inc)

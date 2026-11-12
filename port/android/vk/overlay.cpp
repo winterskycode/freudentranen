@@ -188,9 +188,9 @@ void save_options() {
 /* The frame rate settings live (frame_rule.h, as at start), applied as the backend's own: the game's cap first
    (TOTK_UNCAPPED_HZ), then TOTK_FRAMEGEN. */
 void frame_apply() {
-    Option *cap = option("TOTK_FPS_CAP"), *fg = option("TOTK_FG");
+    Option *cap = option("TOTK_FPS_CAP"), *fg = option("TOTK_FG"), *mode = option("TOTK_FG_MODE");
     if (!cap || !fg || !S.set.apply) return;
-    char hz[16], framegen[32]; frame_rule(cap->values[cap->cur].c_str(), fg->values[fg->cur].c_str(), hz, framegen);
+    char hz[16], framegen[32]; frame_rule(cap->values[cap->cur].c_str(), fg->values[fg->cur].c_str(), mode ? mode->values[mode->cur].c_str() : nullptr, hz, framegen);
     S.set.apply("TOTK_UNCAPPED_HZ", hz); S.set.apply("TOTK_FRAMEGEN", framegen);
 }
 void set_value(Option &o, int index) {
@@ -199,7 +199,7 @@ void set_value(Option &o, int index) {
     o.cur = index; o.touched = true;
     if (o.live() && S.set.apply) S.set.apply(o.key.c_str(), o.values[o.cur].c_str());
     if (!o.live()) S.changed_restart = true;
-    if (o.key == "TOTK_FPS_CAP" || o.key == "TOTK_FG") frame_apply();
+    if (o.key == "TOTK_FPS_CAP" || o.key == "TOTK_FG" || o.key == "TOTK_FG_MODE") frame_apply();
     save_options();
 }
 int layout_changes() {
