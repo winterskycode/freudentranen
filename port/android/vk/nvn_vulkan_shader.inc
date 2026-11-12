@@ -246,7 +246,7 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     if(s->stage==1){size_t mb;void *marker=read_shader_file_opt(key,"early",&mb);
         if(marker){free(marker);size_t pw;uint32_t *patched=spirv_add_early_tests(code,bytes/4,&pw);if(patched){free(code);code=patched;bytes=pw*4;}s->early_tests=1;}}
     if(gpl_state>0&&s->stage==1)spirv_own_set(code,bytes/4,s->set);
-    VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&s->module));
+    VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&s->module));shaderstats_note_module(s->module,s->key);
     /* the module's identity for a driver-side list (TOTK_FP16_SKIP) */
     { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SPVID");on=x&&atoi(x);}
       if(on){const uint8_t *b=(const uint8_t*)code;uint64_t h=0xcbf29ce484222325ull;for(size_t i=0;i<bytes;i++){h^=b[i];h*=0x100000001b3ull;}

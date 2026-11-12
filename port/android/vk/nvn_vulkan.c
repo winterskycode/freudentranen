@@ -236,7 +236,7 @@ static int ext_rorder, rorder_ok;
    TOTK_VK_CUSTOM_BORDER=0 keeps the fixed colours. */
 static int ext_custom_border, custom_border_ok;
 static uint32_t custom_border_max, custom_border_used;
-static int ext_gpl, ext_pipeline_library, gpl_state;
+static int ext_gpl, ext_pipeline_library, gpl_state, ext_pexec;
 static int ext_descriptor_indexing;
 static int bindless_on(void);static void bindless_create(void);
 static int lsfg_device_ok;
@@ -486,6 +486,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_message(VkDebugUtilsMessageSeveri
 }
 
 #include "nvn_vulkan_shader_variant.inc"
+#include "nvn_vulkan_shaderstats.inc"
 #include "nvn_vulkan_pipeline_cache.inc"
 #include "nvn_vulkan_cpu_phases.inc"
 
@@ -1052,7 +1053,8 @@ driver_retry:;
                 provoking_last |= !strcmp(ext[i].extensionName, VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
                 ext_eds |= !strcmp(ext[i].extensionName, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME); ext_eds2 |= !strcmp(ext[i].extensionName, VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME);
                 ext_memory_fd |= !strcmp(ext[i].extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME); ext_robustness2 |= !strcmp(ext[i].extensionName, VK_EXT_ROBUSTNESS_2_EXTENSION_NAME); ext_fbloop |= !strcmp(ext[i].extensionName, VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME); ext_rorder |= !strcmp(ext[i].extensionName, VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME); ext_custom_border |= !strcmp(ext[i].extensionName, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME); ext_dma_buf |= !strcmp(ext[i].extensionName, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME); ext_descriptor_indexing |= !strcmp(ext[i].extensionName, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-                ext_gpl |= !strcmp(ext[i].extensionName, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME); ext_pipeline_library |= !strcmp(ext[i].extensionName, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME); }
+                ext_gpl |= !strcmp(ext[i].extensionName, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME); ext_pipeline_library |= !strcmp(ext[i].extensionName, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
+                ext_pexec |= !strcmp(ext[i].extensionName, VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME); }
             free(ext); }
         LOG("[vulkan-wsi] device extensions=%u VK_EXT_swapchain_maintenance1=%s (not enabled; same-surface rebuilds retire on re-acquire evidence, surface teardown on queue idle)", ne, maintenance1 ? "listed" : "absent"); }
     float priority = 1;
@@ -1182,11 +1184,21 @@ driver_retry:;
             .descriptorBindingUpdateUnusedWhilePending = VK_TRUE};
         di.pNext = &indexing; device_extensions[nde++] = VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
     }
+    /* TOTK_VK_SHADERSTATS (nvn_vulkan_shaderstats.inc) */
+    VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR pexec = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR};
+    if (shaderstats_wanted() && ext_pexec) {
+        VkPhysicalDeviceFeatures2 query = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &pexec}; vkGetPhysicalDeviceFeatures2(physical, &query);
+        if (pexec.pipelineExecutableInfo) { pexec.pNext = (void *)di.pNext; di.pNext = &pexec; device_extensions[nde++] = VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME; shaderstats_ok = -1; } }
     if (nde) { di.enabledExtensionCount = nde; di.ppEnabledExtensionNames = device_extensions; }
 #ifdef __ANDROID__
     if(!dm_vk_driver_prepare_device(&vk_api,&di))die("Vulkan subgroup device policy: %s",dm_vk_driver_error(&vk_api));
 #endif
     create_result=vkCreateDevice(physical,&di,NULL,&device);
+    if (create_result == VK_SUCCESS && shaderstats_ok < 0) {
+        shaderstats_props = (PFN_vkGetPipelineExecutablePropertiesKHR)vkGetDeviceProcAddr(device, "vkGetPipelineExecutablePropertiesKHR");
+        shaderstats_stats = (PFN_vkGetPipelineExecutableStatisticsKHR)vkGetDeviceProcAddr(device, "vkGetPipelineExecutableStatisticsKHR");
+        shaderstats_ok = shaderstats_props && shaderstats_stats;
+        LOG("[vulkan] shader statistics (TOTK_VK_SHADERSTATS): %s", shaderstats_ok ? "on" : "functions missing"); }
     if (create_result == VK_SUCCESS && pace_ext) { pace_get_refresh = (PFN_vkGetRefreshCycleDurationGOOGLE)vkGetDeviceProcAddr(device, "vkGetRefreshCycleDurationGOOGLE");
         pace_get_past = (PFN_vkGetPastPresentationTimingGOOGLE)vkGetDeviceProcAddr(device, "vkGetPastPresentationTimingGOOGLE"); }
 #ifdef __ANDROID__

@@ -151,10 +151,13 @@ static uint64_t pipeline_sync_ns,pipeline_sync_count;
 static VkResult pipeline_create_graphics(const VkGraphicsPipelineCreateInfo *info,VkPipeline *pipeline) {
     uint64_t t0=dm_android_clock_ns(CLOCK_MONOTONIC);
     VkResult result=vkCreateGraphicsPipelines(device,pipeline_cache,1,info,NULL,pipeline);
+    if(result==VK_SUCCESS&&shaderstats_ok>0)shaderstats_pipeline(*pipeline,info->pStages,info->stageCount);
     if(!pipeline_create_background){pipeline_sync_ns+=dm_android_clock_ns(CLOCK_MONOTONIC)-t0;pipeline_sync_count++;}pipeline_cache_note(result);return result;
 }
 static VkResult pipeline_create_compute(const VkComputePipelineCreateInfo *info,VkPipeline *pipeline) {
-    VkResult result=vkCreateComputePipelines(device,pipeline_cache,1,info,NULL,pipeline);pipeline_cache_note(result);return result;
+    VkResult result=vkCreateComputePipelines(device,pipeline_cache,1,info,NULL,pipeline);
+    if(result==VK_SUCCESS&&shaderstats_ok>0)shaderstats_pipeline(*pipeline,&info->stage,1);
+    pipeline_cache_note(result);return result;
 }
 /* Caches of other namespaces (another driver or driver build, another translator generation) are never read again
    unless that driver comes back: each is 30-200 MB, and they pile up to many GB. The writer (it holds writer.lock)

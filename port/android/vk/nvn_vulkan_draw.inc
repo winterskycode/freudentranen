@@ -644,13 +644,14 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
       if(w==(const char *)1)w=getenv("TOTK_VK_FSWATCH");
       if(w&&*w){if(presents!=frame){if(frame&&++len==60){char d[61];for(unsigned i=0;i<60;i++)d[i]=(char)('0'+(n[i]>9?9:n[i]));d[60]=0;LOG("[fswatch] %s frames to %llu: %s",w,(unsigned long long)presents,d);len=0;memset(n,0,sizeof n);}frame=presents;}
           if(fs&&fs->module&&!strncmp(fs->key,w,16))n[len]++;} }
-    /* draws / instances / indices a frame by fragment shader, every 60 frames */
-    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SHADERCOUNT");on=x&&atoi(x);}
+    /* draws / instances / indices a frame by fragment shader, every 60 frames (TOTK_VK_SHADERCOUNT=<n>: the n shader pairs
+       with the most vertices; 1: 20) */
+    { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SHADERCOUNT");on=x?atoi(x):0;}
       if(on){static struct { const char *fs,*vs; uint64_t draws,inst,idx; } t[512];static unsigned n;static uint64_t last;
           const char *fk=fs&&fs->module?fs->key:"-";unsigned k=0;while(k<n&&(t[k].fs!=fk||t[k].vs!=vs->key))k++;
           if(k==n&&n<512){t[n].fs=fk;t[n].vs=vs->key;n++;}
           if(k<n){t[k].draws++;t[k].inst+=indexed?indexed->instances:(draw->instances>0?(uint64_t)draw->instances:1);t[k].idx+=indexed?(uint64_t)indexed->count:(uint64_t)draw->count;}
-          if(presents>=last+60){if(last)for(int shown=0;shown<20;shown++){unsigned b=n;for(unsigned j=0;j<n;j++)if(t[j].draws&&(b==n||t[j].idx*t[j].inst>t[b].idx*t[b].inst))b=j;if(b==n)break;
+          if(presents>=last+60){if(last)for(int shown=0;shown<(on>1?on:20);shown++){unsigned b=n;for(unsigned j=0;j<n;j++)if(t[j].draws&&(b==n||t[j].idx*t[j].inst>t[b].idx*t[b].inst))b=j;if(b==n)break;
                   LOG("[shadercount] frame=%llu fs=%s vs=%s draws=%.1f instances=%.1f indices=%.0f",(unsigned long long)presents,t[b].fs,t[b].vs,t[b].draws/60.0,t[b].inst/60.0,t[b].idx/60.0);t[b].draws=0;}
               for(unsigned j=0;j<n;j++)t[j].draws=t[j].inst=t[j].idx=0;last=presents;}}}
     if(inplace_on()){static uint64_t last;if(presents>=last+600){if(last){LOG("[vulkan-inplace] a frame: %.0f uniform, %.0f storage/texel reads, %.0f storage writes, %.0f vertex, %.0f index bindings in place; %.0f fell back",inplace_ubo/600.0,inplace_ssbo/600.0,inplace_ssbo_w/600.0,inplace_vbuf/600.0,inplace_index/600.0,inplace_fallback/600.0);
