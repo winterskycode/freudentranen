@@ -728,13 +728,13 @@ void hud(float fps, float frame_ms) {
     struct Seg { char text[192]; bool graph; float w; } segs[8]; int n = 0; float total = 0;
     auto add = [&](const char *t, bool graph) { Seg &sg = segs[n++]; snprintf(sg.text, sizeof sg.text, "%s", t); sg.graph = graph; sg.w = graph ? gw : text_size(fn, t).x; total += sg.w + gap; };
     char b[192];
-    /* with frame generation: the real and generated pictures a second, "120 fps (r60 g60)" */
-    if (f) { float real = S.st.real_fps, gen = fps - real;
-        if (real > 0 && gen >= 0.5f) snprintf(b, sizeof b, "%3.0f fps (r%2.0f g%2.0f)", fps, real, gen); else snprintf(b, sizeof b, "%3.0f fps", fps);
+    /* with frame generation on: the real and generated pictures a second, "120 fps (r60 g60)", g0 while none are made */
+    if (f) { float real = S.st.real_fps, gen = std::max(fps - real, 0.0f);
+        if (S.st.framegen && real > 0) snprintf(b, sizeof b, "%3.0f fps (r%2.0f g%2.0f)", fps, real, gen); else snprintf(b, sizeof b, "%3.0f fps", fps);
         add(b, false); }
     /* with frame generation: a game frame's time, split into the rest and generation's GPU time, "14.2 ms (r12.1 g2.1)" */
     if (g) { float rm = S.st.real_ms, gm = S.st.gen_ms;
-        if (fps - S.st.real_fps >= 0.5f && rm > 0 && gm > 0.05f) snprintf(b, sizeof b, "%5.1f ms (r%4.1f g%3.1f)", rm, rm - gm, gm); else snprintf(b, sizeof b, "%5.1f ms", frame_ms);
+        if (S.st.framegen && rm > 0) snprintf(b, sizeof b, "%5.1f ms (r%4.1f g%3.1f)", rm, rm - gm, gm); else snprintf(b, sizeof b, "%5.1f ms", frame_ms);
         add(b, false); add("", true); }
     if (rf) { if (S.st.screen_hz) snprintf(b, sizeof b, "%3u Hz", S.st.screen_hz); else snprintf(b, sizeof b, " -- Hz"); add(b, false); }
     if (tp) { int t = std::max(g_temp_cpu.load(), g_temp_gpu.load()); if (t >= 0) snprintf(b, sizeof b, "%3dC", t); else snprintf(b, sizeof b, " --C"); add(b, false); }

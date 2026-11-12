@@ -2413,7 +2413,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (!repeat) rec_picture(e, sx, sy, sw, sh);
         if (screen_color_attachment) { dv_drain();
             uint64_t q = atomic_load(&async_pso_queued), done = atomic_load(&async_pso_built) + atomic_load(&async_pso_failed);
-            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms};
+            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms, fg_enabled() || lsfg_enabled()};
             overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask = 0; barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);
