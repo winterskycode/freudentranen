@@ -2,7 +2,9 @@
 // moves to where its surface is at t (pos + (1 - t) motion) and lands on the 2x2 texels around that point; where several
 // land on one texel, the nearest wins. Two passes over the depth texels (size.w): 0 keeps the nearest depth per texel
 // (atomic minimum of the float bits, which order like the values for depths >= 0), 1 writes the winner's source texel.
-// Texels nothing lands on keep all ones: what is there at t was hidden in this frame (disocclusion).
+// Texels nothing lands on keep all ones: what is there at t was hidden in this frame (disocclusion). With opt.z bit 2 (or
+// bit 1, the quality test's classes), pass 0 also keeps, at half size, the nearest depth landing on each texel at the
+// previous frame's time (splat_prev): what that frame showed in front.
 #version 450
 #extension GL_GOOGLE_include_directive : require
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -13,7 +15,7 @@ void main() {
     if (q.x >= ds.x || q.y >= ds.y) return;
     float d = min(texelFetch(depth, q, 0).r, 1.0);
     vec2 pu = (vec2(q) + 0.5) / vec2(ds);
-    vec2 at = (pu + (1.0 - p.scale.w) * texel_motion(pu, d)) * vec2(ds) - 0.5;
+    vec2 m = texel_motion(pu, d), at = (pu + (1.0 - p.scale.w) * m) * vec2(ds) - 0.5;
     ivec2 b = ivec2(floor(at));
     uint key = floatBitsToUint(d), src = uint(q.x) | (uint(q.y) << 16);
     for (int i = 0; i < 4; i++) {
@@ -21,5 +23,18 @@ void main() {
         if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ds))) continue;
         if (p.size.w == 0.0) imageAtomicMin(splat_depth, c, key);
         else if (imageLoad(splat_depth, c).r == key) imageStore(splat_src, c, uvec4(src));
+    }
+    // splat_prev, at half size: one texel of each 2x2 (the nearest of them) lands on the texel nearest its spot
+    if (p.size.w == 0.0 && (int(p.opt.z) & 6) != 0 && (q.x & 1) == 0 && (q.y & 1) == 0) {
+        vec4 g = textureGather(depth, (vec2(q) + 1.0) / vec2(ds), 0);
+        ivec2 n = q + 1;
+        float dn = min(g.y, 1.0);
+        if (g.x < dn) { dn = g.x; n = q + ivec2(0, 1); }
+        if (g.z < dn) { dn = g.z; n = q + ivec2(1, 0); }
+        if (g.w < dn) { dn = g.w; n = q; }
+        n = min(n, ds - 1);
+        vec2 pn = (vec2(n) + 0.5) / vec2(ds);
+        ivec2 hs = imageSize(splat_prev), c = ivec2(floor((pn + texel_motion(pn, dn)) * vec2(hs)));
+        if (all(greaterThanEqual(c, ivec2(0))) && all(lessThan(c, hs))) imageAtomicMin(splat_prev, c, floatBitsToUint(dn));
     }
 }

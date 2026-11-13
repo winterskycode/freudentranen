@@ -33,7 +33,7 @@ static struct {
     image_entry last; int last_ok; uint32_t last_w, last_h; uint64_t kept_at;
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline; VkSampler linear;
     /* framegen_splat.comp: the motion field at the picture's time (nearest depth, its source texel) */
-    VkPipeline splat_pipeline; image_entry splat_depth, splat_src;
+    VkPipeline splat_pipeline; image_entry splat_depth, splat_src, splat_prev;
     VkDescriptorSetLayout hud_set_layout; VkPipelineLayout hud_layout; VkPipeline hud_pipeline;
     /* TOTK_LSFG: LSFG takes the scenes and the HUD too (nvn_vulkan_lsfg.inc) */
     int lsfg;
@@ -430,10 +430,10 @@ static int fg_invert4(const double a[16], double o[16]) {
 
 static void fg_pipeline(void) {
     if (fg.pipeline) return;
-    VkDescriptorSetLayoutBinding b[7];
-    for (int i = 0; i < 7; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    VkDescriptorSetLayoutBinding b[8];
+    for (int i = 0; i < 8; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
         .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
-    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 7, .pBindings = b};
+    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 8, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &fg.set_layout));
     VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 128};
     VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &fg.set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
@@ -553,6 +553,16 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
    window is (2r + 1) x (2r + 1) texels of that field, and 1 is the default: the paired quality test (TOTK_FG_EVAL_VARIANTS,
    Odin, close orbit) 30.14 / 30.20 / 30.20 dB at Lookout Landing for 1 / 2 / 3, but 99.1 / 98.4 / 98.0% of the detail. */
 static int fg_splat_on(void);
+/* framegen_interp.comp: where the previous frame showed something nearer in front, the current picture alone
+   (TOTK_FG_HIDDEN, live word fghidden=). Most of the motion the quality test rejected was this: the background beside a
+   near post the camera passes. The paired quality test (Odin, close orbit), on against off: +0.08 / +0.05 dB at Lookout
+   Landing / Kakariko for 0.3 ms of GPU a picture at 30 + x2 (4.8 -> 5.1); the field at full size with 2x2 splats was
+   +0.13 / +0.16 dB for 1.4 ms, at half size with every texel +0.08 / +0.03 dB for 0.8 ms. */
+static int fg_hidden_on(void) {
+    static int env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_HIDDEN"); env = !e || atoi(e) != 0; }
+    const char *w = live_exp[0] ? exp_word(live_exp, "fghidden=", 0) : NULL;
+    return w && *w >= '0' && *w <= '9' ? atoi(w) != 0 : env;
+}
 static int fg_dilation(void) {
     static int env = -2; if (env == -2) { const char *e = getenv("TOTK_FG_DILATE"); env = e ? atoi(e) : -1; }
     const char *w = live_exp[0] ? exp_word(live_exp, "fgdilate=", 0) : NULL;
@@ -684,7 +694,7 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
             float push[32]; fg_tune(push, 0);
             for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
             push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
-            push[20] = 1.0f; push[22] = 2.0f + 4.0f * fg_dilation(); push[23] = 1.0f;
+            push[20] = 1.0f; push[22] = 2.0f + 4.0f * fg_hidden_on() + 8.0f * fg_dilation(); push[23] = 1.0f;
             image_entry *obj = mo_image();
             push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
             fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, fg.depth, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
@@ -780,7 +790,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* <files>/fgdebug: tint by decision */
     if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
-    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 4.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
+    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 4.0f * fg_hidden_on() + 8.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
@@ -817,18 +827,20 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
     int splat = fg_splat_on();
     fg_image(&fg.splat_depth, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     fg_image(&fg.splat_src, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT);
-    VkDescriptorImageInfo img[7] = {
+    fg_image(&fg.splat_prev, VK_FORMAT_R32_UINT, (dw + 1) / 2, (dh + 1) / 2, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    VkDescriptorImageInfo img[8] = {
         {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(&fg.splat_depth, NULL, fg.splat_depth.format), VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, attachment_view(&fg.splat_src, NULL, fg.splat_src.format), VK_IMAGE_LAYOUT_GENERAL}};
+        {VK_NULL_HANDLE, attachment_view(&fg.splat_src, NULL, fg.splat_src.format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(&fg.splat_prev, NULL, fg.splat_prev.format), VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorSet set = descriptor_allocate(fg.set_layout);
-    VkWriteDescriptorSet w[7];
-    for (int i = 0; i < 7; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+    VkWriteDescriptorSet w[8];
+    for (int i = 0; i < 8; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
         .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
-    vkUpdateDescriptorSets(device, 7, w, 0, NULL);
+    vkUpdateDescriptorSets(device, 8, w, 0, NULL);
     /* framegen_interp.comp computes its texel size from the size: slot 18 carries the object motion scale instead, slot 19
        the splat pass (framegen_splat.comp) or whether the splatted field is used (framegen_interp.comp) */
     float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale;
@@ -840,6 +852,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
         VkClearColorValue none = {.uint32 = {0xffffffffu, 0, 0, 0}};
         VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vkCmdClearColorImage(command, fg.splat_depth.image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
+        if ((int)push[22] & 6) vkCmdClearColorImage(command, fg.splat_prev.image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
         VkMemoryBarrier cleared = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &cleared, 0, NULL, 0, NULL);
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.splat_pipeline);

@@ -7,9 +7,9 @@ layout(push_constant) uniform P {
     // score of a hole's motion candidate (a share of the match threshold)
     vec4 size;
     // x: clip-space y direction (+1), y: match threshold (mean abs difference per channel), z: 1 for the debug tint, plus
-    // 2 for the motion's outcome in alpha (framegen_interp.comp), plus 4 times the depth dilation radius (in depth
-    // texels), w: 1 when the pictures are scenes (linear canvas values,
-    // sRGB-encoded here)
+    // 2 for the motion's outcome in alpha, plus 4 for the current picture alone where the previous one shows something
+    // nearer (all framegen_interp.comp), plus 8 times the depth dilation radius (in depth texels), w: 1 when the pictures
+    // are scenes (linear canvas values, sRGB-encoded here)
     vec4 opt;
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this
     // frame's object motion, w: the picture's time t
@@ -29,6 +29,8 @@ layout(set = 0, binding = 3) uniform sampler2D depth;
 // texel (float bits; all ones where nothing lands: disocclusion), and the depth texel it came from (x | y << 16).
 layout(set = 0, binding = 5, r32ui) uniform uimage2D splat_depth;
 layout(set = 0, binding = 6, r32ui) uniform uimage2D splat_src;
+// The same at the previous frame's time (t = 0): the nearest depth of this frame's surfaces that were there then.
+layout(set = 0, binding = 7, r32ui) uniform uimage2D splat_prev;
 
 const uint SPLAT_NONE = 0xffffffffu;
 

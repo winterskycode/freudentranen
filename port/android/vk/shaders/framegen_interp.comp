@@ -13,7 +13,8 @@
 // moving on their own) are blended by those scores.
 // With the splatted motion field (size.w, framegen_splat.comp) the scene's motion at a pixel is that of the surface that
 // is there at t, not of what this frame shows there; where no surface of this frame lands (the background a nearer thing
-// uncovers as it moves), the motion candidate is the previous picture along the far side's motion.
+// uncovers as it moves), the motion candidate is the previous picture along the far side's motion; where the previous
+// frame showed something nearer in front (splat_prev), the current picture alone.
 #version 450
 #extension GL_GOOGLE_include_directive : require
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -27,7 +28,7 @@ vec2 motion(vec2 uv) {
     // Depth dilation: the motion of the nearest surface around. See-through things (lantern glass, flames, glow) write
     // no depth and would move with what is behind them, and the edges of thin things (poles) with the background.
     // Four texels a fetch (textureGather): the 2r x 2r texels from r before the pixel's texel to r - 1 after it.
-    int r = int(p.opt.z) >> 2;
+    int r = int(p.opt.z) >> 3;
     ivec2 c0 = at;
     for (int y = 1 - r; y < r + 1; y += 2) for (int x = 1 - r; x < r + 1; x += 2) {
         ivec2 q = c0 + ivec2(x, y);
@@ -44,12 +45,12 @@ vec2 motion(vec2 uv) {
 // The splatted field's motion at uv (framegen_splat.comp): of the nearest surface landing within r texels of uv's (the
 // depth dilation, for see-through things that write no depth), from the texel it came from. False where nothing landed
 // on uv's own texel.
-bool splat_motion(vec2 uv, out vec2 m) {
+bool splat_motion(vec2 uv, out vec2 m, out float d) {
     ivec2 ds = imageSize(splat_depth), at = clamp(ivec2(uv * vec2(ds)), ivec2(0), ds - 1);
     uint k = imageLoad(splat_depth, at).r;
-    m = vec2(0.0);
+    m = vec2(0.0); d = 1.0;
     if (k == SPLAT_NONE) return false;
-    int r = int(p.opt.z) >> 2;
+    int r = int(p.opt.z) >> 3;
     ivec2 best = at;
     for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) {
         ivec2 c = clamp(at + ivec2(x, y), ivec2(0), ds - 1);
@@ -57,8 +58,19 @@ bool splat_motion(vec2 uv, out vec2 m) {
         if (e < k) { k = e; best = c; }
     }
     uint s = imageLoad(splat_src, best).r;
-    m = texel_motion((vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(ds), uintBitsToFloat(k));
+    d = uintBitsToFloat(k);
+    m = texel_motion((vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(ds), d);
     return true;
+}
+// Whether the previous picture shows something nearer than depth d at up: a surface of this frame that covered up then
+// (splat_prev) and is nearer by the crack ratio (hole_motion), so what is at uv now was hidden behind it then.
+// The 2x2 texels of the half-size field around up: one point of each 2x2 lands on one texel, which leaves gaps where it
+// stretches.
+bool hidden_before(vec2 up, float d) {
+    ivec2 ds = imageSize(splat_prev), b = ivec2(floor(up * vec2(ds) - 0.5));
+    uint k = SPLAT_NONE;
+    for (int i = 0; i < 4; i++) k = min(k, imageLoad(splat_prev, clamp(b + ivec2(i & 1, i >> 1), ivec2(0), ds - 1)).r);
+    return k != SPLAT_NONE && 1.0 - uintBitsToFloat(k) > (1.0 - d) * 1.15;
 }
 // A hole's motion: what shows there at t was hidden in this frame behind something nearer, so it moves with the far side
 // of the hole. The first surface landed on along each of 8 directions (1 to 32 texels out); the farthest of them. A hole
@@ -129,18 +141,23 @@ void main() {
     // previous picture alone along the far side's motion, with a fixed score (size.w, a share of the threshold; the
     // current picture cannot confirm it). The other candidates still compete: where the geometry's motion is wrong (wind
     // in foliage) the holes are not real, and the unmoved picture often matches better.
-    vec2 m;
-    bool hole = p.size.w != 0.0 && !splat_motion(uv, m);
+    vec2 m; float d;
+    bool landed = p.size.w != 0.0 && splat_motion(uv, m, d), hole = p.size.w != 0.0 && !landed;
     bool crack;
     if (hole && !hole_motion(uv, m, crack)) { hole = false; m = motion(uv); }
     else if (hole && crack) hole = false;
     if (p.size.w == 0.0) { m = motion(uv); m = motion(uv - (1.0 - t) * m); }
     vec2 uc = uv - (1.0 - t) * m, up = uv + t * m;
     bool inside = all(greaterThanEqual(up, vec2(0.0))) && all(lessThanEqual(up, vec2(1.0)));
+    // The other way round: what is here at t was hidden in the previous frame behind something nearer (the background a
+    // near post uncovers as the camera passes it). The previous picture shows that nearer thing there and cannot confirm
+    // the motion, so the motion candidate is the current picture alone, with the hole's fixed score (opt.z bit 2).
+    bool hidden = landed && inside && t < 1.0 && hidden_before(up, d);
+    bool occl = hidden && (int(p.opt.z) & 4) != 0;
     // The scene motion is geometry (depth and camera, or the object's own), right for nearly everything that does not
     // move on its own; in fine detail (nets, railings, foliage) the patch comparison is noisy, and without a head start
     // the choice flips between candidates pixel by pixel and picture by picture: a shimmer along edges.
-    float em_raw = !inside ? 1e9 : hole ? p.size.w * p.opt.y : mismatch(uc, up), em = hole ? em_raw : max(em_raw - p.tune.z * p.opt.y, 0.0);
+    float em_raw = !inside ? 1e9 : hole || occl ? p.size.w * p.opt.y : mismatch(uc, up), em = hole || occl ? em_raw : max(em_raw - p.tune.z * p.opt.y, 0.0);
     // The previous picture blends in only where the scene motion's match is unsure (none below a quarter of the
     // threshold, all of tune.w at it): blended everywhere, generated pictures lost 6-10% of the real frames' detail (a
     // softness flicker at the game's rate); where the match is good, the current picture warped is the sharper answer.
@@ -153,14 +170,14 @@ void main() {
     float k = 1.0 / (p.tune.x * p.opt.y), best = min(min(em, es), p.opt.y);
     float wm = inside ? exp(-(em - best) * k) : 0.0, ws = exp(-(es - best) * k), wc = exp(-(p.opt.y - best) * k) * p.tune.y;
     float wsum = wm + ws + wc;
-    vec3 mc = hole && t < 1.0 ? bicubic(prev_pic, up) : mix(bicubic(cur_pic, uc), bicubic(prev_pic, up), wp);
+    vec3 mc = hole && t < 1.0 ? bicubic(prev_pic, up) : occl ? bicubic(cur_pic, uc) : mix(bicubic(cur_pic, uc), bicubic(prev_pic, up), wp);
     vec3 col = wsum > 1e-6 ? (wm * mc + ws * mix(bicubic(cur_pic, uv), bicubic(prev_pic, uv), wp) + wc * bicubic(cur_pic, uv)) / wsum : bicubic(cur_pic, uv);
     // <files>/fgdebug: red current picture, green scene motion, blue no motion
-    if ((int(p.opt.z) & 1) != 0) col = mix(col, hole ? vec3(1.0, 0.0, 1.0) * wm / max(wsum, 1e-6) : vec3(wc, wm, ws) / max(wsum, 1e-6), 0.35);
+    if ((int(p.opt.z) & 1) != 0) col = mix(col, hole || occl ? vec3(1.0, 0.0, 1.0) * wm / max(wsum, 1e-6) : vec3(wc, wm, ws) / max(wsum, 1e-6), 0.35);
     // For the quality test (opt.z bit 2): how the scene's motion fared here, in alpha: 1 matched (under a quarter of the
     // threshold), 0.75 unsure, 0.5 rejected (at or over the threshold: things moving in their shaders, wind, water), 0.25
-    // a hole, 0 its source off the previous picture's edge.
+    // a hole or hidden in the previous frame, 0 its source off the previous picture's edge.
     float cls = 1.0;
-    if ((int(p.opt.z) & 2) != 0) cls = !inside ? 0.0 : hole ? 0.25 : em_raw >= p.opt.y ? 0.5 : em_raw > 0.25 * p.opt.y ? 0.75 : 1.0;
+    if ((int(p.opt.z) & 2) != 0) cls = !inside ? 0.0 : hole || hidden ? 0.25 : em_raw >= p.opt.y ? 0.5 : em_raw > 0.25 * p.opt.y ? 0.75 : 1.0;
     imageStore(dst, o, vec4(col, cls));
 }

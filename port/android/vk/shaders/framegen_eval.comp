@@ -6,8 +6,8 @@
 //   of the real frame's detail the generated picture keeps; PSNR alone rewards blur)
 // (an edge: the real frame's luma differs from its right or lower neighbour by more than 16). [8 + 4c ..] per class c of
 // the generated picture's alpha (framegen_interp.comp: 0 matched, 1 unsure, 2 rejected, 3 hole, 4 off the edge): pixels,
-// error, squared error / 16, pixels off by more than 24. An error map goes to diff (error x 4, red where over 24; green
-// tinted where the scene's motion was rejected).
+// error, squared error / 16, pixels off by more than 24. An error map goes to diff: error x 4, tinted blue where the
+// scene's motion was unsure and green where rejected; over 24, by class red, yellow, green, magenta, cyan.
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
@@ -52,8 +52,9 @@ void main() {
         atomicAdd(s_cls[c * 4], 1u); atomicAdd(s_cls[c * 4 + 1], ei); atomicAdd(s_cls[c * 4 + 2], (ei * ei + 8u) / 16u);
         if (ei > 24u) atomicAdd(s_cls[c * 4 + 3], 1u);
         float m = clamp(e * 4.0 / 255.0, 0.0, 1.0);
-        vec4 grey = c == 2 ? vec4(m * 0.4, max(m, 0.25), m * 0.4, 1.0) : vec4(m, m, m, 1.0);
-        imageStore(diff, o, ei > 24u ? vec4(1.0, m * 0.5, m * 0.5, 1.0) : grey);
+        vec4 grey = c == 2 ? vec4(m * 0.4, max(m, 0.25), m * 0.4, 1.0) : c == 1 ? vec4(m * 0.4, m * 0.4, max(m, 0.25), 1.0) : vec4(m, m, m, 1.0);
+        vec4 big = c == 0 ? vec4(1.0, 0.0, 0.0, 1.0) : c == 1 ? vec4(1.0, 0.8, 0.0, 1.0) : c == 2 ? vec4(0.2, 1.0, 0.2, 1.0) : c == 3 ? vec4(1.0, 0.0, 1.0, 1.0) : vec4(0.0, 1.0, 1.0, 1.0);
+        imageStore(diff, o, ei > 24u ? big : grey);
     }
     barrier();
     if (gl_LocalInvocationIndex == 0) {
