@@ -625,7 +625,7 @@ static void fg_eval_pipeline(void) {
     VkComputePipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage = {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = module, .pName = "main"}, .layout = ev.layout};
     VK_CHECK(pipeline_create_compute(&pi, &ev.pipeline)); vkDestroyShaderModule(device, module, NULL);
-    for (int i = 0; i < 32; i++) ev.ring[i].b = buffer_create(64);
+    for (int i = 0; i < 32; i++) ev.ring[i].b = buffer_create(128);
 }
 /* the comparisons the GPU has finished: logged */
 static void fg_eval_poll(void) {
@@ -636,6 +636,14 @@ static void fg_eval_poll(void) {
         char vt[16] = ""; if (ev.nvariants) snprintf(vt, sizeof vt, " v=%d", ev.ring[i].variant);
         LOG("[fgeval] frame=%llu%s mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f detail=%.4f", (unsigned long long)ev.ring[i].frame, vt, mae, sqrt(mse), psnr,
             100.0 * v[2] / n, v[4] ? (double)v[3] / v[4] : 0.0, 100.0 * v[4] / n, v[6] ? (double)v[5] / v[6] : 1.0);
+        /* per outcome of the scene's motion (framegen_eval.comp): share of pixels, of the error, of the squared error, and
+           of the pixels off by more than 24 */
+        char cls[256]; int at = 0; double se = 0, ss = 0, sb = 0;
+        for (int c = 0; c < 5; c++) { se += v[9 + c * 4]; ss += v[10 + c * 4]; sb += v[11 + c * 4]; }
+        static const char *const names[] = {"matched", "unsure", "rejected", "hole", "edge"};
+        for (int c = 0; c < 5; c++) at += snprintf(cls + at, sizeof cls - (size_t)at, " %s=%.2f/%.2f/%.2f/%.2f", names[c], 100.0 * v[8 + c * 4] / n,
+            se > 0 ? 100.0 * v[9 + c * 4] / se : 0.0, ss > 0 ? 100.0 * v[10 + c * 4] / ss : 0.0, sb > 0 ? 100.0 * v[11 + c * 4] / sb : 0.0);
+        LOG("[fgeval] frame=%llu%s classes (%% of pixels/error/squared error/off by >24):%s", (unsigned long long)ev.ring[i].frame, vt, cls);
         ev.ring[i].busy = 0;
     }
 }
@@ -676,7 +684,7 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
             float push[32]; fg_tune(push, 0);
             for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
             push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
-            push[20] = 1.0f; push[22] = 2.0f * fg_dilation(); push[23] = 1.0f;
+            push[20] = 1.0f; push[22] = 2.0f + 4.0f * fg_dilation(); push[23] = 1.0f;
             image_entry *obj = mo_image();
             push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
             fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, fg.depth, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
@@ -685,13 +693,13 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
             image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
             image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
             vk_buffer *rb = &ev.ring[slot].b;
-            vkCmdFillBuffer(command, rb->buffer, 0, 64, 0);
+            vkCmdFillBuffer(command, rb->buffer, 0, 128, 0);
             VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
             VkDescriptorImageInfo img[3] = {
                 {fg.linear, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
                 {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
-            VkDescriptorBufferInfo bi = {rb->buffer, 0, 64};
+            VkDescriptorBufferInfo bi = {rb->buffer, 0, 128};
             VkDescriptorSet set = descriptor_allocate(ev.set_layout);
             VkWriteDescriptorSet w[4];
             for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
@@ -772,7 +780,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* <files>/fgdebug: tint by decision */
     if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
-    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 2.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
+    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 4.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;

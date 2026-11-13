@@ -4,8 +4,10 @@
 //   [0] error, [1] squared error / 16, [2] pixels off by more than 24, [3] error on edges, [4] edge pixels,
 //   [5] / [6] the generated / real picture's luma contrast with its right and lower neighbours (their ratio: how much
 //   of the real frame's detail the generated picture keeps; PSNR alone rewards blur)
-// (an edge: the real frame's luma differs from its right or lower neighbour by more than 16). An error map goes to diff
-// (error x 4, red where over 24).
+// (an edge: the real frame's luma differs from its right or lower neighbour by more than 16). [8 + 4c ..] per class c of
+// the generated picture's alpha (framegen_interp.comp: 0 matched, 1 unsure, 2 rejected, 3 hole, 4 off the edge): pixels,
+// error, squared error / 16, pixels off by more than 24. An error map goes to diff (error x 4, red where over 24; green
+// tinted where the scene's motion was rejected).
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
@@ -15,9 +17,9 @@ layout(push_constant) uniform P {
 layout(set = 0, binding = 0) uniform sampler2D generated;
 layout(set = 0, binding = 1) uniform sampler2D truth;
 layout(set = 0, binding = 2, rgba8) uniform writeonly image2D diff;
-layout(set = 0, binding = 3, std430) buffer R { uint v[8]; } r;
+layout(set = 0, binding = 3, std430) buffer R { uint v[32]; } r;
 
-shared uint s_err, s_sq, s_big, s_edge_err, s_edge_n, s_det_g, s_det_r;
+shared uint s_err, s_sq, s_big, s_edge_err, s_edge_n, s_det_g, s_det_r, s_cls[20];
 
 vec3 enc(vec3 c) {
     if (p.size.z == 0.0) return c;
@@ -28,11 +30,13 @@ vec3 real_at(ivec2 o) { return enc(texelFetch(truth, o, 0).rgb); }
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)) * 255.0; }
 
 void main() {
-    if (gl_LocalInvocationIndex == 0) { s_err = 0u; s_sq = 0u; s_big = 0u; s_edge_err = 0u; s_edge_n = 0u; s_det_g = 0u; s_det_r = 0u; }
+    if (gl_LocalInvocationIndex == 0) { s_err = 0u; s_sq = 0u; s_big = 0u; s_edge_err = 0u; s_edge_n = 0u; s_det_g = 0u; s_det_r = 0u; for (int i = 0; i < 20; i++) s_cls[i] = 0u; }
     barrier();
     ivec2 o = ivec2(gl_GlobalInvocationID.xy), sz = ivec2(p.size.xy);
     if (o.x < sz.x && o.y < sz.y) {
-        vec3 g = texelFetch(generated, o, 0).rgb, t = real_at(o);
+        vec4 ga = texelFetch(generated, o, 0);
+        vec3 g = ga.rgb, t = real_at(o);
+        int c = ga.a > 0.875 ? 0 : ga.a > 0.625 ? 1 : ga.a > 0.375 ? 2 : ga.a > 0.125 ? 3 : 4;
         float e = dot(abs(g - t), vec3(255.0 / 3.0));
         uint ei = uint(e + 0.5);
         ivec2 ox = min(o + ivec2(1, 0), sz - 1), oy = min(o + ivec2(0, 1), sz - 1);
@@ -45,12 +49,16 @@ void main() {
         atomicAdd(s_sq, (ei * ei + 8u) / 16u);
         if (ei > 24u) atomicAdd(s_big, 1u);
         if (edge) { atomicAdd(s_edge_err, ei); atomicAdd(s_edge_n, 1u); }
+        atomicAdd(s_cls[c * 4], 1u); atomicAdd(s_cls[c * 4 + 1], ei); atomicAdd(s_cls[c * 4 + 2], (ei * ei + 8u) / 16u);
+        if (ei > 24u) atomicAdd(s_cls[c * 4 + 3], 1u);
         float m = clamp(e * 4.0 / 255.0, 0.0, 1.0);
-        imageStore(diff, o, ei > 24u ? vec4(1.0, m * 0.5, m * 0.5, 1.0) : vec4(m, m, m, 1.0));
+        vec4 grey = c == 2 ? vec4(m * 0.4, max(m, 0.25), m * 0.4, 1.0) : vec4(m, m, m, 1.0);
+        imageStore(diff, o, ei > 24u ? vec4(1.0, m * 0.5, m * 0.5, 1.0) : grey);
     }
     barrier();
     if (gl_LocalInvocationIndex == 0) {
         atomicAdd(r.v[0], s_err); atomicAdd(r.v[1], s_sq); atomicAdd(r.v[2], s_big);
         atomicAdd(r.v[3], s_edge_err); atomicAdd(r.v[4], s_edge_n); atomicAdd(r.v[5], s_det_g); atomicAdd(r.v[6], s_det_r);
+        for (int i = 0; i < 20; i++) if (s_cls[i] != 0u) atomicAdd(r.v[8 + i], s_cls[i]);
     }
 }

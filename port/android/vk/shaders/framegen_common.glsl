@@ -7,7 +7,8 @@ layout(push_constant) uniform P {
     // score of a hole's motion candidate (a share of the match threshold)
     vec4 size;
     // x: clip-space y direction (+1), y: match threshold (mean abs difference per channel), z: 1 for the debug tint, plus
-    // twice the depth dilation radius (in depth texels), w: 1 when the pictures are scenes (linear canvas values,
+    // 2 for the motion's outcome in alpha (framegen_interp.comp), plus 4 times the depth dilation radius (in depth
+    // texels), w: 1 when the pictures are scenes (linear canvas values,
     // sRGB-encoded here)
     vec4 opt;
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this

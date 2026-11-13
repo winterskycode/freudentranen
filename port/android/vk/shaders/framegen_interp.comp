@@ -27,7 +27,7 @@ vec2 motion(vec2 uv) {
     // Depth dilation: the motion of the nearest surface around. See-through things (lantern glass, flames, glow) write
     // no depth and would move with what is behind them, and the edges of thin things (poles) with the background.
     // Four texels a fetch (textureGather): the 2r x 2r texels from r before the pixel's texel to r - 1 after it.
-    int r = int(p.opt.z) >> 1;
+    int r = int(p.opt.z) >> 2;
     ivec2 c0 = at;
     for (int y = 1 - r; y < r + 1; y += 2) for (int x = 1 - r; x < r + 1; x += 2) {
         ivec2 q = c0 + ivec2(x, y);
@@ -49,7 +49,7 @@ bool splat_motion(vec2 uv, out vec2 m) {
     uint k = imageLoad(splat_depth, at).r;
     m = vec2(0.0);
     if (k == SPLAT_NONE) return false;
-    int r = int(p.opt.z) >> 1;
+    int r = int(p.opt.z) >> 2;
     ivec2 best = at;
     for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) {
         ivec2 c = clamp(at + ivec2(x, y), ivec2(0), ds - 1);
@@ -157,5 +157,10 @@ void main() {
     vec3 col = wsum > 1e-6 ? (wm * mc + ws * mix(bicubic(cur_pic, uv), bicubic(prev_pic, uv), wp) + wc * bicubic(cur_pic, uv)) / wsum : bicubic(cur_pic, uv);
     // <files>/fgdebug: red current picture, green scene motion, blue no motion
     if ((int(p.opt.z) & 1) != 0) col = mix(col, hole ? vec3(1.0, 0.0, 1.0) * wm / max(wsum, 1e-6) : vec3(wc, wm, ws) / max(wsum, 1e-6), 0.35);
-    imageStore(dst, o, vec4(col, 1.0));
+    // For the quality test (opt.z bit 2): how the scene's motion fared here, in alpha: 1 matched (under a quarter of the
+    // threshold), 0.75 unsure, 0.5 rejected (at or over the threshold: things moving in their shaders, wind, water), 0.25
+    // a hole, 0 its source off the previous picture's edge.
+    float cls = 1.0;
+    if ((int(p.opt.z) & 2) != 0) cls = !inside ? 0.0 : hole ? 0.25 : em_raw >= p.opt.y ? 0.5 : em_raw > 0.25 * p.opt.y ? 0.75 : 1.0;
+    imageStore(dst, o, vec4(col, cls));
 }
