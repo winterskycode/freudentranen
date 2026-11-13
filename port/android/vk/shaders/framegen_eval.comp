@@ -1,0 +1,51 @@
+// Frame generation evaluation (TOTK_FG_EVAL, nvn_vulkan_framegen.inc fg_eval): a generated picture against the real
+// frame of the same moment. Per pixel, the error is the channel mean of |generated - real| in 8-bit sRGB units; each
+// workgroup sums its pixels and adds them to the result buffer once:
+//   [0] error, [1] squared error / 16, [2] pixels off by more than 24, [3] error on edges, [4] edge pixels
+// (an edge: the real frame's luma differs from its right or lower neighbour by more than 16). An error map goes to diff
+// (error x 4, red where over 24).
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(push_constant) uniform P {
+    // x, y: the picture's size; z: 1 when the real frame is a linear scene (sRGB-encoded here)
+    vec4 size;
+} p;
+layout(set = 0, binding = 0) uniform sampler2D generated;
+layout(set = 0, binding = 1) uniform sampler2D truth;
+layout(set = 0, binding = 2, rgba8) uniform writeonly image2D diff;
+layout(set = 0, binding = 3, std430) buffer R { uint v[8]; } r;
+
+shared uint s_err, s_sq, s_big, s_edge_err, s_edge_n;
+
+vec3 enc(vec3 c) {
+    if (p.size.z == 0.0) return c;
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+vec3 real_at(ivec2 o) { return enc(texelFetch(truth, o, 0).rgb); }
+
+void main() {
+    if (gl_LocalInvocationIndex == 0) { s_err = 0u; s_sq = 0u; s_big = 0u; s_edge_err = 0u; s_edge_n = 0u; }
+    barrier();
+    ivec2 o = ivec2(gl_GlobalInvocationID.xy), sz = ivec2(p.size.xy);
+    if (o.x < sz.x && o.y < sz.y) {
+        vec3 g = texelFetch(generated, o, 0).rgb, t = real_at(o);
+        float e = dot(abs(g - t), vec3(255.0 / 3.0));
+        uint ei = uint(e + 0.5);
+        float lt = dot(t, vec3(0.299, 0.587, 0.114)) * 255.0;
+        float lx = dot(real_at(min(o + ivec2(1, 0), sz - 1)), vec3(0.299, 0.587, 0.114)) * 255.0;
+        float ly = dot(real_at(min(o + ivec2(0, 1), sz - 1)), vec3(0.299, 0.587, 0.114)) * 255.0;
+        bool edge = max(abs(lx - lt), abs(ly - lt)) > 16.0;
+        atomicAdd(s_err, ei);
+        atomicAdd(s_sq, (ei * ei + 8u) / 16u);
+        if (ei > 24u) atomicAdd(s_big, 1u);
+        if (edge) { atomicAdd(s_edge_err, ei); atomicAdd(s_edge_n, 1u); }
+        float m = clamp(e * 4.0 / 255.0, 0.0, 1.0);
+        imageStore(diff, o, ei > 24u ? vec4(1.0, m * 0.5, m * 0.5, 1.0) : vec4(m, m, m, 1.0));
+    }
+    barrier();
+    if (gl_LocalInvocationIndex == 0) {
+        atomicAdd(r.v[0], s_err); atomicAdd(r.v[1], s_sq); atomicAdd(r.v[2], s_big);
+        atomicAdd(r.v[3], s_edge_err); atomicAdd(r.v[4], s_edge_n);
+    }
+}

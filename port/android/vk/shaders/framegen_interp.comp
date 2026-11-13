@@ -16,7 +16,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(push_constant) uniform P {
     // previous view-projection * inverse(current view-projection)
     mat4 reproj;
-    // output w, h, 1/w, 1/h
+    // output w, h; z: the scale of object motion (1; 2 when the pair is two frames apart, TOTK_FG_EVAL)
     vec4 size;
     // x: clip-space y direction (+1), y: match threshold (mean abs difference per channel), z: 1 for the debug tint, plus
     // twice the depth dilation radius (in depth texels), w: 1 when the pictures are scenes (linear canvas values,
@@ -61,7 +61,7 @@ vec2 motion(vec2 uv) {
     if (p.scale.z != 0.0) {
         ivec2 os = textureSize(obj_motion, 0);
         vec4 o = texelFetch(obj_motion, clamp(ivec2(pu * vec2(os)), ivec2(0), os - 1), 0);
-        if (o.x > -9.0) return vec2(o.x * 0.5 + 0.5, 0.5 - 0.5 * p.opt.x * o.y) - pu;
+        if (o.x > -9.0) return (vec2(o.x * 0.5 + 0.5, 0.5 - 0.5 * p.opt.x * o.y) - pu) * p.size.z;
     }
     // The sky (and cleared depth) is at the far plane: reprojected there it follows the camera's turn, and the camera's
     // own movement is negligible against that distance. Left unmoved, the sky jumps once a game frame while the scene
@@ -96,7 +96,7 @@ vec3 bicubic(sampler2D s, vec2 uv) {
 float mismatch(vec2 uc, vec2 up) {
     float e = 0.0;
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-        vec2 d = vec2(x, y) * p.size.zw;
+        vec2 d = vec2(x, y) * (1.0 / p.size.xy);
         vec3 a = cur(uc + d), b = prv(up + d);
         e += abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b);
     }
@@ -106,7 +106,7 @@ float mismatch(vec2 uc, vec2 up) {
 void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;
-    vec2 uv = (vec2(o) + 0.5) * p.size.zw;
+    vec2 uv = (vec2(o) + 0.5) * (1.0 / p.size.xy);
     float t = p.scale.w, wp = clamp(1.0 - t, 0.0, 1.0) * p.tune.w;
     vec2 m = motion(uv);
     m = motion(uv - (1.0 - t) * m);

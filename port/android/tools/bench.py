@@ -36,6 +36,8 @@ FILES = f'/data/user/0/{APP}/files'
 # the 100% save, unpacked by --save-zip (switch_files/totk_save_files_*.zip)
 DEFAULT_SAVE = BENCH/'save-100/slot_00'
 ORBIT_S, RADIUS, HEIGHT, FOV = 30.0, 60.0, 35.0, 0.85
+# the point the camera looks at, metres above the scene's centre (--orbit changes all four)
+LOOK = 5.0
 # (scene, map point: a LocationMarker name, or "save" for where the save puts Link, hour of the day)
 SCENES = [('Great Sky Island', 'save', 12), ('Lookout Landing', 'ShopGeneral_BaseCamp', 11),
           ('Kakariko', 'ShopInn_Kakariko', 12), ('Korok Forest', 'ShopInn_Korok', 10), ('Zora Domain', 'ShopInn_Zora', 15),
@@ -218,13 +220,13 @@ def cpu_capped(limits):
 
 
 def orbit(center, t0=0.0):
-    """Keyframes of one lap around center: 12 points, the camera HEIGHT m up and RADIUS m out, looking at center + 5 m."""
+    """Keyframes of one lap around center: 12 points, the camera HEIGHT m up and RADIUS m out, looking at center + LOOK m."""
     cx, cy, cz = center
     keys = []
     for i in range(13):
         a = 2 * math.pi * i / 12
         pos = (cx + RADIUS * math.cos(a), cy + HEIGHT, cz + RADIUS * math.sin(a))
-        f = (cx - pos[0], cy + 5 - pos[1], cz - pos[2]); n = math.sqrt(sum(c * c for c in f)); f = tuple(c / n for c in f)
+        f = (cx - pos[0], cy + LOOK - pos[1], cz - pos[2]); n = math.sqrt(sum(c * c for c in f)); f = tuple(c / n for c in f)
         # right = fwd x up(0,1,0)
         r = (f[2], 0.0, -f[0]); n = math.sqrt(r[0] ** 2 + r[2] ** 2); r = (r[0] / n, 0.0, r[2] / n)
         up = (r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0])
@@ -352,6 +354,9 @@ def run(args):
     # what the device renders: no frame rate cap and no frame generation (a cap hides any gain in a scene that reaches
     # it: at 45 + LSFG x2 the Depths read 45.0 in every run), unless --as-played keeps the player's settings
     uncapped = [] if args.as_played else ['TOTK_UNCAPPED_HZ=240', 'TOTK_FRAMEGEN=0']
+    # frame generation's picture quality: at 60, each would-be generated picture against the real frame (fg_eval)
+    if args.fgeval:
+        uncapped += ['TOTK_UNCAPPED_HZ=60', 'TOTK_FRAMEGEN=60', 'TOTK_FG_EVAL=1'] + ([f'TOTK_FG_EVAL_DUMP={args.fgeval}'] if args.fgeval > 0 else [])
     env = [f'TOTK_PROFILE_DIR={FILES}/bench-profile', 'TOTK_SURVEY=1', 'TOTK_SLOT_OWNER=claude',
            f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', *uncapped, *args.env]
     # the frame profile times every draw and logs every frame, which costs the frame rate it measures: only on request
@@ -469,8 +474,18 @@ def run(args):
     for line in (out/'frames.txt').read_text().splitlines():
         p = line.split()
         if len(p) == 2: frames[int(p[0])] = int(p[1])
+    evals = []
+    for line in (out/'totk.log').read_text(errors='replace').splitlines():
+        m = re.search(r'\[fgeval\] frame=(\d+) mae=([\d.]+) rmse=([\d.]+) psnr=([\d.]+) big=([\d.]+) edge_mae=([\d.]+)', line)
+        if m: evals.append((int(m[1]), *map(float, m.groups()[1:])))
+    def fg_quality(a, b):
+        e = [x for x in evals if a <= x[0] <= b]
+        if not e: return {}
+        mse = sum(x[2] ** 2 for x in e) / len(e)
+        return dict(fg_evals=len(e), fg_mae=round(sum(x[1] for x in e) / len(e), 3), fg_psnr=round(10 * math.log10(255 ** 2 / mse), 2) if mse else 99.0,
+                    fg_big=round(sum(x[4] for x in e) / len(e), 3), fg_edge_mae=round(sum(x[5] for x in e) / len(e), 3))
     report = dict(label=args.label, env=args.env, uncapped=not args.as_played, save=str(save), before=before, after=after, clock=clock_ok,
-                  scenes=[dict(s, **(stats(frames, s['begin'], s['end']) or {})) for s in segments])
+                  scenes=[dict(s, **(stats(frames, s['begin'], s['end']) or {}), **fg_quality(s['begin'], s['end'])) for s in segments])
     allf = [s for s in report['scenes'] if 'frames' in s]
     report['total'] = dict(frames=sum(s['frames'] for s in allf), avg_fps=round(sum(s['frames'] for s in allf) / max(sum(s['seconds'] for s in allf), 1e-9), 1))
     pws = [s for s in allf if 'power_w' in s]
@@ -502,6 +517,10 @@ def print_report(r, out=None):
             print(f"{s['scene']}: threads {sc['threads_cores']:.2f} cores; {cl}{gp}")
             print('   ' + ', '.join(f'{n} {100 * v:.0f}%' for n, v in sc['top_threads'][:8]))
             print('   CPUs busy: ' + ' '.join(f"{c[3:]}:{100 * v:.0f}%" for c, v in sorted(sc['cpu_busy'].items())))
+    for s in r['scenes']:
+        if 'fg_evals' in s:
+            print(f"{s['scene']}: frame generation against the real frame: PSNR {s['fg_psnr']:.2f} dB, mean error {s['fg_mae']:.2f}, "
+                  f"edges {s['fg_edge_mae']:.2f}, {s['fg_big']:.2f}% of pixels off by more than 24 ({s['fg_evals']} comparisons)")
     if t.get('battery_help'):
         print(f"the battery supplied part of the power in {100 * t['battery_help']:.0f}% of the samples (USB alone was not enough)")
     print(f"before: {r['before']}\nafter:  {r['after']}" + (f'\n{out}' if out else ''))
@@ -524,6 +543,7 @@ def compare(a, b):
 
 
 def main():
+    global RADIUS, HEIGHT, ORBIT_S, LOOK
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--save', help=f'slot folder with progress.sav (default {DEFAULT_SAVE})')
     ap.add_argument('--save-zip', help='only unpack the 100%% save from this zip (TOTK Save Files/100%% Save/slot_00) as the default save')
@@ -546,8 +566,16 @@ def main():
     ap.add_argument('--gputrace', action='store_true', help='Turnip\'s GPU trace for 12 s of each flight, saved as gputrace-<scene>.csv')
     ap.add_argument('--sched', action='store_true', help='per scene: the game\'s threads\' CPU time, each CPU cluster\'s clock '
                     'residency, each CPU\'s and the GPU\'s busy share (where the power goes)')
+    ap.add_argument('--fgeval', type=int, nargs='?', const=-1, default=0, metavar='DUMP_EVERY',
+                    help='frame generation quality: at 60, each would-be Homemade picture against the real frame (TOTK_FG_EVAL); '
+                    'with a number, every n-th comparison also dumps its images to <files>/fgdump')
+    ap.add_argument('--orbit', metavar='R,H,S,LOOK', help=f'the camera\'s lap: radius and height in metres, seconds a lap, and '
+                    f'the height it looks at (default {RADIUS:g},{HEIGHT:g},{ORBIT_S:g},{LOOK:g}); 6,2,12,1.2 circles Link at head '
+                    'height at a steady stick pan')
     ap.add_argument('--compare', nargs=2, metavar='RUN')
     args = ap.parse_args()
+    if args.orbit:
+        RADIUS, HEIGHT, ORBIT_S, LOOK = (float(x) for x in args.orbit.split(','))
     if args.compare:
         return compare(*args.compare)
     if args.save_zip:

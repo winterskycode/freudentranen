@@ -560,6 +560,136 @@ static void fg_tune(float *push, int fill) {
         for (int i = 0; i < 5; i++) { const char *w = exp_word(live_exp, words[i], 0); if (w && ((*w >= '0' && *w <= '9') || *w == '.')) push[slot[i]] = (float)atof(w); }
     }
 }
+/* TOTK_FG_EVAL=1 (diagnostic; run the game at 60 with frame generation on, TOTK_FRAMEGEN=<rate>): nothing generated is
+   shown; every second game frame k, the picture frame generation would make between frames k-2 and k is compared with
+   the real frame k-1 (framegen_eval.comp), each a scene without the HUD. One "[fgeval]" line a comparison: the game frame,
+   mean error and RMS error in 8-bit units, PSNR, the share of pixels off by more than 24, and the mean error on the real
+   frame's edges (bench.py averages them per scene). Object motion spans one frame and is doubled for the two-frame gap.
+   TOTK_FG_EVAL_DUMP=<n>: every n-th comparison also writes the generated picture, the real frame and the error map to
+   <files>/fgdump (fg_dump_image). Results are read when the GPU is done, so the game is not held up. */
+uint64_t dm_nvn_frame_count(void) __attribute__((weak));
+static struct {
+    int on, dump_every; image_entry anchor, diff; int anchor_ok; uint64_t anchor_frame, made; float anchor_cam[84];
+    VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline;
+    struct { vk_buffer b; uint64_t ticket, frame, pixels; int busy; } ring[8];
+} ev = {.on = -1};
+/* fg_dispatch's object motion scale (framegen_interp.comp size.z): 2 while fg_eval spans two frames */
+static float fg_obj_scale = 1.0f;
+static int fg_eval_on(void) {
+    if (ev.on < 0) { const char *e = getenv("TOTK_FG_EVAL"), *d = getenv("TOTK_FG_EVAL_DUMP"); ev.on = e && atoi(e) > 0; ev.dump_every = d ? atoi(d) : 0;
+        if (ev.on) LOG("[fgeval] on: generated pictures between frames k-2 and k against the real frame k-1%s", ev.dump_every ? ", with dumps" : ""); }
+    return ev.on;
+}
+static void fg_eval_pipeline(void) {
+    if (ev.pipeline) return;
+    VkDescriptorSetLayoutBinding b[4];
+    for (int i = 0; i < 4; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+        .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 4, .pBindings = b};
+    VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &ev.set_layout));
+    VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 16};
+    VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &ev.set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
+    VK_CHECK(vkCreatePipelineLayout(device, &pl, NULL, &ev.layout));
+    static const uint32_t code[] = {
+#include "framegen_eval_spv.inc"
+    };
+    VkShaderModuleCreateInfo mi = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = sizeof code, .pCode = code};
+    VkShaderModule module; VK_CHECK(vkCreateShaderModule(device, &mi, NULL, &module));
+    VkComputePipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = module, .pName = "main"}, .layout = ev.layout};
+    VK_CHECK(pipeline_create_compute(&pi, &ev.pipeline)); vkDestroyShaderModule(device, module, NULL);
+    for (int i = 0; i < 8; i++) ev.ring[i].b = buffer_create(64);
+}
+/* the comparisons the GPU has finished: logged */
+static void fg_eval_poll(void) {
+    for (int i = 0; i < 8; i++) {
+        if (!ev.ring[i].busy || !mtl_wait(ev.ring[i].ticket, 0)) continue;
+        const uint32_t *v = (const uint32_t *)ev.ring[i].b.mapped; double n = (double)(ev.ring[i].pixels ? ev.ring[i].pixels : 1);
+        double mae = v[0] / n, mse = v[1] * 16.0 / n, psnr = mse > 0 ? 10.0 * log10(255.0 * 255.0 / mse) : 99.0;
+        LOG("[fgeval] frame=%llu mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f", (unsigned long long)ev.ring[i].frame, mae, sqrt(mse), psnr,
+            100.0 * v[2] / n, v[4] ? (double)v[3] / v[4] : 0.0, 100.0 * v[4] / n);
+        ev.ring[i].busy = 0;
+    }
+}
+/* The would-be generated picture between the anchor (frame k-2) and this frame k, against the previous frame's scene. */
+static void fg_eval(const tex_t *t, const int crop[4]) {
+    fg_eval_poll();
+    uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
+    if (crop && (crop[0] || crop[1])) return;
+    image_entry *scene = fg_scene(sw, sh, 0), *truth = scene ? fg_scene(sw, sh, 1) : NULL;
+    int slot = -1; for (int i = 0; i < 8; i++) if (!ev.ring[i].busy) { slot = i; break; }
+    int can = scene && truth && ev.anchor_ok && ev.anchor_frame + 2 == fg.frames && fg.cam_ok && fg.depth && slot >= 0 &&
+              ev.anchor.texture.d.width == scene->texture.d.width && ev.anchor.texture.d.height == scene->texture.d.height;
+    if (can) {
+        double dx = fg.cam[47] - ev.anchor_cam[47], dy = fg.cam[51] - ev.anchor_cam[51], dz = fg.cam[55] - ev.anchor_cam[55];
+        double turn = fg.cam[8] * ev.anchor_cam[8] + fg.cam[9] * ev.anchor_cam[9] + fg.cam[10] * ev.anchor_cam[10];
+        if (dx * dx + dy * dy + dz * dz > 64.0 || turn < cos(25.0 * M_PI / 180.0)) can = 0;
+    }
+    double vc[16], vp[16], ic[16], m[16];
+    if (can) { for (int i = 0; i < 16; i++) { vc[i] = fg.cam[12 + i]; vp[i] = ev.anchor_cam[12 + i]; } if (!fg_invert4(vc, ic)) can = 0; }
+    if (async_recording_owned) mtl_sub_commit();
+    mtl_sub_begin(); async_current->gen = 1;
+    if (can) {
+        for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) { double x = 0; for (int k = 0; k < 4; k++) x += vp[r * 4 + k] * ic[k * 4 + c]; m[r * 4 + c] = x; }
+        fg_pipeline(); fg_eval_pipeline();
+        fg_image(&fg.out, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        fg_image(&ev.diff, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        image_access(&ev.anchor, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+        image_access(scene, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+        image_access(fg.depth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+        image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        VkImageView depth_view = image_view_formatted(fg.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fg.depth->format)->view;
+        float push[32]; fg_tune(push, 0);
+        for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
+        push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
+        push[20] = 1.0f; push[22] = 2.0f * fg_dilation(); push[23] = 1.0f;
+        image_entry *obj = mo_image();
+        push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
+        fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
+        /* the comparison */
+        image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+        image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+        image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        vk_buffer *rb = &ev.ring[slot].b;
+        vkCmdFillBuffer(command, rb->buffer, 0, 64, 0);
+        VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
+        VkDescriptorImageInfo img[3] = {
+            {fg.linear, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
+            {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
+        VkDescriptorBufferInfo bi = {rb->buffer, 0, 64};
+        VkDescriptorSet set = descriptor_allocate(ev.set_layout);
+        VkWriteDescriptorSet w[4];
+        for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+            .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = i < 3 ? &img[i] : NULL, .pBufferInfo = i == 3 ? &bi : NULL};
+        vkUpdateDescriptorSets(device, 4, w, 0, NULL);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.pipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.layout, 0, 1, &set, 0, NULL);
+        float ep[4] = {(float)sw, (float)sh, 1.0f, 0.0f};
+        vkCmdPushConstants(command, ev.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof ep, ep);
+        vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
+        VkMemoryBarrier host = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
+        ev.ring[slot].frame = dm_nvn_frame_count ? dm_nvn_frame_count() : fg.frames; ev.ring[slot].pixels = (uint64_t)sw * sh; ev.ring[slot].busy = 1;
+        ev.made++;
+    }
+    /* this frame anchors the next comparison: every second frame */
+    int anchor = scene && fg.cam_ok && (!ev.anchor_ok || fg.frames >= ev.anchor_frame + 2);
+    if (anchor) {
+        fg_image(&ev.anchor, scene->format, scene->texture.d.width, scene->texture.d.height, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        image_access(scene, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+        image_access(&ev.anchor, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        VkImageCopy region = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {scene->texture.d.width, scene->texture.d.height, 1}};
+        vkCmdCopyImage(command, scene->image, VK_IMAGE_LAYOUT_GENERAL, ev.anchor.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+        memcpy(ev.anchor_cam, fg.cam, sizeof ev.anchor_cam); ev.anchor_frame = fg.frames; ev.anchor_ok = 1;
+    } else if (!scene || !fg.cam_ok) ev.anchor_ok = 0;
+    uint64_t ticket = mtl_sub_commit();
+    if (can) ev.ring[slot].ticket = ticket;
+    if (can && ev.dump_every > 0 && ev.made % (uint64_t)ev.dump_every == 0) {
+        fg_dump_image(&fg.out, sw, sh, "eval-generated"); fg_dump_image(truth, sw, sh, "eval-real"); fg_dump_image(&ev.diff, sw, sh, "eval-error");
+    }
+}
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
@@ -569,6 +699,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fsr_fg_enabled()) fsr_pipelines();
     /* from the first menu frame on, not three frames in */
     if (fg.menu || fg_menu_frame()) return NULL;
+    if (fg_eval_on()) { fg_eval(t, crop); return NULL; }
     /* the panel has no room for it (pace_refresh_poll) */
     if (pace_pictures_fit(nvn_frame_cap_get ? nvn_frame_cap_get() : 0) < 2) { fg.panel_limited++; return NULL; }
     if (!fg.cam_ok || !fg.prev_ok || !fg.depth || !fg.last_ok) { fg.no_input++; return NULL; }
@@ -639,7 +770,9 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImag
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
     /* push is a pointer here: the 32 floats of framegen_interp.comp's push constants */
-    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 32 * sizeof *push, push);
+    /* framegen_interp.comp computes its texel size from the size: slot 18 carries the object motion scale instead */
+    float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale; pc[19] = 0.0f;
+    vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
     vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
     }
 }
