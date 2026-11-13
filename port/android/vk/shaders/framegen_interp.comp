@@ -27,8 +27,8 @@ layout(push_constant) uniform P {
     vec4 scale;
     // x: how sharply the weights favour the better-matching candidate (the share of the threshold one weight unit
     // spans), y: scale of the current picture's own weight (the fallback where neither candidate matches), z: the scene
-    // motion's head start (a share of the threshold taken off its mismatch), w: the previous picture's share scale (1:
-    // blended by nearness in time, 0: the current picture alone, warped)
+    // motion's head start (a share of the threshold taken off its mismatch), w: the previous picture's share scale where
+    // the match is unsure (1: blended by nearness in time there, 0: the current picture alone, warped)
     vec4 tune;
 } p;
 layout(set = 0, binding = 0) uniform sampler2D prev_pic;
@@ -107,7 +107,7 @@ void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;
     vec2 uv = (vec2(o) + 0.5) * (1.0 / p.size.xy);
-    float t = p.scale.w, wp = clamp(1.0 - t, 0.0, 1.0) * p.tune.w;
+    float t = p.scale.w;
     vec2 m = motion(uv);
     m = motion(uv - (1.0 - t) * m);
     vec2 uc = uv - (1.0 - t) * m, up = uv + t * m;
@@ -115,7 +115,11 @@ void main() {
     // The scene motion is geometry (depth and camera, or the object's own), right for nearly everything that does not
     // move on its own; in fine detail (nets, railings, foliage) the patch comparison is noisy, and without a head start
     // the choice flips between candidates pixel by pixel and picture by picture: a shimmer along edges.
-    float em = inside ? max(mismatch(uc, up) - p.tune.z * p.opt.y, 0.0) : 1e9;
+    float em_raw = inside ? mismatch(uc, up) : 1e9, em = max(em_raw - p.tune.z * p.opt.y, 0.0);
+    // The previous picture blends in only where the scene motion's match is unsure (none below a quarter of the
+    // threshold, all of tune.w at it): blended everywhere, generated pictures lost 6-10% of the real frames' detail (a
+    // softness flicker at the game's rate); where the match is good, the current picture warped is the sharper answer.
+    float wp = clamp(1.0 - t, 0.0, 1.0) * p.tune.w * smoothstep(0.25, 1.0, em_raw / p.opt.y);
     float es = mismatch(uv, uv);
     // Soft choice: each candidate weighted by how well it matches, the current picture by the threshold. A hard pick
     // flips edge pixels (Link against a background that moves with the camera, water) between the three from one

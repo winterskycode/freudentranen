@@ -1,7 +1,9 @@
 // Frame generation evaluation (TOTK_FG_EVAL, nvn_vulkan_framegen.inc fg_eval): a generated picture against the real
 // frame of the same moment. Per pixel, the error is the channel mean of |generated - real| in 8-bit sRGB units; each
 // workgroup sums its pixels and adds them to the result buffer once:
-//   [0] error, [1] squared error / 16, [2] pixels off by more than 24, [3] error on edges, [4] edge pixels
+//   [0] error, [1] squared error / 16, [2] pixels off by more than 24, [3] error on edges, [4] edge pixels,
+//   [5] / [6] the generated / real picture's luma contrast with its right and lower neighbours (their ratio: how much
+//   of the real frame's detail the generated picture keeps; PSNR alone rewards blur)
 // (an edge: the real frame's luma differs from its right or lower neighbour by more than 16). An error map goes to diff
 // (error x 4, red where over 24).
 #version 450
@@ -15,7 +17,7 @@ layout(set = 0, binding = 1) uniform sampler2D truth;
 layout(set = 0, binding = 2, rgba8) uniform writeonly image2D diff;
 layout(set = 0, binding = 3, std430) buffer R { uint v[8]; } r;
 
-shared uint s_err, s_sq, s_big, s_edge_err, s_edge_n;
+shared uint s_err, s_sq, s_big, s_edge_err, s_edge_n, s_det_g, s_det_r;
 
 vec3 enc(vec3 c) {
     if (p.size.z == 0.0) return c;
@@ -23,19 +25,22 @@ vec3 enc(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 vec3 real_at(ivec2 o) { return enc(texelFetch(truth, o, 0).rgb); }
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)) * 255.0; }
 
 void main() {
-    if (gl_LocalInvocationIndex == 0) { s_err = 0u; s_sq = 0u; s_big = 0u; s_edge_err = 0u; s_edge_n = 0u; }
+    if (gl_LocalInvocationIndex == 0) { s_err = 0u; s_sq = 0u; s_big = 0u; s_edge_err = 0u; s_edge_n = 0u; s_det_g = 0u; s_det_r = 0u; }
     barrier();
     ivec2 o = ivec2(gl_GlobalInvocationID.xy), sz = ivec2(p.size.xy);
     if (o.x < sz.x && o.y < sz.y) {
         vec3 g = texelFetch(generated, o, 0).rgb, t = real_at(o);
         float e = dot(abs(g - t), vec3(255.0 / 3.0));
         uint ei = uint(e + 0.5);
-        float lt = dot(t, vec3(0.299, 0.587, 0.114)) * 255.0;
-        float lx = dot(real_at(min(o + ivec2(1, 0), sz - 1)), vec3(0.299, 0.587, 0.114)) * 255.0;
-        float ly = dot(real_at(min(o + ivec2(0, 1), sz - 1)), vec3(0.299, 0.587, 0.114)) * 255.0;
+        ivec2 ox = min(o + ivec2(1, 0), sz - 1), oy = min(o + ivec2(0, 1), sz - 1);
+        float lt = luma(t), lx = luma(real_at(ox)), ly = luma(real_at(oy));
+        float gt = luma(g), gx = luma(texelFetch(generated, ox, 0).rgb), gy = luma(texelFetch(generated, oy, 0).rgb);
         bool edge = max(abs(lx - lt), abs(ly - lt)) > 16.0;
+        atomicAdd(s_det_r, uint(abs(lx - lt) + abs(ly - lt) + 0.5));
+        atomicAdd(s_det_g, uint(abs(gx - gt) + abs(gy - gt) + 0.5));
         atomicAdd(s_err, ei);
         atomicAdd(s_sq, (ei * ei + 8u) / 16u);
         if (ei > 24u) atomicAdd(s_big, 1u);
@@ -46,6 +51,6 @@ void main() {
     barrier();
     if (gl_LocalInvocationIndex == 0) {
         atomicAdd(r.v[0], s_err); atomicAdd(r.v[1], s_sq); atomicAdd(r.v[2], s_big);
-        atomicAdd(r.v[3], s_edge_err); atomicAdd(r.v[4], s_edge_n);
+        atomicAdd(r.v[3], s_edge_err); atomicAdd(r.v[4], s_edge_n); atomicAdd(r.v[5], s_det_g); atomicAdd(r.v[6], s_det_r);
     }
 }

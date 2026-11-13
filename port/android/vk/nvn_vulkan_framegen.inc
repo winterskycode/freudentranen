@@ -531,17 +531,21 @@ static image_entry *mo_image(void);
 static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
 /* framegen_interp.comp's tuning (push[28..31]): TOTK_FG_SHARP (how sharply the better candidate wins), TOTK_FG_FALLBACK
    (scale of the unwarped current picture's weight), TOTK_FG_HEAD (the scene motion's head start, a share of the match
-   threshold), TOTK_FG_BLEND (scale of the previous picture's share; 0: the current picture alone, warped). Between two frames (fill 0) the defaults take the
-   current picture alone and nearly the best candidate only: blending the previous picture and the other candidates in
-   left generated pictures about 4.5% less edge detail than real ones (a sharpness flicker at half the rate), 1.2% this
-   way. Past the last frame (fill) the softer weights stay. The match threshold (push[21]) is set here too. */
+   threshold), TOTK_FG_BLEND (the previous picture's share where the match is unsure; 0: the current picture alone,
+   warped). Between two frames (fill 0) nearly the best candidate wins: softer weights, and the previous picture blended in
+   everywhere, cost generated pictures detail (a sharpness flicker at the game's rate). Past the last frame (fill) the
+   softer weights stay. The match threshold (push[21]) is set here too. Chosen with the quality test (bench.py --fgeval,
+   close orbit, Odin): head start 0 / 0.5 / 1 29.3 / 29.9 / 30.0 dB at Lookout Landing; the previous picture blended
+   everywhere 30.4 dB but 93.7% of the real frames' detail, only where unsure (with head start 1 and dilation 3)
+   30.8 dB and 97.3%, against 29.9 dB and 98.8% with neither. */
 /* The interpolation's depth dilation radius (TOTK_FG_DILATE, live word fgdilate=; 0 off): the nearest depth in the 2r x 2r
    depth texels around a pixel. Panning past the lanterns on the Odin (the generated picture against the halfway point of
-   its neighbours): error 9.4 at 0, 7.1 at 1, 6.1 at 2, 5.7 at 3, for 2.53, 2.63, 2.83 and 3.30 ms of GPU a picture. */
+   its neighbours): error 9.4 at 0, 7.1 at 1, 6.1 at 2, 5.7 at 3, for 2.53, 2.63, 2.83 and 3.30 ms of GPU a picture; the
+   quality test at Lookout Landing: 29.5 dB off, 29.9 at 2, 30.1 at 3. */
 static int fg_dilation(void) {
     static int env = -2; if (env == -2) { const char *e = getenv("TOTK_FG_DILATE"); env = e ? atoi(e) : -1; }
     const char *w = live_exp[0] ? exp_word(live_exp, "fgdilate=", 0) : NULL;
-    int r = w && *w >= '0' && *w <= '9' ? atoi(w) : env >= 0 ? env : 2;
+    int r = w && *w >= '0' && *w <= '9' ? atoi(w) : env >= 0 ? env : 3;
     return r < 0 ? 0 : r > 3 ? 3 : r;
 }
 static void fg_tune(float *push, int fill) {
@@ -550,8 +554,8 @@ static void fg_tune(float *push, int fill) {
         if (sharp || fallback || head || blend) LOG("[framegen] tuning: sharpness %s, fallback %s, head start %s, blend %s", sharp ? sharp : "default", fallback ? fallback : "default", head ? head : "default", blend ? blend : "default"); }
     push[28] = sharp ? (float)atof(sharp) : fill ? 0.35f : 0.05f;
     push[29] = fallback ? (float)atof(fallback) : 1.0f;
-    push[30] = head ? (float)atof(head) : 0.5f;
-    push[31] = blend ? (float)atof(blend) : fill ? 1.0f : 0.0f;
+    push[30] = head ? (float)atof(head) : 1.0f;
+    push[31] = blend ? (float)atof(blend) : 1.0f;
     push[21] = 0.08f;
     /* live words (<files>/exp.live) for A/B while playing: fgsharp=, fgfallback=, fghead=, fgblend=, fgthresh= (the
        match threshold, push[21]) */
@@ -563,8 +567,9 @@ static void fg_tune(float *push, int fill) {
 /* TOTK_FG_EVAL=1 (diagnostic; run the game at 60 with frame generation on, TOTK_FRAMEGEN=<rate>): nothing generated is
    shown; every second game frame k, the picture frame generation would make between frames k-2 and k is compared with
    the real frame k-1 (framegen_eval.comp), each a scene without the HUD. One "[fgeval]" line a comparison: the game frame,
-   mean error and RMS error in 8-bit units, PSNR, the share of pixels off by more than 24, and the mean error on the real
-   frame's edges (bench.py averages them per scene). Object motion spans one frame and is doubled for the two-frame gap.
+   mean error and RMS error in 8-bit units, PSNR, the share of pixels off by more than 24, the mean error on the real
+   frame's edges, and the detail the generated picture keeps (its local contrast over the real frame's; bench.py averages
+   them per scene). Object motion spans one frame and is doubled for the two-frame gap.
    TOTK_FG_EVAL_DUMP=<n>: every n-th comparison also writes the generated picture, the real frame and the error map to
    <files>/fgdump (fg_dump_image). Results are read when the GPU is done, so the game is not held up. */
 uint64_t dm_nvn_frame_count(void) __attribute__((weak));
@@ -606,8 +611,8 @@ static void fg_eval_poll(void) {
         if (!ev.ring[i].busy || !mtl_wait(ev.ring[i].ticket, 0)) continue;
         const uint32_t *v = (const uint32_t *)ev.ring[i].b.mapped; double n = (double)(ev.ring[i].pixels ? ev.ring[i].pixels : 1);
         double mae = v[0] / n, mse = v[1] * 16.0 / n, psnr = mse > 0 ? 10.0 * log10(255.0 * 255.0 / mse) : 99.0;
-        LOG("[fgeval] frame=%llu mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f", (unsigned long long)ev.ring[i].frame, mae, sqrt(mse), psnr,
-            100.0 * v[2] / n, v[4] ? (double)v[3] / v[4] : 0.0, 100.0 * v[4] / n);
+        LOG("[fgeval] frame=%llu mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f detail=%.4f", (unsigned long long)ev.ring[i].frame, mae, sqrt(mse), psnr,
+            100.0 * v[2] / n, v[4] ? (double)v[3] / v[4] : 0.0, 100.0 * v[4] / n, v[6] ? (double)v[5] / v[6] : 1.0);
         ev.ring[i].busy = 0;
     }
 }
