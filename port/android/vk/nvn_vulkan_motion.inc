@@ -132,9 +132,12 @@ static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, po
     { int moved = 0; for (unsigned n = 5; n <= 7 && !moved; n += 2) if (m->mv_banks >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
       /* TOTK_OBJ_MOTION=2 (diagnostic): still objects too, to check the camera half against the depth */
       if (!moved && mvs.motion < 2) { mo.still++; return; } }
-    /* a skinned object that moves less than TOTK_MO_MINPX pixels (default 0.5; 0: all) keeps the camera's motion: idle
-       animation, distant characters; its place (c7) changing always counts */
-    { static float minpx = -1; if (minpx < 0) { const char *e = getenv("TOTK_MO_MINPX"); minpx = e ? (float)atof(e) : 0.5f; if (minpx < 0) minpx = 0; }
+    /* TOTK_MO_MINPX=<pixels> (default 0: off): a skinned object that moves less than that keeps the camera's motion
+       (idle animation, distant characters); its place (c7) changing always counts. Off by default: the bones are
+       relative to a local origin, not the world the camera's depth row measures in, so mo_bone_px puts Link ~220
+       units away instead of a few; running Link, whom the camera follows, comes out still and ghosts in generated
+       pictures. Saving when on: about half of the motion passes' 0.6-1.3 ms a frame. */
+    { static float minpx = -1; if (minpx < 0) { const char *e = getenv("TOTK_MO_MINPX"); minpx = e ? (float)atof(e) : 0.0f; if (minpx < 0) minpx = 0; }
       int placed = 0; if (m->mv_banks >> 7 & 1) { p_bind_buf tmp; mv_prev_block(0, 4, &tmp); placed = mv_prev_changed; }
       if (minpx > 0 && mvs.motion < 2 && !placed && (m->mv_banks >> 5 & 1) && mo_bone_px() < minpx) { mo.small++; return; } }
     if (mo.n == mo.cap) { mo.cap = mo.cap ? mo.cap * 2 : 256; mo.d = realloc(mo.d, mo.cap * sizeof *mo.d); if (!mo.d) die("object motion list"); }
