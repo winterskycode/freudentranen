@@ -32,6 +32,8 @@ static struct {
        presents + 1 of the frame it was kept in */
     image_entry last; int last_ok; uint32_t last_w, last_h; uint64_t kept_at;
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline; VkSampler linear;
+    /* framegen_splat.comp: the motion field at the picture's time (nearest depth, its source texel) */
+    VkPipeline splat_pipeline; image_entry splat_depth, splat_src;
     VkDescriptorSetLayout hud_set_layout; VkPipelineLayout hud_layout; VkPipeline hud_pipeline;
     /* TOTK_LSFG: LSFG takes the scenes and the HUD too (nvn_vulkan_lsfg.inc) */
     int lsfg;
@@ -428,10 +430,10 @@ static int fg_invert4(const double a[16], double o[16]) {
 
 static void fg_pipeline(void) {
     if (fg.pipeline) return;
-    VkDescriptorSetLayoutBinding b[5];
-    for (int i = 0; i < 5; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    VkDescriptorSetLayoutBinding b[7];
+    for (int i = 0; i < 7; i++) b[i] = (VkDescriptorSetLayoutBinding){.binding = (uint32_t)i, .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
         .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT};
-    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 5, .pBindings = b};
+    VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 7, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(device, &li, NULL, &fg.set_layout));
     VkPushConstantRange push = {.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = 128};
     VkPipelineLayoutCreateInfo pl = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &fg.set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &push};
@@ -444,6 +446,12 @@ static void fg_pipeline(void) {
     VkComputePipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage = {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = module, .pName = "main"}, .layout = fg.layout};
     VK_CHECK(pipeline_create_compute(&pi, &fg.pipeline)); vkDestroyShaderModule(device, module, NULL);
+    static const uint32_t splat[] = {
+#include "framegen_splat_spv.inc"
+    };
+    mi.codeSize = sizeof splat; mi.pCode = splat;
+    VK_CHECK(vkCreateShaderModule(device, &mi, NULL, &module)); pi.stage.module = module;
+    VK_CHECK(pipeline_create_compute(&pi, &fg.splat_pipeline)); vkDestroyShaderModule(device, module, NULL);
     VkSamplerCreateInfo si = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .magFilter = VK_FILTER_LINEAR, .minFilter = VK_FILTER_LINEAR,
         .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE};
     VK_CHECK(vkCreateSampler(device, &si, NULL, &fg.linear));
@@ -528,7 +536,7 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 /* At the game's present, before the real picture: the generated picture (an image_entry to present), or NULL. */
 #include "nvn_vulkan_fsrfg.inc"
 static image_entry *mo_image(void);
-static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const image_entry *depth, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
 /* framegen_interp.comp's tuning (push[28..31]): TOTK_FG_SHARP (how sharply the better candidate wins), TOTK_FG_FALLBACK
    (scale of the unwarped current picture's weight), TOTK_FG_HEAD (the scene motion's head start, a share of the match
    threshold), TOTK_FG_BLEND (the previous picture's share where the match is unsure; 0: the current picture alone,
@@ -541,11 +549,14 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImag
 /* The interpolation's depth dilation radius (TOTK_FG_DILATE, live word fgdilate=; 0 off): the nearest depth in the 2r x 2r
    depth texels around a pixel. Panning past the lanterns on the Odin (the generated picture against the halfway point of
    its neighbours): error 9.4 at 0, 7.1 at 1, 6.1 at 2, 5.7 at 3, for 2.53, 2.63, 2.83 and 3.30 ms of GPU a picture; the
-   quality test at Lookout Landing: 29.5 dB off, 29.9 at 2, 30.1 at 3. */
+   quality test at Lookout Landing: 29.5 dB off, 29.9 at 2, 30.1 at 3. With the splatted motion field (fg_splat_on) the
+   window is (2r + 1) x (2r + 1) texels of that field, and 1 is the default: the paired quality test (TOTK_FG_EVAL_VARIANTS,
+   Odin, close orbit) 30.14 / 30.20 / 30.20 dB at Lookout Landing for 1 / 2 / 3, but 99.1 / 98.4 / 98.0% of the detail. */
+static int fg_splat_on(void);
 static int fg_dilation(void) {
     static int env = -2; if (env == -2) { const char *e = getenv("TOTK_FG_DILATE"); env = e ? atoi(e) : -1; }
     const char *w = live_exp[0] ? exp_word(live_exp, "fgdilate=", 0) : NULL;
-    int r = w && *w >= '0' && *w <= '9' ? atoi(w) : env >= 0 ? env : 3;
+    int r = w && *w >= '0' && *w <= '9' ? atoi(w) : env >= 0 ? env : fg_splat_on() ? 1 : 3;
     return r < 0 ? 0 : r > 3 ? 3 : r;
 }
 static void fg_tune(float *push, int fill) {
@@ -571,17 +582,28 @@ static void fg_tune(float *push, int fill) {
    frame's edges, and the detail the generated picture keeps (its local contrast over the real frame's; bench.py averages
    them per scene). Object motion spans one frame and is doubled for the two-frame gap.
    TOTK_FG_EVAL_DUMP=<n>: every n-th comparison also writes the generated picture, the real frame and the error map to
-   <files>/fgdump (fg_dump_image). Results are read when the GPU is done, so the game is not held up. */
+   <files>/fgdump (fg_dump_image). Results are read when the GPU is done, so the game is not held up.
+   TOTK_FG_EVAL_VARIANTS=<a>|<b>|...: each frame pair is generated once per variant, each a set of live words
+   (exp.live's, e.g. "fgsplat=0|fgsplat=1 fgdilate=0") in force for its picture, and compared with the same real frame
+   (the lines carry v=<index>): a paired comparison, free of the scene's run-to-run differences. No dumps then. */
 uint64_t dm_nvn_frame_count(void) __attribute__((weak));
 static struct {
     int on, dump_every; image_entry anchor, diff; int anchor_ok; uint64_t anchor_frame, made; float anchor_cam[84];
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline;
-    struct { vk_buffer b; uint64_t ticket, frame, pixels; int busy; } ring[8];
+    struct { vk_buffer b; uint64_t ticket, frame, pixels; int busy, variant; } ring[32];
+    char variants[8][128]; int nvariants;
 } ev = {.on = -1};
 /* fg_dispatch's object motion scale (framegen_interp.comp size.z): 2 while fg_eval spans two frames */
 static float fg_obj_scale = 1.0f;
 static int fg_eval_on(void) {
     if (ev.on < 0) { const char *e = getenv("TOTK_FG_EVAL"), *d = getenv("TOTK_FG_EVAL_DUMP"); ev.on = e && atoi(e) > 0; ev.dump_every = d ? atoi(d) : 0;
+        const char *v = getenv("TOTK_FG_EVAL_VARIANTS");
+        for (; v && *v && ev.nvariants < 8; ev.nvariants++) {
+            const char *bar = strchr(v, '|'); size_t n = bar ? (size_t)(bar - v) : strlen(v); if (n > 127) n = 127;
+            memcpy(ev.variants[ev.nvariants], v, n); ev.variants[ev.nvariants][n] = 0; v = bar ? bar + 1 : NULL;
+            LOG("[fgeval] variant %d: %s", ev.nvariants, ev.variants[ev.nvariants]);
+        }
+        if (ev.nvariants) ev.dump_every = 0;
         if (ev.on) LOG("[fgeval] on: generated pictures between frames k-2 and k against the real frame k-1%s", ev.dump_every ? ", with dumps" : ""); }
     return ev.on;
 }
@@ -603,15 +625,16 @@ static void fg_eval_pipeline(void) {
     VkComputePipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage = {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_COMPUTE_BIT, .module = module, .pName = "main"}, .layout = ev.layout};
     VK_CHECK(pipeline_create_compute(&pi, &ev.pipeline)); vkDestroyShaderModule(device, module, NULL);
-    for (int i = 0; i < 8; i++) ev.ring[i].b = buffer_create(64);
+    for (int i = 0; i < 32; i++) ev.ring[i].b = buffer_create(64);
 }
 /* the comparisons the GPU has finished: logged */
 static void fg_eval_poll(void) {
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 32; i++) {
         if (!ev.ring[i].busy || !mtl_wait(ev.ring[i].ticket, 0)) continue;
         const uint32_t *v = (const uint32_t *)ev.ring[i].b.mapped; double n = (double)(ev.ring[i].pixels ? ev.ring[i].pixels : 1);
         double mae = v[0] / n, mse = v[1] * 16.0 / n, psnr = mse > 0 ? 10.0 * log10(255.0 * 255.0 / mse) : 99.0;
-        LOG("[fgeval] frame=%llu mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f detail=%.4f", (unsigned long long)ev.ring[i].frame, mae, sqrt(mse), psnr,
+        char vt[16] = ""; if (ev.nvariants) snprintf(vt, sizeof vt, " v=%d", ev.ring[i].variant);
+        LOG("[fgeval] frame=%llu%s mae=%.3f rmse=%.3f psnr=%.2f big=%.3f edge_mae=%.3f edge=%.2f detail=%.4f", (unsigned long long)ev.ring[i].frame, vt, mae, sqrt(mse), psnr,
             100.0 * v[2] / n, v[4] ? (double)v[3] / v[4] : 0.0, 100.0 * v[4] / n, v[6] ? (double)v[5] / v[6] : 1.0);
         ev.ring[i].busy = 0;
     }
@@ -622,7 +645,9 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
     if (crop && (crop[0] || crop[1])) return;
     image_entry *scene = fg_scene(sw, sh, 0), *truth = scene ? fg_scene(sw, sh, 1) : NULL;
-    int slot = -1; for (int i = 0; i < 8; i++) if (!ev.ring[i].busy) { slot = i; break; }
+    int nv = ev.nvariants ? ev.nvariants : 1, slots[8], got = 0;
+    for (int i = 0; i < 32 && got < nv; i++) if (!ev.ring[i].busy) slots[got++] = i;
+    int slot = got == nv ? slots[0] : -1;
     int can = scene && truth && ev.anchor_ok && ev.anchor_frame + 2 == fg.frames && fg.cam_ok && fg.depth && slot >= 0 &&
               ev.anchor.texture.d.width == scene->texture.d.width && ev.anchor.texture.d.height == scene->texture.d.height;
     if (can) {
@@ -637,46 +662,53 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
     if (can) {
         for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) { double x = 0; for (int k = 0; k < 4; k++) x += vp[r * 4 + k] * ic[k * 4 + c]; m[r * 4 + c] = x; }
         fg_pipeline(); fg_eval_pipeline();
-        fg_image(&fg.out, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        fg_image(&ev.diff, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        image_access(&ev.anchor, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-        image_access(scene, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-        image_access(fg.depth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-        image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
-        VkImageView depth_view = image_view_formatted(fg.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fg.depth->format)->view;
-        float push[32]; fg_tune(push, 0);
-        for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
-        push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
-        push[20] = 1.0f; push[22] = 2.0f * fg_dilation(); push[23] = 1.0f;
-        image_entry *obj = mo_image();
-        push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
-        fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
-        /* the comparison */
-        image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-        image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-        image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
-        vk_buffer *rb = &ev.ring[slot].b;
-        vkCmdFillBuffer(command, rb->buffer, 0, 64, 0);
-        VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
-        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
-        VkDescriptorImageInfo img[3] = {
-            {fg.linear, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
-            {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
-        VkDescriptorBufferInfo bi = {rb->buffer, 0, 64};
-        VkDescriptorSet set = descriptor_allocate(ev.set_layout);
-        VkWriteDescriptorSet w[4];
-        for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
-            .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pImageInfo = i < 3 ? &img[i] : NULL, .pBufferInfo = i == 3 ? &bi : NULL};
-        vkUpdateDescriptorSets(device, 4, w, 0, NULL);
-        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.pipeline);
-        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.layout, 0, 1, &set, 0, NULL);
-        float ep[4] = {(float)sw, (float)sh, 1.0f, 0.0f};
-        vkCmdPushConstants(command, ev.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof ep, ep);
-        vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
-        VkMemoryBarrier host = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
-        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
-        ev.ring[slot].frame = dm_nvn_frame_count ? dm_nvn_frame_count() : fg.frames; ev.ring[slot].pixels = (uint64_t)sw * sh; ev.ring[slot].busy = 1;
+        char saved[sizeof live_exp]; memcpy(saved, live_exp, sizeof saved);
+        for (int v = 0; v < nv; v++) {
+            slot = slots[v];
+            if (ev.nvariants) { memset(live_exp, 0, sizeof live_exp); snprintf(live_exp, sizeof live_exp, "%s", ev.variants[v]); }
+            fg_image(&fg.out, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+            fg_image(&ev.diff, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+            image_access(&ev.anchor, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            image_access(scene, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            image_access(fg.depth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+            VkImageView depth_view = image_view_formatted(fg.depth, VK_IMAGE_VIEW_TYPE_2D, (VkImageSubresourceRange){VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}, (VkComponentMapping){0}, fg.depth->format)->view;
+            float push[32]; fg_tune(push, 0);
+            for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
+            push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
+            push[20] = 1.0f; push[22] = 2.0f * fg_dilation(); push[23] = 1.0f;
+            image_entry *obj = mo_image();
+            push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
+            fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, fg.depth, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
+            /* the comparison */
+            image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+            vk_buffer *rb = &ev.ring[slot].b;
+            vkCmdFillBuffer(command, rb->buffer, 0, 64, 0);
+            VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
+            VkDescriptorImageInfo img[3] = {
+                {fg.linear, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
+                {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
+            VkDescriptorBufferInfo bi = {rb->buffer, 0, 64};
+            VkDescriptorSet set = descriptor_allocate(ev.set_layout);
+            VkWriteDescriptorSet w[4];
+            for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+                .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pImageInfo = i < 3 ? &img[i] : NULL, .pBufferInfo = i == 3 ? &bi : NULL};
+            vkUpdateDescriptorSets(device, 4, w, 0, NULL);
+            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.pipeline);
+            vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.layout, 0, 1, &set, 0, NULL);
+            float ep[4] = {(float)sw, (float)sh, 1.0f, 0.0f};
+            vkCmdPushConstants(command, ev.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof ep, ep);
+            vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
+            VkMemoryBarrier host = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
+            ev.ring[slot].frame = dm_nvn_frame_count ? dm_nvn_frame_count() : fg.frames; ev.ring[slot].pixels = (uint64_t)sw * sh; ev.ring[slot].busy = 1;
+            ev.ring[slot].variant = v;
+        }
+        memcpy(live_exp, saved, sizeof saved);
         ev.made++;
     }
     /* this frame anchors the next comparison: every second frame */
@@ -690,7 +722,7 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
         memcpy(ev.anchor_cam, fg.cam, sizeof ev.anchor_cam); ev.anchor_frame = fg.frames; ev.anchor_ok = 1;
     } else if (!scene || !fg.cam_ok) ev.anchor_ok = 0;
     uint64_t ticket = mtl_sub_commit();
-    if (can) ev.ring[slot].ticket = ticket;
+    if (can) for (int v = 0; v < nv; v++) ev.ring[slots[v]].ticket = ticket;
     if (can && ev.dump_every > 0 && ev.made % (uint64_t)ev.dump_every == 0) {
         fg_dump_image(&fg.out, sw, sh, "eval-generated"); fg_dump_image(truth, sw, sh, "eval-real"); fg_dump_image(&ev.diff, sw, sh, "eval-error");
     }
@@ -747,7 +779,7 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* TOTK_FG_T (diagnostic): the generated picture's time instead of the midpoint */
     { static float ft = -1; if (ft < 0) { const char *e = getenv("TOTK_FG_T"); ft = e ? (float)atof(e) : 0.0f; } if (ft > 0) push[27] = ft; }
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
-    else fg_dispatch(a, b, obj ? obj : fin, depth_view, push, sw, sh);
+    else fg_dispatch(a, b, obj ? obj : fin, fg.depth, depth_view, push, sw, sh);
     if (scene_prev) fg_hud_composite(&fg.out, fin, scene, sw, sh);
     mtl_sub_commit();
     fg.made++;
@@ -758,28 +790,66 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
         if (scene) fg_dump_image(scene, sw, sh, "scene"); if (scene_prev) fg_dump_image(scene_prev, sw, sh, "scene-prev"); }
     return &fg.out;
 }
+/* framegen_splat.comp's motion field (TOTK_FG_SPLAT=0 or the live word fgsplat=0: off, the motion of what this frame
+   shows at each pixel instead). TOTK_FG_HOLE (live word fghole=): a hole's motion candidate's score, a share of the match
+   threshold (lower: holes filled from the previous picture win more often). The paired quality test (Odin, close orbit),
+   the old motion (dilation 3) against the splatted field (dilation 1): Lookout Landing 29.35-29.49 against 30.02-30.30 dB,
+   pixels off by more than 24 2.2-2.3% against 1.9-2.0%, detail kept 97.4-98.1% against 99.1-99.7%; Kakariko 33.2-34.3
+   against 33.5-34.6 dB. Hole scores 0.1 / 0.25 / 0.5 / 1 change it by under 0.15 dB (1 the worst). */
+static int fg_splat_on(void) {
+    static int env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_SPLAT"); env = !e || atoi(e) != 0; }
+    const char *w = live_exp[0] ? exp_word(live_exp, "fgsplat=", 0) : NULL;
+    return w && *w >= '0' && *w <= '9' ? atoi(w) != 0 : env;
+}
 /* The generation pass into fg.out: pictures a (previous) and b (current), the object motion image (or any image when
-   push[26] says there is none), the depth view, and the push constants (framegen_interp.comp). */
-static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh) {
-    {
-    VkDescriptorImageInfo img[5] = {
+   push[26] says there is none), the depth and its view, and the push constants (framegen_interp.comp). With the splatted
+   motion field, two framegen_splat.comp passes over the depth texels go first. */
+static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const image_entry *depth, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh) {
+    uint32_t dw = depth->texture.d.width, dh = depth->texture.d.height;
+    int splat = fg_splat_on();
+    fg_image(&fg.splat_depth, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    fg_image(&fg.splat_src, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT);
+    VkDescriptorImageInfo img[7] = {
         {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}};
+        {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(&fg.splat_depth, NULL, fg.splat_depth.format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(&fg.splat_src, NULL, fg.splat_src.format), VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorSet set = descriptor_allocate(fg.set_layout);
-    VkWriteDescriptorSet w[5];
-    for (int i = 0; i < 5; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+    VkWriteDescriptorSet w[7];
+    for (int i = 0; i < 7; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
         .descriptorType = i < 4 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &img[i]};
-    vkUpdateDescriptorSets(device, 5, w, 0, NULL);
+    vkUpdateDescriptorSets(device, 7, w, 0, NULL);
+    /* framegen_interp.comp computes its texel size from the size: slot 18 carries the object motion scale instead, slot 19
+       the splat pass (framegen_splat.comp) or whether the splatted field is used (framegen_interp.comp) */
+    float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale;
+    VkMemoryBarrier rw = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+    if (splat) {
+        /* the previous picture's passes may still read the field */
+        VkMemoryBarrier clear = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &clear, 0, NULL, 0, NULL);
+        VkClearColorValue none = {.uint32 = {0xffffffffu, 0, 0, 0}};
+        VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdClearColorImage(command, fg.splat_depth.image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
+        VkMemoryBarrier cleared = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &cleared, 0, NULL, 0, NULL);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.splat_pipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
+        for (int pass = 0; pass < 2; pass++) {
+            pc[19] = (float)pass;
+            vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
+            vkCmdDispatch(command, (dw + 7) / 8, (dh + 7) / 8, 1);
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &rw, 0, NULL, 0, NULL);
+        }
+    }
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
-    /* push is a pointer here: the 32 floats of framegen_interp.comp's push constants */
-    /* framegen_interp.comp computes its texel size from the size: slot 18 carries the object motion scale instead */
-    float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale; pc[19] = 0.0f;
+    if (splat) { static float env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_HOLE"); env = e ? (float)atof(e) : 0.25f; }
+        const char *hw = live_exp[0] ? exp_word(live_exp, "fghole=", 0) : NULL; float hole = hw && ((*hw >= '0' && *hw <= '9') || *hw == '.') ? (float)atof(hw) : env;
+        pc[19] = hole < 0.01f ? 0.01f : hole; } else pc[19] = 0.0f;
     vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
     vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
-    }
 }
 
 /* TOTK_FRAMEGEN_DUMP: when <files>/fgdump.trigger exists, the next generated picture and the real picture after it are

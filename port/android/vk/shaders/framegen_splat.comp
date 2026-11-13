@@ -1,0 +1,25 @@
+// Frame generation's motion field at the picture's time t (framegen_interp.comp reads it): every depth texel of this frame
+// moves to where its surface is at t (pos + (1 - t) motion) and lands on the 2x2 texels around that point; where several
+// land on one texel, the nearest wins. Two passes over the depth texels (size.w): 0 keeps the nearest depth per texel
+// (atomic minimum of the float bits, which order like the values for depths >= 0), 1 writes the winner's source texel.
+// Texels nothing lands on keep all ones: what is there at t was hidden in this frame (disocclusion).
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x = 8, local_size_y = 8) in;
+#include "framegen_common.glsl"
+
+void main() {
+    ivec2 q = ivec2(gl_GlobalInvocationID.xy), ds = textureSize(depth, 0);
+    if (q.x >= ds.x || q.y >= ds.y) return;
+    float d = min(texelFetch(depth, q, 0).r, 1.0);
+    vec2 pu = (vec2(q) + 0.5) / vec2(ds);
+    vec2 at = (pu + (1.0 - p.scale.w) * texel_motion(pu, d)) * vec2(ds) - 0.5;
+    ivec2 b = ivec2(floor(at));
+    uint key = floatBitsToUint(d), src = uint(q.x) | (uint(q.y) << 16);
+    for (int i = 0; i < 4; i++) {
+        ivec2 c = b + ivec2(i & 1, i >> 1);
+        if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, ds))) continue;
+        if (p.size.w == 0.0) imageAtomicMin(splat_depth, c, key);
+        else if (imageLoad(splat_depth, c).r == key) imageStore(splat_src, c, uvec4(src));
+    }
+}

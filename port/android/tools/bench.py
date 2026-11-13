@@ -476,15 +476,23 @@ def run(args):
         if len(p) == 2: frames[int(p[0])] = int(p[1])
     evals = []
     for line in (out/'totk.log').read_text(errors='replace').splitlines():
-        m = re.search(r'\[fgeval\] frame=(\d+) mae=([\d.]+) rmse=([\d.]+) psnr=([\d.]+) big=([\d.]+) edge_mae=([\d.]+) edge=[\d.]+(?: detail=([\d.]+))?', line)
-        if m: evals.append((int(m[1]), *(float(x) if x else 1.0 for x in m.groups()[1:])))
+        m = re.search(r'\[fgeval\] frame=(\d+)(?: v=(\d+))? mae=([\d.]+) rmse=([\d.]+) psnr=([\d.]+) big=([\d.]+) edge_mae=([\d.]+) edge=[\d.]+(?: detail=([\d.]+))?', line)
+        if m: evals.append((int(m[1]), *(float(x) if x else 1.0 for x in m.groups()[2:]), int(m[2] or 0)))
     def fg_quality(a, b):
+        """The comparisons in frames a..b; with TOTK_FG_EVAL_VARIANTS, the first variant's at the top level and every
+        variant's in fg_variants (frames every variant was compared on only, so the variants see the same pictures)."""
+        def summary(e):
+            mse = sum(x[2] ** 2 for x in e) / len(e)
+            return dict(fg_evals=len(e), fg_mae=round(sum(x[1] for x in e) / len(e), 3), fg_psnr=round(10 * math.log10(255 ** 2 / mse), 2) if mse else 99.0,
+                        fg_big=round(sum(x[4] for x in e) / len(e), 3), fg_edge_mae=round(sum(x[5] for x in e) / len(e), 3),
+                        fg_detail=round(sum(x[6] for x in e) / len(e), 4))
         e = [x for x in evals if a <= x[0] <= b]
         if not e: return {}
-        mse = sum(x[2] ** 2 for x in e) / len(e)
-        return dict(fg_evals=len(e), fg_mae=round(sum(x[1] for x in e) / len(e), 3), fg_psnr=round(10 * math.log10(255 ** 2 / mse), 2) if mse else 99.0,
-                    fg_big=round(sum(x[4] for x in e) / len(e), 3), fg_edge_mae=round(sum(x[5] for x in e) / len(e), 3),
-                    fg_detail=round(sum(x[6] for x in e) / len(e), 4))
+        variants = sorted({x[7] for x in e})
+        if len(variants) == 1: return summary(e)
+        common = set.intersection(*({x[0] for x in e if x[7] == v} for v in variants))
+        per = [summary([x for x in e if x[7] == v and x[0] in common]) for v in variants]
+        return dict(per[0], fg_variants=per)
     report = dict(label=args.label, env=args.env, uncapped=not args.as_played, save=str(save), before=before, after=after, clock=clock_ok,
                   scenes=[dict(s, **(stats(frames, s['begin'], s['end']) or {}), **fg_quality(s['begin'], s['end'])) for s in segments])
     allf = [s for s in report['scenes'] if 'frames' in s]
@@ -523,6 +531,9 @@ def print_report(r, out=None):
             print(f"{s['scene']}: frame generation against the real frame: PSNR {s['fg_psnr']:.2f} dB, mean error {s['fg_mae']:.2f}, "
                   f"edges {s['fg_edge_mae']:.2f}, {s['fg_big']:.2f}% of pixels off by more than 24, detail kept {100 * s.get('fg_detail', 1):.1f}% "
                   f"({s['fg_evals']} comparisons)")
+            for i, v in enumerate(s.get('fg_variants', [])):
+                print(f"  variant {i}: PSNR {v['fg_psnr']:.2f} dB, mean error {v['fg_mae']:.2f}, edges {v['fg_edge_mae']:.2f}, "
+                      f"{v['fg_big']:.2f}% off by more than 24, detail kept {100 * v['fg_detail']:.1f}%")
     if t.get('battery_help'):
         print(f"the battery supplied part of the power in {100 * t['battery_help']:.0f}% of the samples (USB alone was not enough)")
     print(f"before: {r['before']}\nafter:  {r['after']}" + (f'\n{out}' if out else ''))

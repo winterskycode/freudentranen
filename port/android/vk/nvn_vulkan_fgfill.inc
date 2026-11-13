@@ -77,7 +77,7 @@ static image_entry *fill_make(double tval) {
     push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
     push[20] = 1.0f; push[22] = 2.0f * fg_dilation(); push[23] = 1.0f;
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = fill.has_motion ? 1.0f : 0.0f; push[27] = (float)tval;
-    fg_dispatch(a, b, fill.has_motion ? &fill.motion : &fg.last, depth_view, push, sw, sh);
+    fg_dispatch(a, b, fill.has_motion ? &fill.motion : &fg.last, &fill.depth, depth_view, push, sw, sh);
     /* this frame's HUD alone: a fill picture shows the last game frame's HUD where it stands */
     if (!dump) fg_hud_pass(&fg.out, &fg.last, b, NULL, NULL, sw, sh, 0);
     mtl_sub_commit();
