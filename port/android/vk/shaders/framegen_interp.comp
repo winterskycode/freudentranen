@@ -28,7 +28,7 @@ vec2 motion(vec2 uv) {
     // Depth dilation: the motion of the nearest surface around. See-through things (lantern glass, flames, glow) write
     // no depth and would move with what is behind them, and the edges of thin things (poles) with the background.
     // Four texels a fetch (textureGather): the 2r x 2r texels from r before the pixel's texel to r - 1 after it.
-    int r = int(p.opt.z) >> 4;
+    int r = (int(p.opt.z) >> 4) & 15;
     ivec2 c0 = at;
     for (int y = 1 - r; y < r + 1; y += 2) for (int x = 1 - r; x < r + 1; x += 2) {
         ivec2 q = c0 + ivec2(x, y);
@@ -50,7 +50,7 @@ bool splat_motion(vec2 uv, out vec2 m, out float d) {
     uint k = imageLoad(splat_depth, at).r;
     m = vec2(0.0); d = 1.0;
     if (k == SPLAT_NONE) return false;
-    int r = int(p.opt.z) >> 4;
+    int r = (int(p.opt.z) >> 4) & 15;
     ivec2 best = at;
     for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++) {
         ivec2 c = clamp(at + ivec2(x, y), ivec2(0), ds - 1);
@@ -59,7 +59,7 @@ bool splat_motion(vec2 uv, out vec2 m, out float d) {
     }
     uint s = imageLoad(splat_src, best).r;
     d = uintBitsToFloat(k);
-    m = texel_motion((vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(ds), d);
+    m = texel_motion((vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(textureSize(depth, 0)), d);
     return true;
 }
 // Whether the previous picture shows something nearer than depth d at up: a surface of this frame that covered up then
@@ -98,7 +98,7 @@ bool hole_motion(vec2 uv, out vec2 m, out bool crack, out float d_far, out vec2 
     crack = df > 0.0 && dn < df * 1.15;
     if (crack) { best = nearest; far = near; }
     uint s = imageLoad(splat_src, best).r;
-    far_src = (vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(ds); d_far = uintBitsToFloat(far);
+    far_src = (vec2(uvec2(s & 0xffffu, s >> 16)) + 0.5) / vec2(textureSize(depth, 0)); d_far = uintBitsToFloat(far);
     m = texel_motion(far_src, d_far);
     return true;
 }
@@ -107,8 +107,10 @@ vec3 enc(vec3 c) {
     c = clamp(c, 0.0, 1.0);
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
-vec3 cur(vec2 uv) { return enc(textureLod(cur_pic, uv * p.scale.xy, 0.0).rgb); }
-vec3 prv(vec2 uv) { return enc(textureLod(prev_pic, uv * p.scale.xy, 0.0).rgb); }
+// The patch comparisons' encoding: a square root (gamma 2) for the sRGB curve, a score only
+vec3 enc_cmp(vec3 c) { return p.opt.w == 0.0 ? c : sqrt(clamp(c, 0.0, 1.0)); }
+vec3 cur(vec2 uv) { return enc_cmp(textureLod(cur_pic, uv * p.scale.xy, 0.0).rgb); }
+vec3 prv(vec2 uv) { return enc_cmp(textureLod(prev_pic, uv * p.scale.xy, 0.0).rgb); }
 // Catmull-Rom (bicubic) sampling for the output's colours: a bilinear sample at a fractional position softens detail, and
 // generated pictures one in two softer than the real ones flicker in sharpness (about 5% less edge energy measured with
 // bilinear). Five bilinear fetches (the corners of the 4x4 footprint dropped), in the picture's own texels.
@@ -122,25 +124,26 @@ vec3 bicubic(sampler2D s, vec2 uv) {
     float n = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
     return enc(max(r / n, vec3(0.0)));
 }
-// mean absolute difference of 3x3 patches around uc (current) and up (previous)
+// Mean absolute difference of the 3x3 texel patches around uc (current) and up (previous), as four bilinear samples at
+// the pixel's corners (each the mean of 2x2 texels): 8 fetches instead of 18. With the square root for the curve, the
+// pass took 0.5 ms less a picture (Odin, ~660 MHz) for -0.02 dB in the paired quality test (close orbit).
 float mismatch(vec2 uc, vec2 up) {
     float e = 0.0;
-    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-        vec2 d = vec2(x, y) * (1.0 / p.size.xy);
+    for (int i = 0; i < 4; i++) {
+        vec2 d = (vec2(i & 1, i >> 1) - 0.5) * (1.0 / p.size.xy);
         vec3 a = cur(uc + d), b = prv(up + d);
         e += abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b);
     }
-    return e / 27.0;
+    return e / 12.0;
 }
 
-// The no-motion candidate's patch comparison, mismatch(uv, uv), from a tile: at the pixel centres both pictures' samples
-// are their texels, so the work group's 10x10 texels of per-texel differences are fetched once and summed in 3x3s (one
-// pair of fetches a pixel instead of nine).
-shared float still_diff[10][10];
+// The no-motion candidate's patch comparison, mismatch(uv, uv), from a tile: at the pixel centres the corner samples
+// are means of the pictures' texels, so the work group's 10x10 texels are fetched once, and the 9x9 corners' differences
+// worked out once and shared by the four pixels around each.
+shared vec3 tile_cur[10][10], tile_prev[10][10];
+shared float corner_diff[9][9];
 float still_mismatch(ivec2 l) {
-    float e = 0.0;
-    for (int y = 0; y < 3; y++) for (int x = 0; x < 3; x++) e += still_diff[l.y + y][l.x + x];
-    return e / 27.0;
+    return (corner_diff[l.y][l.x] + corner_diff[l.y][l.x + 1] + corner_diff[l.y + 1][l.x] + corner_diff[l.y + 1][l.x + 1]) / 12.0;
 }
 
 void main() {
@@ -148,8 +151,14 @@ void main() {
     ivec2 ts = textureSize(cur_pic, 0);
     for (int i = int(gl_LocalInvocationIndex); i < 100; i += 64) {
         ivec2 q = clamp(base + ivec2(i % 10, i / 10), ivec2(0), ts - 1);
-        vec3 a = enc(texelFetch(cur_pic, q, 0).rgb), b = enc(texelFetch(prev_pic, q, 0).rgb);
-        still_diff[i / 10][i % 10] = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b);
+        tile_cur[i / 10][i % 10] = texelFetch(cur_pic, q, 0).rgb; tile_prev[i / 10][i % 10] = texelFetch(prev_pic, q, 0).rgb;
+    }
+    barrier();
+    for (int i = int(gl_LocalInvocationIndex); i < 81; i += 64) {
+        int x = i % 9, y = i / 9;
+        vec3 a = enc_cmp(0.25 * (tile_cur[y][x] + tile_cur[y][x + 1] + tile_cur[y + 1][x] + tile_cur[y + 1][x + 1]));
+        vec3 b = enc_cmp(0.25 * (tile_prev[y][x] + tile_prev[y][x + 1] + tile_prev[y + 1][x] + tile_prev[y + 1][x + 1]));
+        corner_diff[y][x] = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b);
     }
     barrier();
     if (o.x >= int(p.size.x) || o.y >= int(p.size.y)) return;

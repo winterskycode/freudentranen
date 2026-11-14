@@ -35,7 +35,7 @@ static struct {
     image_entry last; int last_ok; uint32_t last_w, last_h; uint64_t kept_at;
     VkDescriptorSetLayout set_layout; VkPipelineLayout layout; VkPipeline pipeline; VkSampler linear;
     /* framegen_splat.comp: the motion field at the picture's time (nearest depth, its source texel) */
-    VkPipeline splat_pipeline; image_entry splat_depth, splat_src, splat_prev;
+    VkPipeline splat_pipeline; image_entry splat_depth, splat_src, splat_prev, half_depth, half_src;
     VkDescriptorSetLayout hud_set_layout; VkPipelineLayout hud_layout; VkPipeline hud_pipeline;
     /* TOTK_LSFG: LSFG takes the scenes and the HUD too (nvn_vulkan_lsfg.inc) */
     int lsfg;
@@ -586,6 +586,15 @@ static void fg_stamp(int k);
    window is (2r + 1) x (2r + 1) texels of that field, and 1 is the default: the paired quality test (TOTK_FG_EVAL_VARIANTS,
    Odin, close orbit) 30.14 / 30.20 / 30.20 dB at Lookout Landing for 1 / 2 / 3, but 99.1 / 98.4 / 98.0% of the detail. */
 static int fg_splat_on(void);
+/* framegen_splat.comp's field at half the depth's size, each texel the nearest of 2x2 depth texels (TOTK_FG_FIELD,
+   live word fgfield=: half, the default, or full): a quarter of the atomic writes. Odin, 1600x896 depth at ~660 MHz:
+   the splat passes 3.3 -> 1.2 ms a picture; the paired quality test (close orbit) +0.04 / -0.05 dB at Lookout Landing /
+   Kakariko, 97.4% of the real frames' detail against 97.6%. */
+static int fg_field_half(void) {
+    static int env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_FIELD"); env = !e || strcmp(e, "full") != 0; }
+    const char *w = live_exp[0] ? exp_word(live_exp, "fgfield=", 0) : NULL;
+    return w ? strncmp(w, "full", 4) != 0 : env;
+}
 /* framegen_interp.comp: where the previous frame showed something nearer in front, the current picture alone
    (TOTK_FG_HIDDEN, live word fghidden=). Most of the motion the quality test rejected was this: the background beside a
    near post the camera passes. The paired quality test (Odin, close orbit), on against off: +0.08 / +0.05 dB at Lookout
@@ -886,16 +895,20 @@ static void fg_stamp(int k) {
 static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const image_entry *depth, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh) {
     uint32_t dw = depth->texture.d.width, dh = depth->texture.d.height;
     int splat = fg_splat_on();
-    fg_image(&fg.splat_depth, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    fg_image(&fg.splat_src, VK_FORMAT_R32_UINT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT);
+    /* the field at half the depth's size has images of its own: the paired quality test switches between the two */
+    int half = fg_field_half();
+    uint32_t fw = half ? (dw + 1) / 2 : dw, fh = half ? (dh + 1) / 2 : dh;
+    image_entry *field = half ? &fg.half_depth : &fg.splat_depth, *field_src = half ? &fg.half_src : &fg.splat_src;
+    fg_image(field, VK_FORMAT_R32_UINT, fw, fh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    fg_image(field_src, VK_FORMAT_R32_UINT, fw, fh, VK_IMAGE_USAGE_STORAGE_BIT);
     fg_image(&fg.splat_prev, VK_FORMAT_R32_UINT, (dw + 1) / 2, (dh + 1) / 2, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     VkDescriptorImageInfo img[8] = {
         {fg.linear, attachment_view(a, NULL, a->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(b, NULL, b->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, attachment_view(obj, NULL, obj->format), VK_IMAGE_LAYOUT_GENERAL},
         {fg.linear, depth_view, VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, attachment_view(&fg.splat_depth, NULL, fg.splat_depth.format), VK_IMAGE_LAYOUT_GENERAL},
-        {VK_NULL_HANDLE, attachment_view(&fg.splat_src, NULL, fg.splat_src.format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(field, NULL, field->format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(field_src, NULL, field_src->format), VK_IMAGE_LAYOUT_GENERAL},
         {VK_NULL_HANDLE, attachment_view(&fg.splat_prev, NULL, fg.splat_prev.format), VK_IMAGE_LAYOUT_GENERAL}};
     VkDescriptorSet set = descriptor_allocate(fg.set_layout);
     VkWriteDescriptorSet w[8];
@@ -904,7 +917,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
     vkUpdateDescriptorSets(device, 8, w, 0, NULL);
     /* framegen_interp.comp computes its texel size from the size: slot 18 carries the object motion scale instead, slot 19
        the splat pass (framegen_splat.comp) or whether the splatted field is used (framegen_interp.comp) */
-    float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale;
+    float pc[32]; memcpy(pc, push, sizeof pc); pc[18] = fg_obj_scale; pc[22] += 256.0f * (float)half;
     VkMemoryBarrier rw = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
     if (splat) {
         /* the previous picture's passes may still read the field */
@@ -912,7 +925,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &clear, 0, NULL, 0, NULL);
         VkClearColorValue none = {.uint32 = {0xffffffffu, 0, 0, 0}};
         VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCmdClearColorImage(command, fg.splat_depth.image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
+        vkCmdClearColorImage(command, field->image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
         if ((int)push[22] & 6) vkCmdClearColorImage(command, fg.splat_prev.image, VK_IMAGE_LAYOUT_GENERAL, &none, 1, &range);
         VkMemoryBarrier cleared = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &cleared, 0, NULL, 0, NULL);
@@ -921,7 +934,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
         for (int pass = 0; pass < 2; pass++) {
             pc[19] = (float)pass;
             vkCmdPushConstants(command, fg.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof pc, pc);
-            vkCmdDispatch(command, (dw + 7) / 8, (dh + 7) / 8, 1);
+            vkCmdDispatch(command, (fw + 7) / 8, (fh + 7) / 8, 1);
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &rw, 0, NULL, 0, NULL);
         }
     }

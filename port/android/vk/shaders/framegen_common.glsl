@@ -9,8 +9,8 @@ layout(push_constant) uniform P {
     // x: clip-space y direction (+1), y: match threshold (mean abs difference per channel), z: 1 for the debug tint, plus
     // 2 for the motion's outcome in alpha, plus 4 for the current picture alone where the previous one shows something
     // nearer, plus 8 for no no-motion candidate on what has its own motion (all framegen_interp.comp), plus 16 times the
-    // depth dilation radius (in depth texels), w: 1 when the pictures are scenes (linear canvas values, sRGB-encoded
-    // here)
+    // depth dilation radius (in field texels), plus 256 for the motion field at half the depth's size, w: 1 when the
+    // pictures are scenes (linear canvas values, sRGB-encoded here)
     vec4 opt;
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this
     // frame's object motion, w: the picture's time t
@@ -26,8 +26,9 @@ layout(set = 0, binding = 1) uniform sampler2D cur_pic;
 // object motion (RG32F): last frame's normalised position, x below -9 where nothing moved itself
 layout(set = 0, binding = 2) uniform sampler2D obj_motion;
 layout(set = 0, binding = 3) uniform sampler2D depth;
-// The motion field at the picture's time, in depth texels (framegen_splat.comp): the nearest depth that lands on each
-// texel (float bits; all ones where nothing lands: disocclusion), and the depth texel it came from (x | y << 16).
+// The motion field at the picture's time, in depth texels or at half that size (framegen_splat.comp): the nearest depth
+// that lands on each texel (float bits; all ones where nothing lands: disocclusion), and the depth texel it came from
+// (x | y << 16).
 layout(set = 0, binding = 5, r32ui) uniform uimage2D splat_depth;
 layout(set = 0, binding = 6, r32ui) uniform uimage2D splat_src;
 // The same at the previous frame's time (t = 0): the nearest depth of this frame's surfaces that were there then.
