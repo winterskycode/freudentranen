@@ -210,6 +210,8 @@ int layout_changes() {
 void layout_read() { if (S.set.controls) S.set.controls(S.actions, 0); }
 void layout_write() { if (S.set.controls) S.set.controls(S.actions, 1); }
 
+/* the HUD's monospace font is made this size (for a 1080-line screen) and drawn at TOTK_HUD_SIZE's share of 30 */
+constexpr float kHudFontPx = 48;
 /* merge_advance > 0: the glyphs join the font added last, each that many pixels wide */
 ImFont *font_asset(const char *name, float px, const ImWchar *ranges, float merge_advance = 0) {
     size_t n = 0; void *ttf = S.set.asset ? S.set.asset(name, &n) : nullptr;
@@ -261,9 +263,10 @@ bool init(VkFormat format) {
     if (!S.body) { fprintf(stderr, "[overlay] fonts missing from the APK's assets: system font\n");
         S.body = io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 27.0f); if (!S.body) S.body = io.Fonts->AddFontDefault(); }
     /* the device's monospace font (every Android has it) */
-    /* it has no arrows: Figtree's, one monospace cell wide (0.6 em) */
-    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", 30, &c, ranges);
-      static const ImWchar arrows[] = {0x2190, 0x2193, 0}; if (S.mono) font_asset("fonts/Figtree-Regular.ttf", 30, arrows, 30 * 0.6f); }
+    /* made at the HUD's largest size and drawn smaller (TOTK_HUD_SIZE); it has no arrows: Figtree's, one monospace cell
+       wide (0.6 em) */
+    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", kHudFontPx, &c, ranges);
+      static const ImWchar arrows[] = {0x2190, 0x2193, 0}; if (S.mono) font_asset("fonts/Figtree-Regular.ttf", kHudFontPx, arrows, kHudFontPx * 0.6f); }
     for (ImFont **f : {&S.title, &S.head, &S.value, &S.help, &S.small, &S.tag}) if (!*f) *f = S.body;
     if (!S.mono) S.mono = S.head;
     ImGuiStyle &st = ImGui::GetStyle();
@@ -887,29 +890,37 @@ void hud(float fps, float frame_ms) {
     /* 0 bottom-left, 1 bottom-right, 2 top-left, 3 top-right */
     const Option *co = option("TOTK_HUD_CORNER"); int corner = co ? co->cur : 0;
     ImDrawList *dl = ImGui::GetForegroundDrawList(); ImVec2 ds = ImGui::GetIO().DisplaySize;
-    ImFont *fn = S.mono; float lh = text_size(fn, "0").y, pad = u(5), gh = lh * 2.5f, lgap = u(2);
-    float width = u(220), height = 0;
-    for (int i = 0; i < n; i++) { if (!lines[i].graph) width = std::max(width, text_size(fn, lines[i].text).x); height += (lines[i].graph ? gh : lh) + (i ? lgap : 0); }
+    /* TOTK_HUD_SIZE: percent of the medium size; TOTK_HUD_OPACITY: the panel's, percent (the text keeps its shadow) */
+    const Option *so = option("TOTK_HUD_SIZE"), *oo = option("TOTK_HUD_OPACITY");
+    float k = so && !so->values.empty() ? atoi(so->values[so->cur].c_str()) / 100.0f : 1, opacity = oo && !oo->values.empty() ? atoi(oo->values[oo->cur].c_str()) / 100.0f : 0.5f;
+    if (k <= 0) k = 1;
+    auto v = [&](float design) { return u(design) * k; };
+    ImFont *fn = S.mono; float fs = (S.mono == S.head ? S.head->FontSize : 30.0f) * ImGui::GetIO().FontGlobalScale * k;
+    auto measure = [&](const char *t) { return fn->CalcTextSizeA(fs, FLT_MAX, 0, t); };
+    auto draw = [&](ImVec2 p, ImU32 col, const char *t) { dl->AddText(fn, fs, p, col, t); };
+    float lh = measure("0").y, pad = v(5), gh = lh * 2.5f, lgap = v(2);
+    float width = v(220), height = 0;
+    for (int i = 0; i < n; i++) { if (!lines[i].graph) width = std::max(width, measure(lines[i].text).x); height += (lines[i].graph ? gh : lh) + (i ? lgap : 0); }
     float x = corner & 1 ? ds.x - u(6) - width : u(6), y = corner & 2 ? u(4) : ds.y - height - u(4);
-    dl->AddRectFilled(ImVec2(x - pad, y - pad + u(1)), ImVec2(x + width + pad, y + height + pad), IM_COL32(0, 0, 0, 120));
+    if (opacity > 0) dl->AddRectFilled(ImVec2(x - pad, y - pad + v(1)), ImVec2(x + width + pad, y + height + pad), IM_COL32(0, 0, 0, (int)(opacity * 240 + 0.5f)));
     const ImU32 ink = IM_COL32(236, 236, 230, 255), shadow = IM_COL32(0, 0, 0, 160), slow = IM_COL32(235, 95, 75, 245), guide = IM_COL32(236, 236, 230, 70);
     for (int i = 0; i < n; i++) {
         if (i) y += lgap;
         /* the last 150 game frames, newest on the right: full height is twice the cap's frame time (33.3 ms uncapped),
            a faint line at the cap's time, segments red where a frame took over 15% longer than it */
         if (lines[i].graph) {
-            float target = st.target_ms > 0 ? st.target_ms : 1000.0f / 60, top_ms = st.target_ms > 0 ? 2 * st.target_ms : 33.3f, bottom = y + gh - u(1), span = gh - u(2);
-            dl->AddLine(ImVec2(x, bottom - span * target / top_ms), ImVec2(x + width, bottom - span * target / top_ms), guide, u(0.6f));
+            float target = st.target_ms > 0 ? st.target_ms : 1000.0f / 60, top_ms = st.target_ms > 0 ? 2 * st.target_ms : 33.3f, bottom = y + gh - v(1), span = gh - v(2);
+            dl->AddLine(ImVec2(x, bottom - span * target / top_ms), ImVec2(x + width, bottom - span * target / top_ms), guide, v(0.6f));
             uint32_t count = std::min<uint32_t>(g_frames.n, 150); const uint32_t show = 150; float step = width / (show - 1);
             ImVec2 prev; bool prev_slow = false;
-            for (uint32_t k = 0; k < count; k++) {
-                float m = g_frames.ms[(g_frames.n - count + k) % 512], v = std::min(m / top_ms, 1.0f);
-                ImVec2 pt(x + step * (show - count + k), bottom - span * v); bool is_slow = m > target * 1.15f;
-                if (k) dl->AddLine(prev, pt, is_slow || prev_slow ? slow : ink, u(1.1f));
+            for (uint32_t j = 0; j < count; j++) {
+                float m = g_frames.ms[(g_frames.n - count + j) % 512], h = std::min(m / top_ms, 1.0f);
+                ImVec2 pt(x + step * (show - count + j), bottom - span * h); bool is_slow = m > target * 1.15f;
+                if (j) dl->AddLine(prev, pt, is_slow || prev_slow ? slow : ink, v(1.1f));
                 prev = pt; prev_slow = is_slow;
             }
             y += gh;
-        } else { text(dl, fn, ImVec2(x + u(1), y + u(1)), shadow, lines[i].text); text(dl, fn, ImVec2(x, y), ink, lines[i].text); y += lh; }
+        } else { draw(ImVec2(x + v(1), y + v(1)), shadow, lines[i].text); draw(ImVec2(x, y), ink, lines[i].text); y += lh; }
     }
 }
 

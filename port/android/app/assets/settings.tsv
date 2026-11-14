@@ -54,6 +54,8 @@ TOTK_HUD_REFRESH	System	L	off	off|on	Off|On	Show screen refresh rate	Shows how o
 TOTK_HUD_SHADERS	System	L	off	off|on	Off|On	Show shader activity	Shows how many shaders are being built right now. A stutter while this is above zero is a shader being built.
 TOTK_HUD_DRIVER	System	L	off	off|on	Off|On	Show graphics driver	Shows the graphics driver and its version.
 TOTK_HUD_CORNER	System	L	bottom-left	bottom-left|bottom-right|top-left|top-right	Bottom left|Bottom right|Top left|Top right	Overlay corner	Which corner of the screen the performance overlay sits in.
+TOTK_HUD_SIZE	System	L	100	75|100|130|160	Small|Medium|Large|Extra large	Overlay text size	How large the performance overlay’s text and graph are.
+TOTK_HUD_OPACITY	System	L	50	0|25|50|75|100	None|25 %|50 %|75 %|Solid	Overlay background	How dark the panel behind the performance overlay is. Less lets you see more of the game; more keeps the text easy to read over bright scenes.
 =	System	H	-	-	-	Device	
 @drivers	System	PS	-	-	-	GPU driver	The graphics driver the game uses: your device’s own, the bundled Turnip driver for Adreno GPUs, or one from a .zip made for emulators. Each keeps its own shader cache.
 TOTK_ADPF	System	-	1	1|0	On|Off	Power hints	Tells Android how long each frame takes, so it raises the CPU speed only as far as needed. This saves power and heat.
