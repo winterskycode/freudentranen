@@ -2301,6 +2301,8 @@ static void renderdoc_poll(void) {
 }
 /* the game's frame rate; the last game frame's own time and a count of game frames (the HUD's graph) */
 static float present_fps, present_ms, present_raw_ms; static uint32_t present_seq;
+/* the menu was open (the game paused) since the last game frame: that frame's time is the pause, not counted */
+static _Atomic int present_paused;
 /* pictures shown per game frame (generated ones too), smoothed: the HUD counts them all */
 static float present_shown = 1;
 /* frame generation's GPU time per game frame, averaged (the overlay's frame time split) */
@@ -2547,6 +2549,7 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     { static int released; if (!released) { released = 1; if (runtime_audio_hold) runtime_audio_hold(0); } }
     shader_setup_start();
     { static uint64_t prev; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
+      if (atomic_exchange(&present_paused, 0)) prev = 0;
       if (prev && now > prev) { float ms = (now - prev) / 1e6f; present_ms = present_ms ? present_ms * 0.9f + ms * 0.1f : ms; present_fps = present_ms > 0 ? 1000.0f / present_ms : 0; present_raw_ms = ms; present_seq++; }
       prev = now; }
     /* the performance hint: once a game frame (generated and repeated pictures are not frames of work) */
@@ -2589,6 +2592,7 @@ static void *overlay_present_thread(void *arg) {
     for (;;) {
         struct timespec ts = {0, 16000000}; nanosleep(&ts, NULL);
         if (!overlay_wants_present() || !present_last) { saved = 0; continue; }
+        atomic_store(&present_paused, 1);
         pthread_mutex_lock(&present_serial);
         /* prepare mode shows its panel over the boot frame: the player's last frame stays */
         if (!saved++ && !prepare_mode()) backdrop_save(present_last, present_last_has_crop ? present_last_crop : NULL);
