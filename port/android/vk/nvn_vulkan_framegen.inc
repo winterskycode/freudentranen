@@ -17,7 +17,7 @@
    shaders/framegen_interp.comp picks per pixel between the camera motion and no motion (things that move with the
    camera, the HUD when it is in the pictures), whichever matches the two pictures better. A camera cut (more than 8
    units or 25 degrees in a frame), a missing input or the first frame present the real picture alone. */
-static int fg_dump_state; static void fg_dump_image(image_entry *e, uint32_t w, uint32_t h, const char *tag);
+static int fg_dump_state; static void fg_dump_image(image_entry *e, uint32_t w, uint32_t h, const char *tag); static void mo_dump_write(void);
 static const char *const fg_ui_vs[] = {"7f2113e2", "e9fd7b43", "a662e313", "16684efc", "3e11cee5", "48c18ae6", "35cbc686", "4872bec9", "9f47ed90"};
 static struct {
     int on;
@@ -27,6 +27,8 @@ static struct {
     int aa_done; uint64_t aa_hudless;
     image_entry *depth; graphics_frame_entry *gbuffer; int want_cam, cam_ok, prev_ok, scene_done, cur;
     float cam[84], prev_cam[84];
+    /* fg_menu_frame's c14 test this frame: 0 not looked at yet, 1 zeros, 2 a place in the world */
+    int place_seen;
     image_entry scene[2], out; int scene_valid[2];
     /* the previous frame's finished picture (top-left last_w x last_h of a presented-texture-sized image); kept_at:
        presents + 1 of the frame it was kept in */
@@ -146,14 +148,19 @@ static void fg_pass_begin(graphics_frame_entry *frame) {
     fg.in_gbuffer = d && (d->format == VK_FORMAT_D32_SFLOAT || d->format == VK_FORMAT_D32_SFLOAT_S8_UINT) && d->texture.d.width == c0->texture.d.width && d->texture.d.height == c0->texture.d.height && d->texture.d.width >= 320;
     if (fg.in_gbuffer && !fg.depth) { fg.depth = d; fg.gbuffer = frame; fg.want_cam = 1; }
 }
-/* A frame that does not draw the world: the pause menu (only Link in the G-buffer, ~40 draws, against thousands in
-   play), loading screens. The game keeps the paused world in the canvas then and re-lights only Link, so the canvas
-   carries over from frame to frame: anti-aliasing it in place each frame feeds back (dark dashes along the menu's bottom
-   bar), and frame generation would only hold the menu's own animations (tab swipes) at the rendered rate. Neither runs
-   in such frames, and in menu mode (three in a row) the frame cap goes up to the pictures shown (fg_shown_hz). */
+/* A frame that does not draw the world: the pause menu (only Link in the G-buffer, ~40-50 draws, against thousands in
+   play), loading and title screens. The game keeps the paused world in the canvas then and re-lights only Link, so the
+   canvas carries over from frame to frame: anti-aliasing it in place each frame feeds back (dark dashes along the menu's
+   bottom bar), and frame generation would only hold the menu's own animations (tab swipes) at the rendered rate. Neither
+   runs in such frames, and in menu mode (three in a row) the frame cap goes up to the pictures shown (fg_shown_hz).
+   Under FG_MENU_WORLDLESS draws it is one; up to FG_MENU_GBUFFER_DRAWS only where the G-buffer's c14 block (vertex
+   binding 11) starts with three zeros, as in the pause menu and on title and loading screens (17-74 draws): in play it
+   holds a place in the world. Sparse places in play draw as few as ~90 (a cave doorway: 193), and taking them for a
+   menu would switch frame generation and the frame cap off and on as Link walks through. */
+#define FG_MENU_WORLDLESS 16
 #define FG_MENU_GBUFFER_DRAWS 200
 int nvn_frame_cap_get(void) __attribute__((weak)); void nvn_frame_cap_set(int hz) __attribute__((weak));
-static int fg_menu_frame(void) { return fg.gdraws < FG_MENU_GBUFFER_DRAWS; }
+static int fg_menu_frame(void) { return fg.gdraws < FG_MENU_WORLDLESS || (fg.gdraws < FG_MENU_GBUFFER_DRAWS && fg.place_seen != 2); }
 /* TOTK_FRAMEGEN (vk/frame_rule.h): the method, the game's rendered rate (hz, its frame cap) and the pictures shown a
    second (the player's frame rate cap). fg_shown_hz: those pictures a second, 0 without frame generation; the in-game
    menu changes it (ov_apply). */
@@ -249,7 +256,7 @@ static int fg_scene_copy(image_entry *c) {
    the capture), the bytes a capture of both neighbours of every bank would add, and the survey's own time. */
 #define MVS_TABLE (1u << 15)
 /* prev, memo, changed: mv_prev_block's answer for the block this frame (memo 1 last frame's copy at prev, -1 none) */
-typedef struct { uint64_t addr, prev; uint32_t bank, size, memo_size; int8_t memo, changed; float px; } mvs_seen;
+typedef struct { uint64_t addr, prev, mesh[4]; uint32_t bank, size, memo_size; int8_t memo, changed; uint8_t nmesh; float px; } mvs_seen;
 typedef struct { uint64_t blocks, self, side, nearer, none, similar, changed, different, still, small, big, captured; } mvs_stat;
 /* on: the tables are kept this frame (the survey or object motion); survey: the summaries are logged. motion
    (TOTK_OBJ_MOTION): -1 when a consumer of object motion runs (the built-in or FSR 3.1 frame generation, Arm ASR
@@ -291,21 +298,36 @@ static const uint8_t *mvs_bytes(uint64_t addr, uint64_t size, int *captured) {
     if (!*captured) return (const uint8_t *)(uintptr_t)addr;
     ucap_apply((uintptr_t)addr, mvs_buf, (uint32_t)size); return mvs_buf;
 }
-/* totk-pc-recomp runtime/vk_exec_draw.c mo_similar (MIT, Copyright (c) 2026 Valiantsin Dzerakh) */
-static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, int *changed) {
+/* After totk-pc-recomp runtime/vk_exec_draw.c mo_similar (MIT, Copyright (c) 2026 Valiantsin Dzerakh): a float off by
+   more than 10 % (at least 1.0, at most `cap` units) is off. The first `strict` words may not be off and alone say
+   whether the block changed; of the rest, more than 1 in 16 off makes it another object's block. Bones (c5, strict 0):
+   running Link's skeleton has a hand or foot bone moving ~1.1 units a frame, and rejecting the whole block for it
+   leaves his face, chest and arms on the camera's motion. A place (c7, strict 12): its matrix comes first and must
+   match (a neighbour with another matrix is another object, and its motion moves all of Link across the screen); after
+   it the place's world position (words 28-30) drops ~10 units a frame as Link falls, and a word that flips between 1
+   and 100 every frame would mark still objects as moved. */
+static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, unsigned strict, float cap, int *changed) {
     *changed = 0;
     if (!memcmp(cur, old, n)) return 1;
     const uint32_t *x = (const uint32_t *)cur, *y = (const uint32_t *)old;
+    uint64_t off = 0, allowed = n / 4 / 16;
     for (uint64_t w = 0; w < n / 4; w++) {
         if (x[w] == y[w]) continue;
+        if (!strict || w < strict) *changed = 1;
         uint32_t ex = x[w] >> 23 & 0xff, ey = y[w] >> 23 & 0xff;
         if (!ex || ex == 0xff || !ey || ey == 0xff) continue;
         float fx, fy; memcpy(&fx, &x[w], 4); memcpy(&fy, &y[w], 4);
         float dd = fabsf(fx - fy), tol = 0.1f * fabsf(fy);
-        if (dd > (tol < 1.0f ? 1.0f : tol > 4.0f ? 4.0f : tol)) return 0;
+        float lim = tol < 1.0f ? 1.0f : tol > cap ? cap : tol;
+        /* a matrix's translation column (row-major 3x4) moves as fast as the object once it is known to be the same */
+        if (cap > 4.0f && (w & 3) == 3) lim = cap;
+        if (dd > lim && (w < strict || ++off > allowed)) { *changed = 0; return 0; }
     }
-    *changed = 1; return 1;
+    return 1;
 }
+/* A block keeps the first four meshes (mvs_mesh) that bound it in a frame; last frame's copy of an object's block is
+   the neighbour one of its meshes bound (mv_prev_lookup). */
+static int mvs_has_mesh(const mvs_seen *e) { if (!e || !mvs_mesh) return 0; for (unsigned i = 0; i < e->nmesh; i++) if (e->mesh[i] == mvs_mesh) return 1; return 0; }
 static void mvs_draw(void) {
     /* the survey's banks, or c5 and c7 for object motion alone, which only needs the blocks noted */
     static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11}, motion_banks[] = {2, 4};
@@ -315,6 +337,7 @@ static void mvs_draw(void) {
         uint32_t bank = banks[b]; const p_bind_buf *u = &state.ubo[0][bank];
         if (!u->addr || !u->size || u->size > 65536) continue;
         mvs_seen *e = mvs_find(mvs.t[0], u->addr, bank, 1);
+        if (e && mvs_mesh && e->nmesh < 4 && !mvs_has_mesh(e)) e->mesh[e->nmesh++] = mvs_mesh;
         if (!e || e->size) continue;
         e->size = (uint32_t)u->size;
         if (!mvs.survey) continue;
@@ -338,7 +361,7 @@ static void mvs_draw(void) {
             st->nearer++;
         } else st->side++;
         int changed; const uint8_t *old = mvs_bytes(prev, u->size, &captured); st->captured += (uint64_t)captured;
-        if (!mvs_similar(cur, old, u->size, &changed)) { st->different++; continue; }
+        if (!mvs_similar(cur, old, u->size, bank == 4 ? 12 : 0, 4.0f, &changed)) { st->different++; continue; }
         st->similar++; st->changed += (uint64_t)changed;
         if ((bank == 2 || bank == 4) && u->size >= 48) {
             const float *x = (const float *)cur, *y = (const float *)old;
@@ -360,7 +383,12 @@ static const p_bind_buf *mv_prev_lookup(unsigned stage, unsigned index, p_bind_b
     if (!u || stage != 0 || mvs.on <= 0 || (index != 2 && index != 4) || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
     if (mvs_find(mvs.t[1], u->addr, index, 0)) return u;
     uint64_t step = (u->size + 255) & ~(uint64_t)255;
-    int up = mvs_find(mvs.t[1], u->addr + step, index, 0) != NULL, down = u->addr >= step && mvs_find(mvs.t[1], u->addr - step, index, 0) != NULL;
+    const mvs_seen *eu = mvs_find(mvs.t[1], u->addr + step, index, 0), *ed = u->addr >= step ? mvs_find(mvs.t[1], u->addr - step, index, 0) : NULL;
+    /* a neighbour this draw's mesh bound last frame is the object's own copy: then only the 1/16 or matrix rule tells it
+       apart, with up to 64 units a frame (a fall), not 4 */
+    int same_u = mvs_has_mesh(eu), same_d = mvs_has_mesh(ed), same = same_u || same_d;
+    if (same) { if (!same_u) eu = NULL; if (!same_d) ed = NULL; }
+    int up = eu != NULL, down = ed != NULL;
     if (!up && !down) return u;
     if (uniform_read_current((uintptr_t)u->addr, (uint32_t)u->size)) return u;
     static uint8_t cur[65536]; memcpy(cur, uniform_read_scratch, u->size);
@@ -373,7 +401,7 @@ static const p_bind_buf *mv_prev_lookup(unsigned stage, unsigned index, p_bind_b
         if (nd > na) prev = u->addr - step;
     }
     int changed;
-    if (!mvs_similar(cur, mvs_bytes(prev, u->size, &captured), u->size, &changed)) return u;
+    if (!mvs_similar(cur, mvs_bytes(prev, u->size, &captured), u->size, index == 4 ? 12 : 0, same ? 64.0f : 4.0f, &changed)) return u;
     mv_prev_changed = changed; *out = *u; out->addr = prev; return out;
 }
 /* mv_prev_lookup once a frame per block: an object's draws share their blocks */
@@ -405,6 +433,10 @@ static void mvs_frame(void) {
 }
 static void fg_after_pass(void) {
     fg.gdraws += (unsigned)fg.in_gbuffer;
+    /* fg_menu_frame: the first G-buffer draw's c14 block, a place in the world in play (2) or zeros in menus (1) */
+    if (fg.in_gbuffer && !fg.place_seen) { const p_bind_buf *c = &state.ubo[0][11]; float f[3] = {0};
+        if (c->addr && c->size >= sizeof f && !uniform_read_current((uintptr_t)c->addr, sizeof f)) memcpy(f, uniform_read_scratch, sizeof f);
+        fg.place_seen = f[0] != 0.0f || f[1] != 0.0f || f[2] != 0.0f ? 2 : 1; }
     if (fg.in_gbuffer && mvs.on > 0) mvs_draw();
     if ((fg.on <= 0 && !taa_enabled()) || !fg.want_cam || graphics_active_frame != fg.gbuffer) return;
     fg.want_cam = 0;
@@ -537,6 +569,7 @@ static void fg_scene_encode(image_entry *dst, image_entry *scene, uint32_t w, ui
 #include "nvn_vulkan_fsrfg.inc"
 static image_entry *mo_image(void);
 static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const image_entry *depth, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh);
+static void fg_stamp(int k);
 /* framegen_interp.comp's tuning (push[28..31]): TOTK_FG_SHARP (how sharply the better candidate wins), TOTK_FG_FALLBACK
    (scale of the unwarped current picture's weight), TOTK_FG_HEAD (the scene motion's head start, a share of the match
    threshold), TOTK_FG_BLEND (the previous picture's share where the match is unsure; 0: the current picture alone,
@@ -561,6 +594,14 @@ static int fg_splat_on(void);
 static int fg_hidden_on(void) {
     static int env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_HIDDEN"); env = !e || atoi(e) != 0; }
     const char *w = live_exp[0] ? exp_word(live_exp, "fghidden=", 0) : NULL;
+    return w && *w >= '0' && *w <= '9' ? atoi(w) != 0 : env;
+}
+/* framegen_interp.comp: no previous-picture blend and no no-motion candidate where the point has object motion of its
+   own (TOTK_FG_OWN, live word fgown=): with them, Link running (whom the camera follows) ghosts, his two poses
+   blended */
+static int fg_own_on(void) {
+    static int env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_OWN"); env = !e || atoi(e) != 0; }
+    const char *w = live_exp[0] ? exp_word(live_exp, "fgown=", 0) : NULL;
     return w && *w >= '0' && *w <= '9' ? atoi(w) != 0 : env;
 }
 static int fg_dilation(void) {
@@ -694,7 +735,7 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
             float push[32]; fg_tune(push, 0);
             for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) push[c * 4 + r] = (float)m[r * 4 + c];
             push[16] = (float)sw; push[17] = (float)sh; push[18] = 1.0f / sw; push[19] = 1.0f / sh;
-            push[20] = 1.0f; push[22] = 2.0f + 4.0f * fg_hidden_on() + 8.0f * fg_dilation(); push[23] = 1.0f;
+            push[20] = 1.0f; push[22] = 2.0f + 4.0f * fg_hidden_on() + 8.0f * fg_own_on() + 16.0f * fg_dilation(); push[23] = 1.0f;
             image_entry *obj = mo_image();
             push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
             fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, fg.depth, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
@@ -790,22 +831,24 @@ static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     /* <files>/fgdebug: tint by decision */
     if (now > debug_next) { debug_next = now + 500000000ull; const char *d = getenv("TOTK_FILES_DIR"); char path[600];
         if (d) { snprintf(path, sizeof path, "%s/fgdebug", d); debug = !access(path, F_OK); } }
-    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 4.0f * fg_hidden_on() + 8.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
+    push[20] = 1.0f; push[22] = (debug ? 1.0f : 0.0f) + 4.0f * fg_hidden_on() + 8.0f * fg_own_on() + 16.0f * fg_dilation(); push[23] = scene_prev ? 1.0f : 0.0f;
     /* the picture is the top-left of the presented texture (the scenes are its size) */
     image_entry *obj = mo_image();
     push[24] = (float)sw / b->texture.d.width; push[25] = (float)sh / b->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
     /* TOTK_FG_T (diagnostic): the generated picture's time instead of the midpoint */
     { static float ft = -1; if (ft < 0) { const char *e = getenv("TOTK_FG_T"); ft = e ? (float)atof(e) : 0.0f; } if (ft > 0) push[27] = ft; }
     if (fsr_fg_enabled()) fsr_fg_run(b, depth_view, push, sw, sh, &fg.out, fg.cam, fg.frames);
-    else fg_dispatch(a, b, obj ? obj : fin, fg.depth, depth_view, push, sw, sh);
+    else { fg_stamp(0); fg_dispatch(a, b, obj ? obj : fin, fg.depth, depth_view, push, sw, sh); fg_stamp(2); }
     if (scene_prev) fg_hud_composite(&fg.out, fin, scene, sw, sh);
+    if (!fsr_fg_enabled()) fg_stamp(3);
     mtl_sub_commit();
     fg.made++;
-    if (fg_dump_state == 1) { LOG("[framegen] dump: final %ux%u format %d (nvn %#x), depth %ux%u format %d, picture %ux%u",
+    if (fg_dump_state == 3) { fg_dump_state = 1; LOG("[framegen] dump: final %ux%u format %d (nvn %#x), depth %ux%u format %d, picture %ux%u",
             fin->texture.d.width, fin->texture.d.height, (int)fin->format, t->d.format,
             fg.depth->texture.d.width, fg.depth->texture.d.height, (int)fg.depth->format, sw, sh);
         fg_dump_image(image_get(t), sw, sh, "final"); fg_dump_image(&fg.last, sw, sh, "prev");
-        if (scene) fg_dump_image(scene, sw, sh, "scene"); if (scene_prev) fg_dump_image(scene_prev, sw, sh, "scene-prev"); }
+        if (scene) fg_dump_image(scene, sw, sh, "scene"); if (scene_prev) fg_dump_image(scene_prev, sw, sh, "scene-prev");
+        if (obj) mo_dump_write(); }
     return &fg.out;
 }
 /* framegen_splat.comp's motion field (TOTK_FG_SPLAT=0 or the live word fgsplat=0: off, the motion of what this frame
@@ -822,6 +865,24 @@ static int fg_splat_on(void) {
 /* The generation pass into fg.out: pictures a (previous) and b (current), the object motion image (or any image when
    push[26] says there is none), the depth and its view, and the push constants (framegen_interp.comp). With the splatted
    motion field, two framegen_splat.comp passes over the depth texels go first. */
+/* TOTK_FG_TIME=1 (diagnostic): GPU time per stage of a generated picture: clears and splat passes, the interpolation
+   pass, the HUD composite; averaged and logged every 100 generated pictures */
+static struct { int on; VkQueryPool pool; uint64_t n; double ms[3]; uint64_t got; } fgt;
+static void fg_stamp(int k) {
+    if (!fgt.on) { const char *e = getenv("TOTK_FG_TIME"); fgt.on = e && atoi(e) > 0 ? 1 : -1;
+        if (fgt.on > 0) { VkQueryPoolCreateInfo qi = {.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = 256}; VK_CHECK(vkCreateQueryPool(device, &qi, NULL, &fgt.pool)); } }
+    if (fgt.on < 0) return;
+    uint32_t q = (uint32_t)(fgt.n % 64) * 4 + (uint32_t)k;
+    if (k == 0) {
+        uint64_t ts[4];
+        if (fgt.n >= 64 && vkGetQueryPoolResults(device, fgt.pool, q, 4, sizeof ts, ts, 8, VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && ts[3] >= ts[0]) {
+            for (int i = 0; i < 3; i++) fgt.ms[i] += (double)(ts[i + 1] - ts[i]) * gpu_limits.timestampPeriod / 1e6;
+            if (++fgt.got % 100 == 0) { LOG("[framegen] GPU a picture: splat %.2f ms, interpolation %.2f ms, HUD %.2f ms", fgt.ms[0] / 100, fgt.ms[1] / 100, fgt.ms[2] / 100); fgt.ms[0] = fgt.ms[1] = fgt.ms[2] = 0; } }
+        vkCmdResetQueryPool(command, fgt.pool, q, 4);
+    }
+    vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, fgt.pool, q);
+    if (k == 3) fgt.n++;
+}
 static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const image_entry *depth, VkImageView depth_view, const float push[32], uint32_t sw, uint32_t sh) {
     uint32_t dw = depth->texture.d.width, dh = depth->texture.d.height;
     int splat = fg_splat_on();
@@ -864,6 +925,7 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
             vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &rw, 0, NULL, 0, NULL);
         }
     }
+    fg_stamp(1);
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, fg.layout, 0, 1, &set, 0, NULL);
     if (splat) { static float env = -1; if (env < 0) { const char *e = getenv("TOTK_FG_HOLE"); env = e ? (float)atof(e) : 0.25f; }
@@ -874,8 +936,9 @@ static void fg_dispatch(image_entry *a, image_entry *b, image_entry *obj, const 
 }
 
 /* TOTK_FRAMEGEN_DUMP: when <files>/fgdump.trigger exists, the next generated picture and the real picture after it are
-   written to <files>/fgdump/<frame>-mid.ppm / -real.ppm (and the real one before as -prev.ppm) for inspection. */
-/* fg_dump_state: 0 idle, 1 armed (dump the next generated + real), 2 real still to dump */
+   written to <files>/fgdump/<frame>-mid.ppm / -real.ppm, and its inputs when it is made (the pictures before and after,
+   -prev / -final, their scenes, and the object motion it used, <files>/mvdump) for inspection. */
+/* fg_dump_state: 0 idle, 3 armed (dump the next generated picture's inputs), 1 its picture next, 2 the real one after */
 /* The w x h corner of an image read back (a full queue wait), 4 bytes a pixel in malloc'd memory the caller frees; NULL
    for a format other than RGBA8 / BGRA8 / R11G11B10. */
 static uint8_t *image_read_back(image_entry *e, uint32_t w, uint32_t h) {
@@ -922,7 +985,7 @@ static void fg_dump_poll(void) {
     static uint64_t next; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC); if (now < next) return; next = now + 250000000ull;
     const char *dir = getenv("DM_VK_SHADERS"); char path[1200]; if (!dir) return;
     snprintf(path, sizeof path, "%s/../fgdump.trigger", dir);
-    if (!access(path, F_OK)) { unlink(path); fg_dump_state = 1; LOG("[framegen] dump armed"); }
+    if (!access(path, F_OK)) { unlink(path); fg_dump_state = fg_fill ? 1 : 3; LOG("[framegen] dump armed"); }
     /* <files>/aa.toggle: anti-aliasing on/off, for A/B screenshots of a frozen frame (frz.sh) */
     snprintf(path, sizeof path, "%s/../aa.toggle", dir);
     if (!access(path, F_OK)) { unlink(path); smaa_toggle(); }
@@ -1001,7 +1064,7 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     if (fg.scene_done) fg.cur ^= 1;
     /* no scene this frame (no UI drawn): the older one is not the previous frame's */
     else fg.scene_valid[fg.cur ^ 1] = 0;
-    fg.view[0] = fg.view[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0;
+    fg.view[0] = fg.view[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0; fg.place_seen = 0;
     if (fg.frames && !(fg.frames % 300)) {
         /* the GPU time of a generated picture over the last 300 game frames */
         static double gen_ns; static uint64_t gen_made; double per = fg.made > gen_made ? (fg_gen_gpu_ns - gen_ns) / (double)(fg.made - gen_made) / 1e6 : 0;

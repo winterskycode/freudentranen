@@ -140,6 +140,9 @@ static double gpu_timestamp_period,gpu_total_ns,fence_wait_total_ns;
 /* frame generation's share of the GPU: the GPU time of the batches fg_prepare and fill_make mark as theirs (the
    overlay's split of the frame time) */
 static double fg_gen_gpu_ns;
+/* object motion: the mesh of the G-buffer draw about to record its blocks (draw_graphics, before fg_after_pass): guest
+   index data, count and base vertex, 0 for a draw without indices (nvn_vulkan_framegen.inc mvs_draw) */
+static uint64_t mvs_mesh;
 // mtl_wait's blocked time accumulates atomically on its own: a caller (the game thread's SyncWait) must not contend for queue_lock just to
 // record a reading, since in translation-thread mode the translation thread holds it for a whole submit.
 static _Atomic uint64_t fence_wait_unlocked_ns;

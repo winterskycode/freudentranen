@@ -8,8 +8,9 @@ layout(push_constant) uniform P {
     vec4 size;
     // x: clip-space y direction (+1), y: match threshold (mean abs difference per channel), z: 1 for the debug tint, plus
     // 2 for the motion's outcome in alpha, plus 4 for the current picture alone where the previous one shows something
-    // nearer (all framegen_interp.comp), plus 8 times the depth dilation radius (in depth texels), w: 1 when the pictures
-    // are scenes (linear canvas values, sRGB-encoded here)
+    // nearer, plus 8 for no no-motion candidate on what has its own motion (all framegen_interp.comp), plus 16 times the
+    // depth dilation radius (in depth texels), w: 1 when the pictures are scenes (linear canvas values, sRGB-encoded
+    // here)
     vec4 opt;
     // xy: the picture's share of the picture textures (picture size / texture size), z: 1 when obj_motion holds this
     // frame's object motion, w: the picture's time t
@@ -34,6 +35,11 @@ layout(set = 0, binding = 7, r32ui) uniform uimage2D splat_prev;
 
 const uint SPLAT_NONE = 0xffffffffu;
 
+// Whether what is at uv pu in this frame moved itself and has its own motion (object motion drawn there).
+bool own_motion(vec2 pu) {
+    ivec2 os = textureSize(obj_motion, 0);
+    return texelFetch(obj_motion, clamp(ivec2(pu * vec2(os)), ivec2(0), os - 1), 0).x > -9.0;
+}
 // Where the surface at uv pu (depth d there) was in the previous frame, minus pu (normalized picture units). The sky (and
 // cleared depth) is at the far plane: reprojected there it follows the camera's turn, and the camera's own movement is
 // negligible against that distance.

@@ -676,6 +676,7 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
         frame=draw_pass_decide(pass,&pass_key,attachments,colors,depth,views,images,na,width,height,blocks,block_load,nblocks,&continuing);}
     graphics_pass_begin(frame);
     DRAW_SEG(5);    ssbo_in_place_after_pass();
+    mvs_mesh=indexed?((uint64_t)indexed->ibuf*0x9E3779B97F4A7C15ull)^((uint64_t)indexed->count<<32)^(uint32_t)indexed->base_vertex:0;
     fg_after_pass();
     if(bindstats_on())bindstats_target(width,height,state.rt.n,depth.attachment!=VK_ATTACHMENT_UNUSED);
     if(bindstats_on())bindstats_draw(vs,fs,cached->pipeline,layout,sets,dynamic_offsets,dynamic_count,&viewport,&scissor);
