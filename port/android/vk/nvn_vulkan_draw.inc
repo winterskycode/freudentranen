@@ -30,6 +30,7 @@ static VkImageView attachment_view(image_entry *e,const view_t *v,VkFormat forma
 #include "nvn_vulkan_pass.inc"
 static int smaa_scene(void);
 static int asr_upscale_draw(const shader_entry *fs);
+static int soften_upscale_draw(const shader_entry *fs);
 static int taa_enabled(void);static void taa_compose(const shader_entry *fs);static void taa_before_draw(const shader_entry *fs);
 static void taa_viewport(const VkViewport *viewport,const image_entry *depth,unsigned colors,const tex_t *c0,const shader_entry *vs,const shader_entry *fs);
 static void fg_before_draw(const shader_entry *vs);static void fg_trace_draw(const shader_entry *vs,const shader_entry *fs);static void fg_after_pass(void);
@@ -452,6 +453,8 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
         if(presents>=last+300){if(last)for(unsigned k=0;k<nq;k++)LOG("[vulkan-queryfs] %s %.2f draws/frame inside a live samples count",q[k].key,q[k].n/300.);last=presents;nq=0;}} }
     /* TOTK_TAA=asr: ASR wrote the canvas in place of the game's upscale */
     if(taa_enabled()==2&&asr_upscale_draw(fs))return;
+    /* TOTK_SOFTNESS: our cubic wrote the canvas in place of the game's upscale */
+    if(taa_enabled()!=2&&soften_upscale_draw(fs))return;
     int compose_hook=taa_enabled()||smaa_scene();
     /* TOTK_TAA / SMAA: the first draw reading compose's output resolves it first */
     if(compose_hook)taa_before_draw(fs);
