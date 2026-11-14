@@ -32,6 +32,8 @@ static uint64_t pace_ticket[64], pace_done[64];
 static _Atomic uint64_t pace_fence_ticket[1024], pace_fence_ns[1024];
 static void pace_fence_passed(uint64_t ticket, uint64_t ns) { atomic_store(&pace_fence_ns[ticket % 1024], ns); atomic_store(&pace_fence_ticket[ticket % 1024], ticket); }
 static uint64_t pace_frames, pace_late, pace_missed;
+/* from a present to the screen, smoothed (the HUD) */
+static float pace_screen_ms;
 
 /* frame generation fill mode (nvn_vulkan_fgfill.inc): real frames go on the frame cap's grid too, so the pictures that
    fill missed refreshes and the real ones share one schedule; it turns pacing on */
@@ -109,6 +111,8 @@ static void pace_learn(void) {
         if (!past[i].actualPresentTime) continue;
         /* latency (TOTK_TIMELINE) */
         if (totk_tl_at) totk_tl_at(TL_SHOWN, past[i].actualPresentTime, past[i].presentID, pace_submit[past[i].presentID % 64]);
+        { uint64_t sub = pace_submit[past[i].presentID % 64], a = past[i].actualPresentTime;
+          if (sub && a > sub && a - sub < 200000000) { float ms = (a - sub) / 1e6f; pace_screen_ms = pace_screen_ms ? pace_screen_ms * 0.95f + ms * 0.05f : ms; } }
         if (last_actual && pace_refresh && past[i].actualPresentTime > last_actual) {
             uint64_t k = (past[i].actualPresentTime - last_actual + pace_refresh / 2) / pace_refresh; hist[k < 5 ? k : 5]++;
             if (!(++hist_n % 600)) { LOG("[pacing] on screen for 1/2/3/4/5+ refreshes: %llu %llu %llu %llu %llu (last 600 pictures)",

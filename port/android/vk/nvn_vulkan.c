@@ -2297,8 +2297,8 @@ static void renderdoc_poll(void) {
     unsigned n = 1; if (fscanf(f, "%u", &n) != 1 || !n || n > 16) n = 1; fclose(f); unlink(path);
     api->TriggerMultiFrameCapture(n); LOG("[renderdoc] capturing %u frames from frame %llu", n, (unsigned long long)presents);
 }
-/* the game's frame rate */
-static float present_fps, present_ms;
+/* the game's frame rate; the last game frame's own time and a count of game frames (the HUD's graph) */
+static float present_fps, present_ms, present_raw_ms; static uint32_t present_seq;
 /* pictures shown per game frame (generated ones too), smoothed: the HUD counts them all */
 static float present_shown = 1;
 /* frame generation's GPU time per game frame, averaged (the overlay's frame time split) */
@@ -2416,7 +2416,9 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (!repeat) rec_picture(e, sx, sy, sw, sh);
         if (screen_color_attachment) { dv_drain();
             uint64_t q = atomic_load(&async_pso_queued), done = atomic_load(&async_pso_built) + atomic_load(&async_pso_failed);
-            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms, fg_enabled() || lsfg_enabled()};
+            int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
+            overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms, fg_enabled() || lsfg_enabled(),
+                                present_raw_ms, present_seq, cap > 0 ? 1000.0f / cap : 0, present_shown > 1 ? present_shown - 1 : 0, pace_screen_ms};
             overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask = 0; barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);
@@ -2543,7 +2545,7 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     { static int released; if (!released) { released = 1; if (runtime_audio_hold) runtime_audio_hold(0); } }
     shader_setup_start();
     { static uint64_t prev; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
-      if (prev && now > prev) { float ms = (now - prev) / 1e6f; present_ms = present_ms ? present_ms * 0.9f + ms * 0.1f : ms; present_fps = present_ms > 0 ? 1000.0f / present_ms : 0; }
+      if (prev && now > prev) { float ms = (now - prev) / 1e6f; present_ms = present_ms ? present_ms * 0.9f + ms * 0.1f : ms; present_fps = present_ms > 0 ? 1000.0f / present_ms : 0; present_raw_ms = ms; present_seq++; }
       prev = now; }
     /* the performance hint: once a game frame (generated and repeated pictures are not frames of work) */
     dm_android_perf_hint_frame();

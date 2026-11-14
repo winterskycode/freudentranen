@@ -48,7 +48,11 @@ typedef struct {
 /* screen_hz: the panel's current rate, 0 unknown */
 /* real_fps: the game's own frames a second (the fps given with it counts generated pictures too); real_ms the time
    between game frames, gen_ms the GPU time frame generation took of it; framegen: a frame generation method is on */
-typedef struct { uint64_t pipelines, pipelines_queued, draws_skipped, shaders_translated; uint32_t screen_hz; float real_fps, real_ms, gen_ms; int framegen; } overlay_stats;
+/* frame_raw_ms: the last game frame's own time (unsmoothed, the graph and the 1% low), frame_seq counts game frames so
+   the HUD takes each once; target_ms: the game frame time the frame rate cap allows (0 uncapped); gen_pictures: generated
+   pictures per game frame, smoothed; screen_ms: from our present to the screen (display timing), smoothed, 0 unknown */
+typedef struct { uint64_t pipelines, pipelines_queued, draws_skipped, shaders_translated; uint32_t screen_hz; float real_fps, real_ms, gen_ms; int framegen;
+                 float frame_raw_ms; uint32_t frame_seq; float target_ms, gen_pictures, screen_ms; } overlay_stats;
 
 void overlay_configure(const overlay_vk *vk, const overlay_settings *settings);
 /* Records the overlay into image (in TRANSFER_DST_OPTIMAL before and after) when the menu is open or the HUD is on;

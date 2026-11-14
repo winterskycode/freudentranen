@@ -14,6 +14,7 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,7 +93,6 @@ struct State {
     bool report_capture = false;
     /* the field controls: each action's physical button */
     int8_t actions[GAME_ACTIONS] = {};
-    float frame_ms[120] = {}; int frame_i = 0;
     /* HUD: the driver line and the shader counters */
     char driver[160] = ""; overlay_stats st = {};
     /* screen pixels per design unit (the design is 1280 x 720) */
@@ -210,11 +210,13 @@ int layout_changes() {
 void layout_read() { if (S.set.controls) S.set.controls(S.actions, 0); }
 void layout_write() { if (S.set.controls) S.set.controls(S.actions, 1); }
 
-ImFont *font_asset(const char *name, float px, const ImWchar *ranges) {
+/* merge_advance > 0: the glyphs join the font added last, each that many pixels wide */
+ImFont *font_asset(const char *name, float px, const ImWchar *ranges, float merge_advance = 0) {
     size_t n = 0; void *ttf = S.set.asset ? S.set.asset(name, &n) : nullptr;
     if (!ttf) return nullptr;
     /* the atlas takes ttf and frees it */
     ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1;
+    if (merge_advance > 0) { c.MergeMode = true; c.GlyphMinAdvanceX = c.GlyphMaxAdvanceX = merge_advance; }
     return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(ttf, (int)n, px, &c, ranges);
 }
 
@@ -259,7 +261,9 @@ bool init(VkFormat format) {
     if (!S.body) { fprintf(stderr, "[overlay] fonts missing from the APK's assets: system font\n");
         S.body = io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 27.0f); if (!S.body) S.body = io.Fonts->AddFontDefault(); }
     /* the device's monospace font (every Android has it) */
-    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", 30, &c, ranges); }
+    /* it has no arrows: Figtree's, one monospace cell wide (0.6 em) */
+    { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", 30, &c, ranges);
+      static const ImWchar arrows[] = {0x2190, 0x2193, 0}; if (S.mono) font_asset("fonts/Figtree-Regular.ttf", 30, arrows, 30 * 0.6f); }
     for (ImFont **f : {&S.title, &S.head, &S.value, &S.help, &S.small, &S.tag}) if (!*f) *f = S.body;
     if (!S.mono) S.mono = S.head;
     ImGuiStyle &st = ImGui::GetStyle();
@@ -689,73 +693,223 @@ void controls_page(float w, float h) {
     ImGui::End();
 }
 
-/* The HUD items: each its own setting (TOTK_HUD_FPS, _FRAMETIME, _REFRESH, _TEMP, _SHADERS, _DRIVER). TOTK_HUD=off / fps / detailed in the
-   environment (the profiling scripts) overrides them: off hides everything, fps shows the rate, detailed the rate and the
-   frame time. */
-/* TOTK_HUD_TEMP: the hotter of the hottest CPU and GPU thermal zones, read once a second on a thread of their own (a sensor read can take
-   milliseconds), only while the item is on. -1: no zone of that kind can be read. */
-std::atomic<int> g_temp_cpu{-1}, g_temp_gpu{-1}; std::atomic<bool> g_temp_on{false};
-void *temp_thread(void *) {
+/* The HUD items: each its own setting (TOTK_HUD_FPS, _FRAMETIME, _LOAD, _POWER, _TIMING, _SETTINGS, _REFRESH, _SHADERS,
+   _DRIVER). TOTK_HUD=off / fps / detailed in the environment (the profiling scripts) overrides them: off hides
+   everything, fps shows the rate, detailed the rate and the frame time. */
+const char *const kHudItems[] = {"TOTK_HUD_FPS", "TOTK_HUD_FRAMETIME", "TOTK_HUD_LOAD", "TOTK_HUD_POWER", "TOTK_HUD_TIMING", "TOTK_HUD_SETTINGS", "TOTK_HUD_REFRESH", "TOTK_HUD_SHADERS", "TOTK_HUD_DRIVER"};
+/* The device's counters, read on a thread of their own (a sensor read can take milliseconds) only while an item that
+   shows them is on: power every 100 ms and averaged, the rest every 500 ms. -1: unknown or not readable. */
+struct DeviceStats {
+    std::atomic<bool> want_load{false}, want_power{false};
+    /* CPU: busy share weighted by clock (per mille of every core at its top clock), the busiest core and its busy share */
+    std::atomic<int> cpu_load{-1}, top_core{-1}, top_load{-1}, gpu_busy{-1}, gpu_mhz{-1};
+    /* milliwatts drawn by the device (USB in minus what goes into the battery), degrees, fan rpm */
+    std::atomic<int> mw{-1}, cpu_c{-1}, gpu_c{-1}, fan_rpm{-1};
+} g_dev;
+bool read_long(const char *path, long long *v) { FILE *f = fopen(path, "r"); if (!f) return false; bool ok = fscanf(f, "%lld", v) == 1; fclose(f); return ok; }
+/* Per core: time busy and in all (/proc/stat), and the time at each clock (cpufreq stats) for the clock it ran at */
+struct CoreSample { unsigned long long busy = 0, total = 0, f_time = 0, f_weighted = 0; };
+int read_cores(std::vector<CoreSample> &out) {
+    out.clear(); FILE *f = fopen("/proc/stat", "r"); if (!f) return 0;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        unsigned id; unsigned long long v[8] = {};
+        if (strncmp(line, "cpu", 3) || line[3] < '0' || line[3] > '9') continue;
+        if (sscanf(line + 3, "%u %llu %llu %llu %llu %llu %llu %llu %llu", &id, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]) < 9 || id > 63) continue;
+        if (out.size() <= id) out.resize(id + 1);
+        /* user nice system idle iowait irq softirq steal */
+        out[id].busy = v[0] + v[1] + v[2] + v[5] + v[6] + v[7]; out[id].total = out[id].busy + v[3] + v[4];
+    }
+    fclose(f);
+    for (size_t i = 0; i < out.size(); i++) {
+        char path[96]; snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%zu/cpufreq/stats/time_in_state", i);
+        FILE *t = fopen(path, "r"); if (!t) continue;
+        unsigned long long khz, ticks;
+        while (fscanf(t, "%llu %llu", &khz, &ticks) == 2) { out[i].f_time += ticks; out[i].f_weighted += khz * ticks; }
+        fclose(t);
+    }
+    return (int)out.size();
+}
+void *device_thread(void *) {
     setpriority(PRIO_PROCESS, 0, 10);
-    std::vector<std::string> cpu, gpu; char path[96], type[64];
+    std::vector<std::string> cpu_zones, gpu_zones; char path[96], type[64];
     for (int i = 0; i < 256; i++) {
         snprintf(path, sizeof path, "/sys/class/thermal/thermal_zone%d/type", i);
         FILE *f = fopen(path, "r"); if (!f) continue;
         bool got = fgets(type, sizeof type, f) != nullptr; fclose(f); if (!got) continue;
         snprintf(path, sizeof path, "/sys/class/thermal/thermal_zone%d/temp", i);
-        if (!strncmp(type, "cpu", 3)) cpu.push_back(path); else if (!strncmp(type, "gpu", 3)) gpu.push_back(path);
+        if (!strncmp(type, "cpu", 3)) cpu_zones.push_back(path); else if (!strncmp(type, "gpu", 3)) gpu_zones.push_back(path);
     }
     auto hottest = [](const std::vector<std::string> &zones) { int best = -1;
-        for (const std::string &z : zones) { FILE *f = fopen(z.c_str(), "r"); if (!f) continue; int v = 0; if (fscanf(f, "%d", &v) == 1 && v > 0 && v < 150000 && v / 1000 > best) best = v / 1000; fclose(f); }
+        for (const std::string &z : zones) { long long v; if (read_long(z.c_str(), &v) && v > 0 && v < 150000 && v / 1000 > best) best = (int)(v / 1000); }
         return best; };
-    for (;;) { if (g_temp_on.load()) { g_temp_cpu = hottest(cpu); g_temp_gpu = hottest(gpu); } sleep(1); }
+    /* every core's top clock, kHz */
+    std::vector<long long> top;
+    for (int i = 0; i < 64; i++) { long long v = 0; snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", i);
+        if (!read_long(path, &v)) { snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d", i); if (access(path, F_OK)) break; } top.push_back(v); }
+    const char *PS = "/sys/class/power_supply", *KG = "/sys/class/kgsl/kgsl-3d0";
+    std::vector<CoreSample> last, now; double mw_sum = 0; int mw_n = 0;
+    for (unsigned tick = 0;; tick++) {
+        usleep(100000);
+        if (g_dev.want_power.load()) {
+            long long uv = 0, ua = 0, bv = 0, ba = 0; char p[96];
+            snprintf(p, sizeof p, "%s/usb/voltage_now", PS); bool usb = read_long(p, &uv); snprintf(p, sizeof p, "%s/usb/current_now", PS); usb = usb && read_long(p, &ua);
+            snprintf(p, sizeof p, "%s/battery/voltage_now", PS); bool bat = read_long(p, &bv); snprintf(p, sizeof p, "%s/battery/current_now", PS); bat = bat && read_long(p, &ba);
+            /* microvolts x microamps; battery current is negative while it discharges */
+            if (bat) { double w = ((usb ? (double)uv * ua : 0) - (double)bv * ba) / 1e12; if (w >= 0 && w < 100) { mw_sum += w; mw_n++; } }
+        }
+        if (tick % 5) continue;
+        if (g_dev.want_power.load()) {
+            g_dev.mw = mw_n ? (int)(mw_sum / mw_n * 1000) : -1; mw_sum = 0; mw_n = 0;
+            g_dev.cpu_c = hottest(cpu_zones); g_dev.gpu_c = hottest(gpu_zones);
+            long long state = 0, rpm = 0;
+            g_dev.fan_rpm = read_long("/sys/class/gpio5_pwm2/state", &state) && read_long("/sys/class/gpio5_pwm2/speed", &rpm) ? (state ? (int)rpm : 0) : -1;
+        }
+        if (g_dev.want_load.load()) {
+            read_cores(now);
+            if (!last.empty() && last.size() == now.size()) {
+                double used = 0, cap = 0; int best = -1; double best_share = -1;
+                for (size_t i = 0; i < now.size(); i++) {
+                    unsigned long long db = now[i].busy - last[i].busy, dt = now[i].total - last[i].total, ft = now[i].f_time - last[i].f_time;
+                    double share = dt ? (double)db / dt : 0, khz = ft ? (double)(now[i].f_weighted - last[i].f_weighted) / ft : 0, max = i < top.size() ? (double)top[i] : 0;
+                    if (share > 1) share = 1;
+                    /* a core without clock statistics counts at its top clock */
+                    if (khz <= 0) khz = max;
+                    used += share * khz; cap += max;
+                    if (dt && share > best_share) { best_share = share; best = (int)i; }
+                }
+                g_dev.cpu_load = cap > 0 ? (int)(used / cap * 1000) : -1; g_dev.top_core = best; g_dev.top_load = best >= 0 ? (int)(best_share * 100 + 0.5) : -1;
+            }
+            last.swap(now);
+            long long busy = -1, hz = 0; char p[96];
+            snprintf(p, sizeof p, "%s/gpu_busy_percentage", KG); g_dev.gpu_busy = read_long(p, &busy) ? (int)busy : -1;
+            snprintf(p, sizeof p, "%s/gpuclk", KG); g_dev.gpu_mhz = read_long(p, &hz) ? (int)(hz / 1000000) : -1;
+        } else last.clear();
+    }
     return nullptr;
 }
 bool hud_item(const char *key) { const Option *o = option(key); return o && o->cur == 1; }
 int hud_env() { static int env = -1; if (env < 0) { const char *e = getenv("TOTK_HUD"); env = !e ? 0 : !strcmp(e, "off") ? 1 : !strcmp(e, "fps") ? 2 : !strcmp(e, "detailed") ? 3 : 0; } return env; }
-bool hud_any() { int e = hud_env(); if (e == 1) return false; if (e) return true; return hud_item("TOTK_HUD_FPS") || hud_item("TOTK_HUD_FRAMETIME") || hud_item("TOTK_HUD_REFRESH") || hud_item("TOTK_HUD_TEMP") || hud_item("TOTK_HUD_SHADERS") || hud_item("TOTK_HUD_DRIVER"); }
-/* One plain line of monospace text on a translucent dark strip, in the corner chosen (TOTK_HUD_CORNER): the items on,
-   left to right. Fixed-width numbers, so the line never shifts. */
+bool hud_any() { int e = hud_env(); if (e == 1) return false; if (e) return true; for (const char *k : kHudItems) if (hud_item(k)) return true; return false; }
+/* The name a setting shows in the menu, for its value in effect: a live setting's current one, a restart one's from the
+   start; the part before " · " (a short description follows it), and "×" written "x" for the HUD's font */
+int setting_index(const Option *o, const char *key) {
+    const char *env = getenv(key); int idx = o->cur;
+    if (!o->live() && env) for (size_t i = 0; i < o->values.size(); i++) if (o->values[i] == env) idx = (int)i;
+    return idx;
+}
+std::string setting_value(const char *key) { const Option *o = option(key); if (!o || o->values.empty()) return ""; return o->values[setting_index(o, key)]; }
+std::string setting_name(const char *key) {
+    const Option *o = option(key); if (!o || o->values.empty()) return "";
+    int idx = setting_index(o, key);
+    std::string n = idx < (int)o->names.size() ? o->names[idx] : o->values[idx];
+    size_t dot = n.find(" \xc2\xb7 "); if (dot != std::string::npos) n.resize(dot);
+    for (size_t at; (at = n.find("\xc3\x97")) != std::string::npos;) n.replace(at, 2, "x");
+    return n;
+}
+/* Game frame times for the graph and the 1% low: the last 512, each taken once (overlay_stats frame_seq) */
+struct FrameHistory { float ms[512] = {}; uint32_t n = 0, seq = 0; float low1 = 0; uint32_t low_at = 0; } g_frames;
+void frames_take(const overlay_stats &st) {
+    if (st.frame_seq == g_frames.seq || st.frame_raw_ms <= 0) return;
+    g_frames.seq = st.frame_seq; g_frames.ms[g_frames.n++ % 512] = st.frame_raw_ms;
+    /* the frame rate of the slowest 1% of the frames (as the benchmark reports it), twice a second at 60 */
+    if (g_frames.n - g_frames.low_at >= 30) {
+        g_frames.low_at = g_frames.n; uint32_t k = std::min<uint32_t>(g_frames.n, 512);
+        float v[512]; memcpy(v, g_frames.ms, k * sizeof *v); std::sort(v, v + k);
+        uint32_t worst = std::max<uint32_t>(1, k / 100); float sum = 0; for (uint32_t i = k - worst; i < k; i++) sum += v[i];
+        g_frames.low1 = sum > 0 ? 1000.0f * worst / sum : 0;
+    }
+}
+/* Lines of monospace text on a translucent dark panel, in the corner chosen (TOTK_HUD_CORNER), one line an item (the
+   short ones share the last), the frame time's line graph under its line. Fixed-width numbers, so lines never shift. */
 void hud(float fps, float frame_ms) {
     int e = hud_env(); if (e == 1) return;
-    bool f = e ? true : hud_item("TOTK_HUD_FPS"), g = e ? e == 3 : hud_item("TOTK_HUD_FRAMETIME"), sh = e ? false : hud_item("TOTK_HUD_SHADERS"), dr = e ? false : hud_item("TOTK_HUD_DRIVER"), rf = e ? false : hud_item("TOTK_HUD_REFRESH"), tp = e ? false : hud_item("TOTK_HUD_TEMP");
-    g_temp_on = tp;
-    if (tp) { static bool started; if (!started) { started = true; pthread_t t; if (!pthread_create(&t, nullptr, temp_thread, nullptr)) pthread_detach(t); } }
-    if (!(f || g || sh || dr || rf || tp)) return;
+    bool f = e ? true : hud_item("TOTK_HUD_FPS"), g = e ? e == 3 : hud_item("TOTK_HUD_FRAMETIME"), ld = !e && hud_item("TOTK_HUD_LOAD"), pw = !e && hud_item("TOTK_HUD_POWER"),
+         tm = !e && hud_item("TOTK_HUD_TIMING"), se = !e && hud_item("TOTK_HUD_SETTINGS"), rf = !e && hud_item("TOTK_HUD_REFRESH"), sh = !e && hud_item("TOTK_HUD_SHADERS"), dr = !e && hud_item("TOTK_HUD_DRIVER");
+    g_dev.want_load = ld; g_dev.want_power = pw;
+    if (ld || pw) { static bool started; if (!started) { started = true; pthread_t t; if (!pthread_create(&t, nullptr, device_thread, nullptr)) pthread_detach(t); } }
+    const overlay_stats &st = S.st;
+    struct Line { char text[192]; bool graph; } lines[10]; int n = 0;
+    auto line = [&](bool graph, const char *fmt, ...) { Line &l = lines[n++]; l.graph = graph; va_list a; va_start(a, fmt); vsnprintf(l.text, sizeof l.text, fmt, a); va_end(a); };
+    char b[192], c[96];
+    /* the pictures a second; with frame generation the real and generated ones, "120 fps (r60 g60)"; the 1% low of game frames */
+    if (f || g) {
+        b[0] = 0; int k = 0;
+        if (f) { float real = st.real_fps, gen = std::max(fps - real, 0.0f);
+            k += st.framegen && real > 0 ? snprintf(b + k, sizeof b - k, "%3.0f fps (r%2.0f g%2.0f)", fps, real, gen) : snprintf(b + k, sizeof b - k, "%3.0f fps", fps);
+            if (g_frames.low1 > 0) k += snprintf(b + k, sizeof b - k, "  low %3.0f", g_frames.low1); else k += snprintf(b + k, sizeof b - k, "  low  --"); }
+        /* a game frame's time; with frame generation split into the rest and generation's GPU time, "33.3 ms (r28.2 g5.1)" */
+        if (g) { float rm = st.real_ms, gm = st.gen_ms; if (k) k += snprintf(b + k, sizeof b - k, "    ");
+            if (st.framegen && rm > 0) snprintf(b + k, sizeof b - k, "%5.1f ms (r%4.1f g%3.1f)", rm, rm - gm, gm); else snprintf(b + k, sizeof b - k, "%5.1f ms", frame_ms); }
+        line(false, "%s", b);
+        if (g) line(true, "");
+    }
+    /* CPU: busy share weighted by each core's clock against all cores at their top clock, and the busiest core */
+    if (ld) { int cl = g_dev.cpu_load, tc = g_dev.top_core, tl = g_dev.top_load, gb = g_dev.gpu_busy, gm = g_dev.gpu_mhz;
+        int k = cl >= 0 ? snprintf(b, sizeof b, "CPU %3d%%", (cl + 5) / 10) : snprintf(b, sizeof b, "CPU  --%%");
+        k += tc >= 0 && tl >= 0 ? snprintf(b + k, sizeof b - k, " (core %d %3d%%)", tc, tl) : snprintf(b + k, sizeof b - k, " (core -  --%%)");
+        k += gb >= 0 ? snprintf(b + k, sizeof b - k, "    GPU %3d%%", gb) : snprintf(b + k, sizeof b - k, "    GPU  --%%");
+        if (gm >= 0) snprintf(b + k, sizeof b - k, " %4d MHz", gm);
+        line(false, "%s", b); }
+    if (pw) { int mw = g_dev.mw, cc = g_dev.cpu_c, gc = g_dev.gpu_c, fan = g_dev.fan_rpm;
+        int k = mw >= 0 ? snprintf(b, sizeof b, "%5.1f W", mw / 1000.0) : snprintf(b, sizeof b, "  -- W");
+        k += cc >= 0 ? snprintf(b + k, sizeof b - k, "    CPU %3dC", cc) : snprintf(b + k, sizeof b - k, "    CPU  --C");
+        k += gc >= 0 ? snprintf(b + k, sizeof b - k, "  GPU %3dC", gc) : snprintf(b + k, sizeof b - k, "  GPU  --C");
+        if (fan > 0) snprintf(b + k, sizeof b - k, "    fan %5d rpm", fan); else if (fan == 0) snprintf(b + k, sizeof b - k, "    fan off");
+        line(false, "%s", b); }
+    /* frame generation's GPU time for each picture it makes, and from our present to the screen */
+    if (tm) { int k = 0;
+        if (st.framegen) k = st.gen_pictures > 0.05f ? snprintf(b, sizeof b, "gen %4.1f ms a picture    ", st.gen_ms / st.gen_pictures) : snprintf(b, sizeof b, "gen   -- ms a picture    ");
+        if (st.screen_ms > 0) snprintf(b + k, sizeof b - k, "to screen %4.1f ms", st.screen_ms); else snprintf(b + k, sizeof b - k, "to screen   -- ms");
+        line(false, "%s", b); }
+    /* the upscaler, anti-aliasing, frame generation and the cap in effect */
+    /* and the game frames and generated pictures a second the cap and mode intend (vk/frame_rule.h, as the game applies them) */
+    if (se) { std::string fg = setting_value("TOTK_FG"), fgn = setting_name("TOTK_FG"), cap = setting_value("TOTK_FPS_CAP"), mode = setting_value("TOTK_FG_MODE"), lmode = setting_value("TOTK_LSFG_MODE");
+        if (fg == "homemade") fgn += " " + setting_name("TOTK_FG_MODE"); else if (fg == "lsfg") fgn += " " + setting_name("TOTK_LSFG_MODE"); else if (fg == "fsr") fgn += " x2";
+        if (fg.empty() || fg == "off") fgn = "FG off";
+        char hz[16], fgv[32]; frame_rule(cap.c_str(), fg.c_str(), mode.c_str(), lmode.c_str(), hz, fgv);
+        int real = atoi(hz), capn = atoi(cap.c_str()); bool fill = (fg == "homemade" && mode == "fill") || (fg == "lsfg" && lmode == "fill");
+        const char *to = S.mono->FindGlyphNoFallback(0x2192) ? "\xe2\x86\x92" : "->";
+        if (fill) snprintf(c, sizeof c, " %s %d real, gen fills gaps", to, real);
+        else if (!strcmp(fgv, "0")) snprintf(c, sizeof c, " %s %d real", to, real);
+        else snprintf(c, sizeof c, " %s %d real, %d gen", to, real, std::max(capn - real, 0));
+        std::string res = setting_name("TOTK_RENDER_RES");
+        snprintf(b, sizeof b, "%s | AA %s | %s | cap %s%s%s%s", setting_name("TOTK_UPSCALER").c_str(), setting_name("TOTK_AA").c_str(), fgn.c_str(), setting_name("TOTK_FPS_CAP").c_str(), c,
+                 res.empty() || res == "Original" ? "" : " | ", res.empty() || res == "Original" ? "" : res.c_str());
+        line(false, "%s", b); }
+    /* the short items share a line: screen rate, pipelines handed to the compile thread and not built yet, the driver */
+    if (rf || sh || dr) { int k = 0; b[0] = 0;
+        if (rf) { if (st.screen_hz) snprintf(c, sizeof c, "%3u Hz", st.screen_hz); else snprintf(c, sizeof c, " -- Hz"); k += snprintf(b + k, sizeof b - k, "%s", c); }
+        if (sh) k += snprintf(b + k, sizeof b - k, "%scompiling %3llu", k ? "    " : "", (unsigned long long)st.pipelines_queued);
+        if (dr && S.driver[0]) snprintf(b + k, sizeof b - k, "%s%s", k ? "    " : "", S.driver);
+        if (b[0]) line(false, "%s", b); }
+    if (!n) return;
     /* 0 bottom-left, 1 bottom-right, 2 top-left, 3 top-right */
     const Option *co = option("TOTK_HUD_CORNER"); int corner = co ? co->cur : 0;
     ImDrawList *dl = ImGui::GetForegroundDrawList(); ImVec2 ds = ImGui::GetIO().DisplaySize;
-    ImFont *fn = S.mono; float lh = text_size(fn, "0").y, gap = u(16), gw = u(120), pad = u(5);
-    struct Seg { char text[192]; bool graph; float w; } segs[8]; int n = 0; float total = 0;
-    auto add = [&](const char *t, bool graph) { Seg &sg = segs[n++]; snprintf(sg.text, sizeof sg.text, "%s", t); sg.graph = graph; sg.w = graph ? gw : text_size(fn, t).x; total += sg.w + gap; };
-    char b[192];
-    /* with frame generation on: the real and generated pictures a second, "120 fps (r60 g60)", g0 while none are made */
-    if (f) { float real = S.st.real_fps, gen = std::max(fps - real, 0.0f);
-        if (S.st.framegen && real > 0) snprintf(b, sizeof b, "%3.0f fps (r%2.0f g%2.0f)", fps, real, gen); else snprintf(b, sizeof b, "%3.0f fps", fps);
-        add(b, false); }
-    /* with frame generation: a game frame's time, split into the rest and generation's GPU time, "14.2 ms (r12.1 g2.1)" */
-    if (g) { float rm = S.st.real_ms, gm = S.st.gen_ms;
-        if (S.st.framegen && rm > 0) snprintf(b, sizeof b, "%5.1f ms (r%4.1f g%3.1f)", rm, rm - gm, gm); else snprintf(b, sizeof b, "%5.1f ms", frame_ms);
-        add(b, false); add("", true); }
-    if (rf) { if (S.st.screen_hz) snprintf(b, sizeof b, "%3u Hz", S.st.screen_hz); else snprintf(b, sizeof b, " -- Hz"); add(b, false); }
-    if (tp) { int t = std::max(g_temp_cpu.load(), g_temp_gpu.load()); if (t >= 0) snprintf(b, sizeof b, "%3dC", t); else snprintf(b, sizeof b, " --C"); add(b, false); }
-    /* pipelines handed to the compile thread and not built yet, the one in progress included */
-    if (sh) { snprintf(b, sizeof b, "compiling %3llu", (unsigned long long)S.st.pipelines_queued); add(b, false); }
-    if (dr && S.driver[0]) add(S.driver, false);
-    total -= gap;
-    float x = corner & 1 ? ds.x - u(6) - total : u(6), y = corner & 2 ? u(4) : ds.y - lh - u(4);
-    dl->AddRectFilled(ImVec2(x - pad, y - pad + u(1)), ImVec2(x + total + pad, y + lh + pad), IM_COL32(0, 0, 0, 120));
-    const ImU32 ink = IM_COL32(236, 236, 230, 255), shadow = IM_COL32(0, 0, 0, 160);
+    ImFont *fn = S.mono; float lh = text_size(fn, "0").y, pad = u(5), gh = lh * 2.5f, lgap = u(2);
+    float width = u(220), height = 0;
+    for (int i = 0; i < n; i++) { if (!lines[i].graph) width = std::max(width, text_size(fn, lines[i].text).x); height += (lines[i].graph ? gh : lh) + (i ? lgap : 0); }
+    float x = corner & 1 ? ds.x - u(6) - width : u(6), y = corner & 2 ? u(4) : ds.y - height - u(4);
+    dl->AddRectFilled(ImVec2(x - pad, y - pad + u(1)), ImVec2(x + width + pad, y + height + pad), IM_COL32(0, 0, 0, 120));
+    const ImU32 ink = IM_COL32(236, 236, 230, 255), shadow = IM_COL32(0, 0, 0, 160), slow = IM_COL32(235, 95, 75, 245), guide = IM_COL32(236, 236, 230, 70);
     for (int i = 0; i < n; i++) {
-        /* the last 120 frames, 33 ms full height, frames over the 60 fps budget red */
-        if (segs[i].graph) {
-            float gh = lh - u(2), bar = gw / 120, gy = y + lh - u(1);
-            for (int k = 0; k < 120; k++) {
-                float m = S.frame_ms[(S.frame_i + k) % 120], v = m > 33.3f ? 1 : m / 33.3f;
-                if (m > 0) dl->AddRectFilled(ImVec2(x + bar * k, gy - gh * v), ImVec2(x + bar * (k + 1) - u(0.4f), gy), m > 1000.0f / 59 ? IM_COL32(235, 95, 75, 235) : IM_COL32(215, 215, 210, 215));
+        if (i) y += lgap;
+        /* the last 150 game frames, newest on the right: full height is twice the cap's frame time (33.3 ms uncapped),
+           a faint line at the cap's time, segments red where a frame took over 15% longer than it */
+        if (lines[i].graph) {
+            float target = st.target_ms > 0 ? st.target_ms : 1000.0f / 60, top_ms = st.target_ms > 0 ? 2 * st.target_ms : 33.3f, bottom = y + gh - u(1), span = gh - u(2);
+            dl->AddLine(ImVec2(x, bottom - span * target / top_ms), ImVec2(x + width, bottom - span * target / top_ms), guide, u(0.6f));
+            uint32_t count = std::min<uint32_t>(g_frames.n, 150); const uint32_t show = 150; float step = width / (show - 1);
+            ImVec2 prev; bool prev_slow = false;
+            for (uint32_t k = 0; k < count; k++) {
+                float m = g_frames.ms[(g_frames.n - count + k) % 512], v = std::min(m / top_ms, 1.0f);
+                ImVec2 pt(x + step * (show - count + k), bottom - span * v); bool is_slow = m > target * 1.15f;
+                if (k) dl->AddLine(prev, pt, is_slow || prev_slow ? slow : ink, u(1.1f));
+                prev = pt; prev_slow = is_slow;
             }
-        } else { text(dl, fn, ImVec2(x + u(1), y + u(1)), shadow, segs[i].text); text(dl, fn, ImVec2(x, y), ink, segs[i].text); }
-        x += segs[i].w + gap;
+            y += gh;
+        } else { text(dl, fn, ImVec2(x + u(1), y + u(1)), shadow, lines[i].text); text(dl, fn, ImVec2(x, y), ink, lines[i].text); y += lh; }
     }
 }
 
@@ -833,8 +987,7 @@ int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t 
         else fprintf(stderr, "[overlay] 【红】the menu cannot be drawn (initialisation failed): not opened\n");
     }
     bool open = S.open.load();
-    if (!open) { S.frame_ms[S.frame_i] = frame_ms; S.frame_i = (S.frame_i + 1) % 120; }
-    if (stats) S.st = *stats;
+    if (stats) { S.st = *stats; if (!open) frames_take(*stats); }
     if (!open && !hud_any()) {
         /* presses while playing are the game's: dropped, or the first frame of the menu would take them (B closing the
            game's own menu, or sprint, read as B: the menu would close again at once) */
