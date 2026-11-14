@@ -44,7 +44,7 @@ TOTK_MOTION	Controls	L	on	on|off	On|Off	Motion controls	Aim by tilting the devic
 =	System	H	-	-	-	Sound	
 TOTK_VOLUME	System	LQ	100	100|80|60|40|20|0	100 %|80 %|60 %|40 %|20 %|Muted	Volume	The game’s volume. The game is muted while this menu is open.
 =	System	H	-	-	-	Performance overlay	
-TOTK_HUD_FPS	System	LQ	off	off|on	Off|On	Show frame rate	Shows the frame rate on screen, counting every picture shown, and the 1% low: the rate of the slowest frames of the last few seconds. With frame generation it also splits real and generated pictures.
+TOTK_HUD_FPS	System	LQ	off	off|on	Off|On	Show frame rate	Shows the frame rate on screen, counting every picture shown. With frame generation it also splits real and generated pictures. “Low” is the 1% low: the average rate of the slowest 1% of the last 512 game frames, about 17 seconds at 30 frames per second, so a stutter stays in it for a while.
 TOTK_HUD_FRAMETIME	System	L	off	off|on	Off|On	Show frame time	Shows how long each game frame takes, with a line graph of the last few seconds. The faint line is the frame rate limit; the graph turns red where a frame took longer.
 TOTK_HUD_LOAD	System	L	off	off|on	Off|On	Show CPU and GPU load	Shows how busy the processor and the graphics chip are, and the graphics chip’s speed. The CPU figure weighs each core by its speed, so a fast core counts for more; the busiest core is shown too, since one busy core can hold the game back.
 TOTK_HUD_POWER	System	L	off	off|on	Off|On	Show power and heat	Shows how much power the device draws, the CPU and GPU temperatures, and the fan speed on devices that report one. Many devices slow themselves down when they get very hot.
