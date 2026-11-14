@@ -4,8 +4,8 @@
    (the glowing door in the Room of Awakening). The display rate is only requested (TOTK_DISPLAY_HZ); other layers can
    keep the panel at 120 Hz. Here each picture gets a "not before" time: with n generated pictures (1, or up to 3 with
    LSFG) each comes 1 / (n + 1) of a game frame after the one before, and the real one the same after the last, on the
-   refresh grid learnt from past present times. A late game frame is shown as soon as possible instead. TOTK_PACING=1
-   turns it on; it is off by default. */
+   refresh grid learnt from past present times. A late game frame is shown as soon as possible instead. It is on while
+   frame generation runs at a rate dividing the refresh rate (pace_on), and for every frame with TOTK_PACING=1. */
 /* VK_GOOGLE_display_timing listed (enabled at device creation) */
 static int pace_ext;
 /* totk_timeline.c */
@@ -38,9 +38,10 @@ static uint64_t pace_frames, pace_late, pace_missed;
 static int fg_fill;
 static int fg_enabled(void); static int fg_shown_hz(void); static int lsfg_enabled(void);
 static int pace_on(void) {
-    /* every frame (TOTK_PACING=1, opt-in: it misjudges caps that do not divide the refresh rate), or fill mode */
-    static int on = -1; if (on < 0) { const char *e = getenv("TOTK_PACING"); on = e && atoi(e) > 0; }
-    if (!(pace_ext && pace_get_refresh && pace_get_past)) return 0;
+    /* every frame (TOTK_PACING=1, opt-in: it misjudges caps that do not divide the refresh rate), or fill mode;
+       TOTK_PACING=off (diagnostic) never, for latency comparisons */
+    static int on = -1; if (on < 0) { const char *e = getenv("TOTK_PACING"); on = !e ? 0 : !strcmp(e, "off") ? -2 : atoi(e) > 0; }
+    if (!(pace_ext && pace_get_refresh && pace_get_past) || on == -2) return 0;
     if (on || fg_fill) return 1;
     /* Frame generation whose pictures a second divide the measured refresh rate (60 on 120 Hz): unpaced, a generated
        picture and the real one after it were handed over back to back, and on 120 Hz the generated one stayed a refresh
@@ -155,9 +156,15 @@ static void pace_plan(int generated, double game_ms, int64_t *desired) {
     uint64_t step = (uint64_t)(game_ms * 1e6 / (generated + 1)); if (step < pace_refresh) step = pace_refresh;
     uint64_t t = pace_last_target ? pace_grid_round(pace_last_target + step) : earliest;
     pace_frames++; if (t < earliest) { t = earliest; pace_late++; }
-    /* never more than a step after the soonest refresh a picture presented now can reach: a plan that got ahead comes back,
-       at the cost of at most one dropped picture, instead of keeping the queue full */
-    if (t > pace_grid_round(soonest + step)) t = pace_grid_round(soonest + step);
+    /* Never more than a refresh (and never more than a step) after the soonest refresh a picture presented now can reach:
+       a plan that got ahead comes back, at the cost of at most one dropped picture, instead of keeping the queue full.
+       Every refresh of room is a refresh of input lag. Odin, Homemade x2 at 30 on 120 Hz: a step of room (2 refreshes)
+       129 ms stick to screen, 1 refresh 119 ms with the same share of evenly shown pictures on the benchmark route, 0
+       refreshes 118 ms but 6% of frames late and uneven pictures standing still. TOTK_PACE_FLOAT=<refreshes> (diagnostic)
+       sets it. */
+    static int pace_float = -1; if (pace_float < 0) { const char *e = getenv("TOTK_PACE_FLOAT"); pace_float = e && atoi(e) >= 0 ? atoi(e) : 1; }
+    uint64_t room = (uint64_t)pace_float * pace_refresh < step ? (uint64_t)pace_float * pace_refresh : step;
+    if (t > pace_grid_round(soonest + room)) t = pace_grid_round(soonest + room);
     for (int i = 0; i <= generated; i++) {
         if (i) { uint64_t next = pace_grid_round(t + step); t = next < t + pace_refresh ? t + pace_refresh : next; }
         /* half a refresh early: that refresh */
