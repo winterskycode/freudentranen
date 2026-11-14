@@ -50,9 +50,10 @@ typedef struct {
    between game frames, gen_ms the GPU time frame generation took of it; framegen: a frame generation method is on */
 /* frame_raw_ms: the last game frame's own time (unsmoothed, the graph and the 1% low), frame_seq counts game frames so
    the HUD takes each once; target_ms: the game frame time the frame rate cap allows (0 uncapped); gen_pictures: generated
-   pictures per game frame, smoothed; screen_ms: from our present to the screen (display timing), smoothed, 0 unknown */
+   pictures per game frame, smoothed; screen_ms: from our present to the screen (display timing), smoothed, 0 unknown;
+   upscaler_idle: the picture already fills the screen, so the Upscaler settings change nothing (the menu says so) */
 typedef struct { uint64_t pipelines, pipelines_queued, draws_skipped, shaders_translated; uint32_t screen_hz; float real_fps, real_ms, gen_ms; int framegen;
-                 float frame_raw_ms; uint32_t frame_seq; float target_ms, gen_pictures, screen_ms; } overlay_stats;
+                 float frame_raw_ms; uint32_t frame_seq; float target_ms, gen_pictures, screen_ms; int upscaler_idle; } overlay_stats;
 
 void overlay_configure(const overlay_vk *vk, const overlay_settings *settings);
 /* Records the overlay into image (in TRANSFER_DST_OPTIMAL before and after) when the menu is open or the HUD is on;

@@ -3,7 +3,8 @@
    when the camera moves) replaced by one Mitchell-Netravali cubic (shaders/soften.comp) whose (B, C) sets the look.
    Same hook and conditions as asr_upscale_draw (the whole canvas, one target, no blending), but any valid region of the
    scene (dynamic resolution) and a shrink as well (a supersampled TOTK_RENDER_RES). Handheld has no such draw: the
-   present's Upscaler setting plays this part there. */
+   present's Upscaler setting plays this part there. Needs storage writes without a declared format (the canvas's format
+   varies). */
 enum { SOFT_GAME, SOFT_NEUTRAL, SOFT_SOFT, SOFT_SOFTER, SOFT_MODES };
 static const char *const soften_values[SOFT_MODES] = {"game", "neutral", "soft", "softer"};
 /* (B, C) of each look */
@@ -24,7 +25,7 @@ static VkImageView soften_view(image_entry *e) {
 /* Returns 1 when the game's upscale draw was replaced (draw_graphics_inner, before its bindings). */
 static int soften_upscale_draw(const shader_entry *fs) {
     int mode = soften_mode();
-    if (mode == SOFT_GAME || !fs || !fs->module) return 0;
+    if (mode == SOFT_GAME || !fs || !fs->module || !storage_write_any_format) return 0;
     if (strncmp(fs->game_id, "a3a570eb159202f1", 16) && strncmp(fs->game_id, "ac58fc18eda5f387", 16)) return 0;
     int why = 0;
     if (state.rt.n != 1 || !state.rt.color[0]) why = 1;
@@ -61,20 +62,25 @@ static int soften_upscale_draw(const shader_entry *fs) {
     }
     graphics_pass_end();
     image_upload(src);
-    fg_image(&soften.out, VK_FORMAT_R16G16B16A16_SFLOAT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    /* straight into the canvas when it takes storage writes (RGBA8 on the Odin), else through an RGBA16F image and a copy */
+    int direct = (dst->key.usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
+    image_entry *out = direct ? dst : &soften.out;
+    if (!direct) fg_image(&soften.out, VK_FORMAT_R16G16B16A16_SFLOAT, dw, dh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     image_access(src, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-    image_access(&soften.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+    image_access(out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     double ratio = sw / dw > sh / dh ? sw / dw : sh / dh;
-    float con[8] = {(float)sw, (float)sh, (float)dw, (float)dh, soften_bc[mode][0], soften_bc[mode][1], ratio > 1 ? (float)ratio : 1.0f, 0};
+    float con[8] = {(float)sw, (float)sh, (float)dw, (float)dh, soften_bc[mode][0], soften_bc[mode][1], ratio > 1 ? (float)ratio : 1.0f, mode == SOFT_NEUTRAL ? 1.0f : 0.0f};
     uint32_t words[16] = {0}; memcpy(words, con, sizeof con);
-    upscale_pass(soften.pipe, soften_view(src), soften_view(&soften.out), words, dw, dh);
-    image_gpu_written(&soften.out);
-    image_access(&soften.out, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
-    image_access(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-    VkImageBlit region = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)dw, (int32_t)dh, 1}},
-        .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)dw, (int32_t)dh, 1}}};
-    vkCmdBlitImage(command, soften.out.image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &region, VK_FILTER_NEAREST);
-    image_gpu_written(dst);
+    upscale_pass(soften.pipe, soften_view(src), soften_view(out), words, dw, dh);
+    image_gpu_written(out);
+    if (!direct) {
+        image_access(&soften.out, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+        image_access(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        VkImageBlit region = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)dw, (int32_t)dh, 1}},
+            .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)dw, (int32_t)dh, 1}}};
+        vkCmdBlitImage(command, soften.out.image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &region, VK_FILTER_NEAREST);
+        image_gpu_written(dst);
+    }
     soften.frames++; if (sw < src->texture.d.width - 0.5 || sh < src->texture.d.height - 0.5) soften.region++;
     if (!(soften.frames % 1800)) LOG("[soften] %s: %llu frames, %llu of them a smaller region (dynamic resolution)", soften_values[mode], (unsigned long long)soften.frames, (unsigned long long)soften.region);
     return 1;

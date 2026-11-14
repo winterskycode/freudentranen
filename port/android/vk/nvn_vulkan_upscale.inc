@@ -38,6 +38,8 @@ static struct {
     /* big: MMPX's 2x picture */
     upscale_image mid, out, big;
     uint64_t frames, fallbacks;
+    /* the last picture presented already filled the screen (docked on a 1080p panel): the upscaler had nothing to do */
+    int idle;
 } upscale = {.mode = -1};
 
 static void upscale_image_make_as(upscale_image *i, uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usage) {
@@ -360,7 +362,8 @@ static int upscale_present(image_entry *e, int sx, int sy, int sw, int sh, VkIma
     { const char *w = live_exp[0] ? exp_word(live_exp, "upscaler=", 0) : NULL; char v[16] = ""; int n = 0;
       while (w && n < 15 && exp_word_char(w[n])) { v[n] = w[n]; n++; }
       if (n && upscale_ready() >= 0) { int m = upscale_mode_of(v); if (m != upscale.mode) { upscale.mode = m; LOG("[upscale] present upscaler: %s (live)", upscale_names[m]); } } }
-    if (!upscale_ready() || sx || sy || sw <= 0 || sh <= 0 || (sw >= dw && sh >= dh) || e->aspect != VK_IMAGE_ASPECT_COLOR_BIT) { upscale.fallbacks++; return 0; }
+    upscale.idle = sw >= dw && sh >= dh;
+    if (!upscale_ready() || sx || sy || sw <= 0 || sh <= 0 || upscale.idle || e->aspect != VK_IMAGE_ASPECT_COLOR_BIT) { upscale.fallbacks++; return 0; }
     graphics_pass_end();
     upscale_image_make(&upscale.mid, (uint32_t)dw, (uint32_t)dh); upscale_image_make(&upscale.out, (uint32_t)dw, (uint32_t)dh);
     image_access(e, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);

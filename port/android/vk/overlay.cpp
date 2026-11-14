@@ -403,6 +403,9 @@ void tag(ImDrawList *dl, ImVec2 right_mid, const char *t, ImU32 line, ImU32 ink,
     dl->AddRect(a, b, line, u(3), 0, u(1)); text(dl, S.tag, ImVec2(a.x + u(8), a.y + u(3)), ink, t);
     *width = b.x - a.x;
 }
+/* A setting that changes nothing right now: the Upscaler and its options while the picture already fills the screen */
+bool idle_setting(const Option &o) { return S.st.upscaler_idle && (o.key == "TOTK_UPSCALER" || o.key == "TOTK_FSR_SHARPNESS" || o.key == "TOTK_SCALEFX_RES"); }
+const char *const kIdleNote = "Not in use right now: the game’s picture already fills the screen. When docked, Picture softness sets how sharp or soft it looks.";
 /* "‹ value ›", right-aligned at x; returns its left edge */
 float value_text(ImDrawList *dl, float x, float mid, const char *v, ImU32 col) {
     ImVec2 vs = text_size(S.value, v), cs = text_size(S.body, "›");
@@ -455,7 +458,7 @@ void quick_page(float w, float h, float fps, float frame_ms) {
         Row r = row(o.key.c_str(), iw, u(38));
         float mid = (r.a.y + r.b.y) / 2; ImVec2 ls = text_size(S.body, o.label.c_str());
         text(dl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : kCream, o.label.c_str());
-        value_text(dl, r.b.x - u(16), mid, o.names[o.cur].c_str(), kJade);
+        value_text(dl, r.b.x - u(16), mid, o.names[o.cur].c_str(), idle_setting(o) ? kMuted : kJade);
         int step = r.clicked ? 1 : 0;
         if (r.focused && left_pressed()) step = -1;
         if (r.focused && right_pressed()) step = 1;
@@ -554,14 +557,15 @@ void settings_page(float w, float h) {
             ImVec2 vs = text_size(S.value, v); left = right - c.x - u(12) - vs.x; text(rl, S.value, ImVec2(left, mid - vs.y / 2), kJade, v);
             if (r.clicked) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_SETTINGS; S.pad_row = 0; S.focus_first = true; }
         } else {
-            left = value_text(rl, right, mid, o.names[o.cur].c_str(), kJade);
+            left = value_text(rl, right, mid, o.names[o.cur].c_str(), idle_setting(o) ? kMuted : kJade);
             int step = r.clicked ? 1 : 0;
             if (r.focused && left_pressed()) step = -1;
             if (r.focused && right_pressed()) step = 1;
             if (r.focused && pressed(BTN_X)) set_value(o, o.def); else if (step) set_value(o, o.cur + step);
         }
         float tw = 0;
-        if (o.has('X')) tag(rl, ImVec2(left - u(18), mid), "EXPERIMENTAL", IM_COL32(238, 232, 216, 110), kSoft, &tw);
+        if (idle_setting(o)) tag(rl, ImVec2(left - u(18), mid), "NOT IN USE", IM_COL32(238, 232, 216, 110), kSoft, &tw);
+        else if (o.has('X')) tag(rl, ImVec2(left - u(18), mid), "EXPERIMENTAL", IM_COL32(238, 232, 216, 110), kSoft, &tw);
         else if (!o.live() && !o.page()) tag(rl, ImVec2(left - u(18), mid), "RESTART", kOchre, kOchreText, &tw);
         ImGui::SetCursorScreenPos(ImVec2(r.a.x, r.b.y + u(2)));
     }
@@ -580,6 +584,7 @@ void settings_page(float w, float h) {
         const Option &o = g_options[S.focused]; float px = pa.x + u(28), pw = u(400 - 56), py = pa.y + u(28);
         text(dl, S.head, ImVec2(px, py), kGoldText, o.label.c_str(), pw); py += text_size(S.head, o.label.c_str(), pw).y + u(14);
         text(dl, S.help, ImVec2(px, py), kHelp, o.help.c_str(), pw); py += text_size(S.help, o.help.c_str(), pw).y + u(16);
+        if (idle_setting(o)) { text(dl, S.help, ImVec2(px, py), kOchreText, kIdleNote, pw); py += text_size(S.help, kIdleNote, pw).y + u(16); }
         /* the choices, closer together when many would run past the footer line (Render resolution has nine) */
         float step = o.names.empty() ? u(34) : std::max(u(24), std::min(u(34), (pb.y - u(64) - py) / o.names.size()));
         for (size_t i = 0; i < o.names.size() && !o.page(); i++) {

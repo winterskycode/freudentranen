@@ -247,6 +247,8 @@ static int ext_descriptor_indexing;
 static int bindless_on(void);static void bindless_create(void);
 static int lsfg_device_ok;
 static int fsr_device_ok;
+/* storage images written without a declared format (soften.comp writes the game's canvas, whatever its format) */
+static int storage_write_any_format;
 static VkPhysicalDeviceLimits gpu_limits;
 static uint32_t gpu_subgroup_size;
 /* ballot in vertex shaders (Turnip yes, Qualcomm's driver no): the translator keeps the game's vertex counter as written */
@@ -1077,6 +1079,7 @@ driver_retry:;
     /* FSR frame interpolation: formatless and extended storage images, and subgroup arithmetic and quads in compute */
     {
         const VkSubgroupFeatureFlags need = VK_SUBGROUP_FEATURE_BASIC_BIT | VK_SUBGROUP_FEATURE_ARITHMETIC_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT;
+        storage_write_any_format = features.shaderStorageImageWriteWithoutFormat;
         fsr_device_ok = features.shaderStorageImageExtendedFormats && features.shaderStorageImageReadWithoutFormat && features.shaderStorageImageWriteWithoutFormat &&
             (subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) && (subgroup.supportedOperations & need) == need && subgroup.subgroupSize >= 32;
         static const struct { VkFormat f; VkFormatFeatureFlags need; } formats[] = {{VK_FORMAT_R8_UINT, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT}, {VK_FORMAT_R8G8_UNORM, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT},
@@ -2422,7 +2425,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
             uint64_t q = atomic_load(&async_pso_queued), done = atomic_load(&async_pso_built) + atomic_load(&async_pso_failed);
             int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0;
             overlay_stats st = {pipeline_creations, q > done ? q - done : 0, atomic_load(&async_pso_skipped), totk_translated, pace_screen_hz(), present_fps, present_ms, present_gen_ms, fg_enabled() || lsfg_enabled(),
-                                present_raw_ms, present_seq, cap > 0 ? 1000.0f / cap : 0, present_shown > 1 ? present_shown - 1 : 0, pace_screen_ms};
+                                present_raw_ms, present_seq, cap > 0 ? 1000.0f / cap : 0, present_shown > 1 ? present_shown - 1 : 0, pace_screen_ms, upscale.idle};
             overlay_record(command, screen_images[index], screen_format, screen_extent.width, screen_extent.height, present_fps * present_shown, present_ms / present_shown, &st); }
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barrier.dstAccessMask = 0; barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &barrier);

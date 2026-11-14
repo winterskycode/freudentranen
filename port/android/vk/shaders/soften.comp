@@ -6,11 +6,14 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(push_constant) uniform P {
     // xy: the scene's valid region in the source texture (dynamic resolution draws a smaller one), zw: the output size
     vec4 size;
-    // x: B, y: C, z: the kernel's width over the source texel's (1 when enlarging)
+    // x: B, y: C, z: the kernel's width over the source texel's (1 when enlarging), w: 1 to keep the result within the
+    // nearest 2x2 texels (Catmull-Rom's negative lobes ring at hard edges)
     vec4 kern;
 } k;
+// a linear sampler, clamped to the edge
 layout(set = 0, binding = 0) uniform sampler2D src;
-layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D dst;
+// the canvas itself, or an RGBA16F image copied into it (nvn_vulkan_soften.inc): written without a declared format
+layout(set = 0, binding = 1) uniform writeonly image2D dst;
 float mitchell(float x) {
     float B = k.kern.x, C = k.kern.y; x = abs(x);
     if (x < 1.0) return ((12.0 - 9.0 * B - 6.0 * C) * x * x * x + (-18.0 + 12.0 * B + 6.0 * C) * x * x + (6.0 - 2.0 * B)) / 6.0;
@@ -20,22 +23,39 @@ float mitchell(float x) {
 void main() {
     ivec2 o = ivec2(gl_GlobalInvocationID.xy);
     if (o.x >= int(k.size.z) || o.y >= int(k.size.w)) return;
-    float s = clamp(k.kern.z, 1.0, 2.0);
-    vec2 p = (vec2(o) + 0.5) * k.size.xy / k.size.zw - 0.5;
-    ivec2 lo = ivec2(floor(p - 2.0 * s)) + 1, hi = ivec2(k.size.xy) - 1;
-    // at most 8 taps an axis (s <= 2)
-    float wx[8], wy[8];
-    int n = int(floor(4.0 * s)); if (n > 8) n = 8;
-    for (int i = 0; i < n; i++) { wx[i] = mitchell((float(lo.x + i) - p.x) / s); wy[i] = mitchell((float(lo.y + i) - p.y) / s); }
+    vec2 region = k.size.xy, inv = 1.0 / vec2(textureSize(src, 0));
+    vec2 p = (vec2(o) + 0.5) * region / k.size.zw - 0.5;
     vec4 c = vec4(0.0); float ws = 0.0;
-    for (int y = 0; y < n; y++) for (int x = 0; x < n; x++) {
-        float w = wx[x] * wy[y];
-        c += w * texelFetch(src, clamp(lo + ivec2(x, y), ivec2(0), hi), 0); ws += w;
+    if (k.kern.z <= 1.0) {
+        // Enlarging: 4x4 taps in 3x3 bilinear reads, the middle two of each axis read as one at their weighted spot
+        // (both weights are positive there). Every read stays within the valid region.
+        vec2 b = floor(p), f = p - b;
+        vec2 w0 = vec2(mitchell(1.0 + f.x), mitchell(1.0 + f.y)), w1 = vec2(mitchell(f.x), mitchell(f.y));
+        vec2 w2 = vec2(mitchell(1.0 - f.x), mitchell(1.0 - f.y)), w3 = vec2(mitchell(2.0 - f.x), mitchell(2.0 - f.y));
+        vec2 w12 = w1 + w2, at12 = b + w2 / w12;
+        vec2 at[3] = vec2[3](b - 1.0, at12, b + 2.0), w[3] = vec2[3](w0, w12, w3);
+        for (int y = 0; y < 3; y++) for (int x = 0; x < 3; x++) {
+            vec2 t = clamp(vec2(at[x].x, at[y].y) + 0.5, vec2(0.5), region - 0.5);
+            float wt = w[x].x * w[y].y;
+            c += wt * textureLod(src, t * inv, 0.0); ws += wt;
+        }
+    } else {
+        // Shrinking: the kernel widened by the ratio, up to 8 taps an axis
+        float s = min(k.kern.z, 2.0);
+        ivec2 lo = ivec2(floor(p - 2.0 * s)) + 1, hi = ivec2(region) - 1;
+        int n = min(int(floor(4.0 * s)), 8);
+        float wx[8], wy[8];
+        for (int i = 0; i < n; i++) { wx[i] = mitchell((float(lo.x + i) - p.x) / s); wy[i] = mitchell((float(lo.y + i) - p.y) / s); }
+        for (int y = 0; y < n; y++) for (int x = 0; x < n; x++) {
+            float wt = wx[x] * wy[y];
+            c += wt * texelFetch(src, clamp(lo + ivec2(x, y), ivec2(0), hi), 0); ws += wt;
+        }
     }
     c /= ws;
-    // the negative lobes (C > 0) ring at hard edges: keep within the nearest 2x2 source texels
-    ivec2 b = clamp(ivec2(floor(p)), ivec2(0), hi);
-    vec4 a0 = texelFetch(src, b, 0), a1 = texelFetch(src, min(b + ivec2(1, 0), hi), 0), a2 = texelFetch(src, min(b + ivec2(0, 1), hi), 0), a3 = texelFetch(src, min(b + 1, hi), 0);
-    c = clamp(c, min(min(a0, a1), min(a2, a3)), max(max(a0, a1), max(a2, a3)));
+    if (k.kern.w > 0.0) {
+        ivec2 hi = ivec2(region) - 1, b = clamp(ivec2(floor(p)), ivec2(0), hi);
+        vec4 a0 = texelFetch(src, b, 0), a1 = texelFetch(src, min(b + ivec2(1, 0), hi), 0), a2 = texelFetch(src, min(b + ivec2(0, 1), hi), 0), a3 = texelFetch(src, min(b + 1, hi), 0);
+        c = clamp(c, min(min(a0, a1), min(a2, a3)), max(max(a0, a1), max(a2, a3)));
+    }
     imageStore(dst, o, max(c, vec4(0.0)));
 }
