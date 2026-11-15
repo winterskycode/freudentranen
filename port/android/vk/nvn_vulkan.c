@@ -1909,6 +1909,7 @@ void mtl_drain(void) { mtl_init();mtl_finish(); pthread_mutex_lock(&queue_lock);
 #include "nvn_vulkan_soften.inc"
 #include "nvn_vulkan_lsfg.inc"
 #include "nvn_vulkan_smaa.inc"
+#include "nvn_vulkan_taa_resolve.inc"
 #include "nvn_vulkan_record.inc"
 #include "nvn_vulkan_latency.inc"
 #include "overlay.h"
@@ -1927,7 +1928,8 @@ static void ov_apply(const char *key, const char *value) {
     else if (!strcmp(key, "TOTK_UPSCALER")) { upscale_ready(); upscale.mode = upscale_mode_of(value); LOG("[upscale] present upscaler: %s", upscale_names[upscale.mode]); }
     else if (!strcmp(key, "TOTK_FSR_SHARPNESS")) { upscale_ready(); upscale.sharpness = upscale_sharpness(value); }
     else if (!strcmp(key, "TOTK_SCALEFX_RES")) { upscale_ready(); upscale.sfx_res = upscale_sfx_res(value); LOG("[upscale] ScaleFX output: %s", value); }
-    else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x"); taa_aa_mode(!strcmp(value, "smaat2x")); fg_track(); }
+    else if (!strcmp(key, "TOTK_AA")) { smaa_on(); smaa.on = !strcmp(value, "smaa") || !strcmp(value, "smaat2x") || !strcmp(value, "taa"); taa_aa_mode(value); fg_track(); }
+    else if (!strcmp(key, "TOTK_TAA_SOFTNESS")) { tr.look = taa_look_of(value); LOG("[taa] %s (menu)", taa_look_values[tr.look]); }
     else if (!strcmp(key, "TOTK_SMAA_ULTRA")) smaa_ultra_on = atoi(value) > 0;
     else if (!strcmp(key, "TOTK_SOFTNESS")) { soften.mode = soften_mode_of(value); LOG("[soften] %s", soften_values[soften.mode]); }
     /* the method and the game's rendered rate (vk/frame_rule.h, fg_parse) */

@@ -29,8 +29,8 @@ static struct {
     uint64_t frames;
 } smaa = {.on = -1, .usable = -1};
 static int smaa_on(void) {
-    if (smaa.on < 0) { const char *e = getenv("TOTK_AA"); smaa.on = e && (!strcmp(e, "smaa") || !strcmp(e, "smaat2x"));
-        LOG("[aa] %s", smaa.on ? (!strcmp(e, "smaat2x") ? "SMAA T2x (docked; SMAA 1x in handheld mode)" : "SMAA 1x before the UI") : "off"); }
+    if (smaa.on < 0) { const char *e = getenv("TOTK_AA"); smaa.on = e && (!strcmp(e, "smaa") || !strcmp(e, "smaat2x") || !strcmp(e, "taa"));
+        LOG("[aa] %s", smaa.on ? (!strcmp(e, "smaat2x") ? "SMAA T2x (docked; SMAA 1x in handheld mode)" : !strcmp(e, "taa") ? "TAA (docked; SMAA 1x in handheld mode)" : "SMAA 1x before the UI") : "off"); }
     return smaa.on;
 }
 static void smaa_toggle(void) { smaa_on(); smaa.on = !smaa.on; LOG("[aa] toggled %s", smaa.on ? "on" : "off"); }

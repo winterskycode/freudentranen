@@ -65,8 +65,11 @@ void overlay_forget_image(VkImage image);
 /* Prepare mode (the startup screen's "Prepare shaders", nvn_vulkan.c): while active the game stays paused at its first
    frame and the overlay shows a progress panel instead of the menu; no input is taken. fraction 0..1, < 0 unknown. */
 void overlay_prepare(int active, const char *stage, const char *detail, float fraction);
-/* the menu is open (the game is paused) */
+/* the game waits for its next frame: the menu is open, except for a moment after a picture setting changed there, so
+   the change shows behind the menu */
 int overlay_open(void);
+/* the menu is open: the controller and touches are the menu's */
+int overlay_input_held(void);
 /* the menu is open: keep presenting while the game is paused */
 int overlay_wants_present(void);
 void overlay_toggle(void);

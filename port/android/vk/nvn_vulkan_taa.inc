@@ -1,5 +1,5 @@
-/* The camera jitter that temporal anti-aliasing needs, shared by Arm ASR (TOTK_TAA=asr, nvn_vulkan_asr.inc) and SMAA T2x
-   (TOTK_AA=smaat2x, docked; nvn_vulkan_smaa.inc):
+/* The camera jitter that temporal anti-aliasing needs, shared by Arm ASR (TOTK_TAA=asr, nvn_vulkan_asr.inc), SMAA T2x
+   (TOTK_AA=smaat2x, docked; nvn_vulkan_smaa.inc) and our own TAA (TOTK_AA=taa, docked; nvn_vulkan_taa_resolve.inc):
     - jitter: the camera's projection is offset by a sub-pixel step in clip space (Halton (2, 3); T2x's two positions),
       in our copies of the game's uniform blocks (taa_uniform), as a game with TAA of its own would: everything drawn with
       the camera moves together, and the game's screen-space effects project with the same matrices;
@@ -11,7 +11,7 @@
       one where it did not run (menus, loading). */
 #define TAA_PHASES 16
 static struct {
-    /* -1 unread; 2 Arm ASR, 3 SMAA T2x */
+    /* -1 unread; 2 Arm ASR, 3 SMAA T2x, 4 TAA */
     int on;
     /* ran: this frame */
     int cur, hist_ok, ran;
@@ -40,19 +40,21 @@ static int taa_enabled_slow(void);
 static inline int taa_enabled(void) { return taa.on >= 0 ? taa.on : taa_enabled_slow(); }
 static int taa_enabled_slow(void) {
     if (taa.on < 0) { const char *e = getenv("TOTK_TAA"); taa.on = e && !strcmp(e, "asr") ? 2 : 0;
-        /* SMAA T2x (TOTK_AA=smaat2x, docked): the two-position jitter, mode 3 */
+        /* SMAA T2x (TOTK_AA=smaat2x, docked): the two-position jitter, mode 3; TAA (TOTK_AA=taa, docked): mode 4 */
         if (!taa.on) {
             const char *a = getenv("TOTK_AA"), *m = getenv("TOTK_OPERATION_MODE");
-            if (a && !strcmp(a, "smaat2x") && m && !strcmp(m, "docked")) taa.on = 3; }
-        LOG("[taa] temporal anti-aliasing (TOTK_TAA): %s", taa.on == 3 ? "SMAA T2x's two jitter positions" : taa.on == 2 ? "Arm ASR" : "off"); }
+            if (a && m && !strcmp(m, "docked")) taa.on = !strcmp(a, "smaat2x") ? 3 : !strcmp(a, "taa") ? 4 : 0; }
+        LOG("[taa] temporal anti-aliasing: %s", taa.on == 4 ? "TAA" : taa.on == 3 ? "SMAA T2x's two jitter positions" : taa.on == 2 ? "Arm ASR" : "off"); }
     return taa.on;
 }
-/* The menu's anti-aliasing changed while playing (nvn_vulkan.c): SMAA T2x's jitter on or off, docked, unless TOTK_TAA
-   runs a temporal method of its own */
-static void taa_aa_mode(int t2x) {
+/* The menu's anti-aliasing changed while playing (nvn_vulkan.c): SMAA T2x's or TAA's jitter on or off, docked, unless
+   TOTK_TAA runs a temporal method of its own */
+static void taa_aa_mode(const char *aa) {
     taa_enabled();
     const char *m = getenv("TOTK_OPERATION_MODE");
-    if (taa.on == 0 || taa.on == 3) { taa.on = t2x && m && !strcmp(m, "docked") ? 3 : 0; taa.hist_ok = 0; LOG("[taa] SMAA T2x jitter %s", taa.on == 3 ? "on" : "off"); }
+    int docked = m && !strcmp(m, "docked");
+    if (taa.on == 0 || taa.on == 3 || taa.on == 4) { taa.on = !docked ? 0 : !strcmp(aa, "smaat2x") ? 3 : !strcmp(aa, "taa") ? 4 : 0; taa.hist_ok = 0;
+        LOG("[taa] jitter %s", taa.on == 4 ? "on (TAA)" : taa.on == 3 ? "on (SMAA T2x)" : "off"); }
 }
 static double taa_halton(unsigned i, unsigned base) { double f = 1, r = 0; while (i) { f /= base; r += f * (i % base); i /= base; } return r; }
 
@@ -77,6 +79,7 @@ static void smaa_scene_mark(int done);
 static int smaa_t2x_apply(image_entry *target, image_entry *depth, int sub, const double *reproj, int reset);
 static int taa_camera(uint32_t w, uint32_t h, double m[16]);
 static int asr_upscale_draw(const shader_entry *fs);
+static int taa_resolve_apply(image_entry *target, image_entry *depth, const double *reproj, int reset);
 /* The compose draw (draw_graphics_inner, before its bindings): note its target. */
 static void taa_compose(const shader_entry *fs) {
     (void)fs;
@@ -98,6 +101,13 @@ static void taa_before_draw(const shader_entry *fs) {
     }
     if (!reads) return;
     image_entry *t = taa.target; taa.target = NULL;
+    /* TAA on compose's output */
+    if (taa.on == 4) {
+        if (!fg.depth || !fg.cam_ok) { taa.skipped++; return; }
+        double m[16]; int reset = taa_camera(t->texture.d.width, t->texture.d.height, m);
+        if (taa_resolve_apply(t, fg.depth, m, reset)) { smaa_scene_mark(1); taa.hist_ok = 1; taa.ran = 1; taa.done++; }
+        return;
+    }
     /* SMAA T2x on compose's output */
     if (taa.on == 3) {
         if (!fg.depth || !fg.cam_ok) { taa.skipped++; return; }

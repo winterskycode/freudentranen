@@ -1,0 +1,120 @@
+// Temporal anti-aliasing (nvn_vulkan_taa.inc, TOTK_AA=taa, docked): compose's output, drawn with the camera jittered by
+// a sub-pixel Halton step each frame, accumulated over frames.
+//  - this frame's colour at the pixel's centre: the 3x3 texels weighted by a Gaussian (Blackman-Harris width) of
+//    their distance, each texel's sample sitting at its centre minus the jitter; the width sets the softness;
+//  - motion: at the nearest depth of the 3x3 (silhouettes carry the nearer surface's motion), object motion where the
+//    motion pass drew (nvn_vulkan_motion.inc: last frame's normalised position), else the camera's from the depth and
+//    the last frame's view-projection (GL clip space, depth not reversed);
+//  - the history, read with a Catmull-Rom filter (5 bilinear reads) so it does not blur as it moves, is clipped to the
+//    3x3's colour spread (mean +- gamma standard deviations, YCoCg), tighter and with more of this frame where the
+//    camera's prediction of last frame's depth matches nothing in the 3x3 of last frame's depth there (disocclusion);
+//  - blend: this frame's weight from tune.y (history and this frame alike) to tune.z (unlike), so a still picture
+//    settles while changes come through;
+//  - colours are blended in a reversible tonemap (c / (1 + max channel)), so a bright texel does not dominate.
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(push_constant) uniform P {
+    // previous view-projection * inverse(current view-projection)
+    mat4 reproj;
+    // w, h, 1/w, 1/h
+    vec4 size;
+    // xy: this frame's jitter (pixels, x right, y down: what a texel shows sits that far from its centre), z: reset,
+    // w: clip-space y direction
+    vec4 jit;
+    // x: clip box gamma, y: least weight of this frame, z: most, w: filter width (pixels)
+    vec4 tune;
+    // x: 1 when obj holds this frame's object motion, y: debug view (1 history use, 2 motion), z: 1 no depth test
+    vec4 misc;
+} p;
+// a copy of compose's output (point sampled)
+layout(set = 0, binding = 0) uniform sampler2D cur;
+// the accumulated picture, tonemapped (linear sampler)
+layout(set = 0, binding = 1) uniform sampler2D hist;
+layout(set = 0, binding = 2) uniform sampler2D depth;
+layout(set = 0, binding = 3) uniform sampler2D depth_prev;
+// RG32F: last frame's normalised position, x below -9 where nothing moved itself
+layout(set = 0, binding = 4) uniform sampler2D obj;
+layout(set = 0, binding = 5, r11f_g11f_b10f) uniform writeonly image2D outp;
+layout(set = 0, binding = 6, rgba16f) uniform writeonly image2D hist_next;
+layout(set = 0, binding = 7, r32f) uniform writeonly image2D depth_next;
+
+vec3 tm(vec3 c) { return c / (1.0 + max(c.r, max(c.g, c.b))); }
+vec3 itm(vec3 c) { return c / max(1.0 - max(c.r, max(c.g, c.b)), 1e-4); }
+vec3 ycocg(vec3 c) { return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b); }
+vec3 rgb(vec3 y) { return vec3(y.x + y.y - y.z, y.x + y.z, y.x - y.y - y.z); }
+vec3 hist_at(vec2 t) { return textureLod(hist, t, 0.0).rgb; }
+// Catmull-Rom from 5 bilinear reads (the four corner taps dropped: their weights are tiny)
+vec3 history(vec2 uv) {
+    vec2 pos = uv * p.size.xy, c1 = floor(pos - 0.5) + 0.5, f = pos - c1;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2, t0 = (c1 - 1.0) * p.size.zw, t3 = (c1 + 2.0) * p.size.zw, t12 = (c1 + w2 / w12) * p.size.zw;
+    float a = w12.x * w0.y, b = w0.x * w12.y, c = w12.x * w12.y, d = w3.x * w12.y, e = w12.x * w3.y;
+    vec3 s = hist_at(vec2(t12.x, t0.y)) * a + hist_at(vec2(t0.x, t12.y)) * b + hist_at(t12) * c + hist_at(vec2(t3.x, t12.y)) * d + hist_at(vec2(t12.x, t3.y)) * e;
+    return max(s / (a + b + c + d + e), vec3(0.0));
+}
+vec3 clip_box(vec3 lo, vec3 hi, vec3 h) {
+    vec3 c = 0.5 * (hi + lo), e = 0.5 * (hi - lo) + 1e-5, v = h - c, a = abs(v / e);
+    float m = max(a.x, max(a.y, a.z));
+    return m > 1.0 ? c + v / m : h;
+}
+// view depth goes as 1 / (1 - d): within 4 %
+bool same_depth(float a, float b) { return abs(a - b) <= 0.04 * (1.0 - b) + 1e-7; }
+void main() {
+    ivec2 P = ivec2(gl_GlobalInvocationID.xy), last = ivec2(p.size.xy) - 1;
+    if (any(greaterThan(P, last))) return;
+    vec2 uv = (vec2(P) + 0.5) * p.size.zw;
+    vec3 m1 = vec3(0.0), m2 = vec3(0.0), sum = vec3(0.0);
+    float wsum = 0.0, dn = 1.0, fw = p.tune.w;
+    ivec2 N = P;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        ivec2 Q = clamp(P + ivec2(x, y), ivec2(0), last);
+        vec3 s = ycocg(tm(texelFetch(cur, Q, 0).rgb));
+        m1 += s; m2 += s * s;
+        vec2 dl = vec2(x, y) - p.jit.xy;
+        float w = exp(-2.29 * dot(dl, dl) / (fw * fw));
+        sum += w * s; wsum += w;
+        float d = texelFetch(depth, Q, 0).r;
+        if (d < dn) { dn = d; N = Q; }
+    }
+    vec3 now = sum / wsum, mean = m1 / 9.0, sigma = sqrt(max(m2 / 9.0 - mean * mean, vec3(0.0)));
+    float d0 = texelFetch(depth, P, 0).r;
+    vec2 un = (vec2(N) + 0.5) * p.size.zw, mv = vec2(0.0);
+    float pred = dn;
+    vec4 c = p.reproj * vec4(un.x * 2.0 - 1.0, p.jit.w * (1.0 - un.y * 2.0), dn * 2.0 - 1.0, 1.0);
+    if (c.w > 1e-7) { vec3 n = c.xyz / c.w; mv = vec2(n.x * 0.5 + 0.5, 0.5 - 0.5 * p.jit.w * n.y) - un; pred = n.z * 0.5 + 0.5; }
+    vec4 om = p.misc.x != 0.0 ? texelFetch(obj, N, 0) : vec4(-10.0);
+    bool moved = om.x > -9.0;
+    if (moved) mv = vec2(om.x * 0.5 + 0.5, 0.5 - 0.5 * p.jit.w * om.y) - un;
+    vec2 puv = uv + mv;
+    // 0 dropped: reset, off screen (1), disoccluded (2)
+    int why = 0;
+    if (p.jit.z != 0.0) why = 1;
+    else if (any(lessThan(puv, vec2(0.0))) || any(greaterThan(puv, vec2(1.0)))) why = 1;
+    else if (!moved && p.misc.z == 0.0) {
+        ivec2 Q = clamp(ivec2(puv * p.size.xy), ivec2(0), last);
+        bool hit = false;
+        for (int y = -1; y <= 1 && !hit; y++) for (int x = -1; x <= 1 && !hit; x++)
+            hit = same_depth(texelFetch(depth_prev, clamp(Q + ivec2(x, y), ivec2(0), last), 0).r, pred);
+        if (!hit) why = 2;
+    }
+    vec3 res = now; float a = 1.0;
+    if (why != 1) {
+        vec3 h = ycocg(history(puv));
+        // a depth mismatch (leaves in the wind, a surface seen anew) keeps the history in a tight box: the colour
+        // decides what stays
+        float g = why == 2 ? min(p.tune.x, 0.75) : p.tune.x;
+        h = clip_box(mean - g * sigma, mean + g * sigma, h);
+        float l0 = now.x, l1 = h.x, k = 1.0 - abs(l0 - l1) / max(l0, max(l1, 0.2));
+        a = mix(p.tune.z, p.tune.y, k * k);
+        if (why == 2) a = max(a, 0.25);
+        res = mix(h, now, a);
+    }
+    vec3 out_tm = max(rgb(res), vec3(0.0));
+    vec3 shown = itm(out_tm);
+    if (p.misc.y == 1.0) shown = why == 1 ? vec3(0.0, 0.0, 1.0) : why == 2 ? vec3(1.0, 0.0, 0.0) : moved ? vec3(0.0, a * 4.0, 0.0) : vec3(a * 4.0);
+    else if (p.misc.y == 2.0) shown = vec3(abs(mv * p.size.xy) * 0.1, moved ? 1.0 : 0.0);
+    imageStore(outp, P, vec4(shown, 1.0));
+    imageStore(hist_next, P, vec4(out_tm, 1.0));
+    imageStore(depth_next, P, vec4(d0));
+}

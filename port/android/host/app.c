@@ -431,7 +431,7 @@ extern void overlay_pad(uint32_t buttons, int32_t lx, int32_t ly) __attribute__(
 extern void overlay_touch(float x, float y, int down) __attribute__((weak));
 static uint16_t script_buttons(void);
 extern void overlay_toggle(void) __attribute__((weak));
-extern int overlay_open(void) __attribute__((weak));
+extern int overlay_input_held(void) __attribute__((weak));
 /* the game window's width (on_window_created): the overlay's touch corner */
 static int window_width = 1920;
 /* input thread: after every input event and at least every 20 ms: the overlay's controller */
@@ -555,7 +555,7 @@ void runtime_gamepad_read(RuntimeGamepadState *out) {
     *out = pad_state; out->buttons |= pressed_edges | scripted; pressed_edges = 0;
     /* while the menu is open the game sees a neutral controller, and the presses made then are the menu's: dropped, or
        they would reach the game when it reads again */
-    if (overlay_open && overlay_open()) { int c = out->connected; memset(out, 0, sizeof *out); out->connected = c; pressed_edges = 0; pthread_mutex_unlock(&pad_lock); return; }
+    if (overlay_input_held && overlay_input_held()) { int c = out->connected; memset(out, 0, sizeof *out); out->connected = c; pressed_edges = 0; pthread_mutex_unlock(&pad_lock); return; }
     { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); uint64_t now = (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
       int32_t *axes[4] = {&out->lx, &out->ly, &out->rx, &out->ry};
       for (int i = 0; i < 4; i++) if (now < script_axis[i].until) *axes[i] = script_axis[i].value; }
@@ -724,7 +724,7 @@ static int handle_input(AInputEvent *e) {
         int32_t action = AMotionEvent_getAction(e) & AMOTION_EVENT_ACTION_MASK;
         float x = AMotionEvent_getX(e, 0), y = AMotionEvent_getY(e, 0);
         int down = action != AMOTION_EVENT_ACTION_UP && action != AMOTION_EVENT_ACTION_CANCEL;
-        if (overlay_open && overlay_open()) { if (overlay_touch) overlay_touch(x, y, down); return 1; }
+        if (overlay_input_held && overlay_input_held()) { if (overlay_touch) overlay_touch(x, y, down); return 1; }
         if (action == AMOTION_EVENT_ACTION_DOWN && overlay_toggle && x > window_width - 160 && y < 160) { overlay_toggle(); return 1; }
         return 0;
     }
