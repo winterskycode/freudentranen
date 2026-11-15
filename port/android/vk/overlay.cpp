@@ -275,14 +275,14 @@ bool init(VkFormat format) {
     /* sizes for a 1080-line screen (1.5 pixels a design unit); other sizes scale them (overlay_record) */
     static const ImWchar ranges[] = {0x0020, 0x00FF, 0x2010, 0x2044, 0x2190, 0x2193, 0x2212, 0x2212, 0};
     S.title = font_asset("fonts/MarcellusSC-Regular.ttf", 51, ranges);
-    S.head = font_asset("fonts/MarcellusSC-Regular.ttf", 30, ranges);
-    S.body = font_asset("fonts/Figtree-Regular.ttf", 27, ranges);
-    S.value = font_asset("fonts/Figtree-Medium.ttf", 26, ranges);
-    S.help = font_asset("fonts/Figtree-Regular.ttf", 22.5f, ranges);
-    S.small = font_asset("fonts/Figtree-Regular.ttf", 20, ranges);
-    S.tag = font_asset("fonts/Figtree-SemiBold.ttf", 17, ranges);
+    S.head = font_asset("fonts/MarcellusSC-Regular.ttf", 33, ranges);
+    S.body = font_asset("fonts/Figtree-Regular.ttf", 31, ranges);
+    S.value = font_asset("fonts/Figtree-Medium.ttf", 30, ranges);
+    S.help = font_asset("fonts/Figtree-Regular.ttf", 25.5f, ranges);
+    S.small = font_asset("fonts/Figtree-Regular.ttf", 21.5f, ranges);
+    S.tag = font_asset("fonts/Figtree-SemiBold.ttf", 18, ranges);
     if (!S.body) { fprintf(stderr, "[overlay] fonts missing from the APK's assets: system font\n");
-        S.body = io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 27.0f); if (!S.body) S.body = io.Fonts->AddFontDefault(); }
+        S.body = io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 31.0f); if (!S.body) S.body = io.Fonts->AddFontDefault(); }
     /* the device's monospace font (every Android has it) */
     /* made at the HUD's largest size and drawn smaller (TOTK_HUD_SIZE); it has no arrows: Figtree's, one monospace cell
        wide (0.6 em) */
@@ -426,7 +426,15 @@ void tag(ImDrawList *dl, ImVec2 right_mid, const char *t, ImU32 line, ImU32 ink,
 }
 /* A setting that changes nothing right now: the Upscaler and its options while the picture already fills the screen */
 bool idle_setting(const Option &o) { return S.st.upscaler_idle && (o.key == "TOTK_UPSCALER" || o.key == "TOTK_FSR_SHARPNESS" || o.key == "TOTK_SCALEFX_RES"); }
-const char *const kIdleNote = "Not in use right now: the game’s picture already fills the screen. When docked, Picture softness sets how sharp or soft it looks.";
+/* the focused row's left / right / X: a step through the choices or the default; an idle setting stays as it is */
+void row_change(Option &o, const Row &r) {
+    if (idle_setting(o)) return;
+    int step = r.clicked ? 1 : 0;
+    if (r.focused && left_pressed()) step = -1;
+    if (r.focused && right_pressed()) step = 1;
+    if (r.focused && pressed(BTN_X)) set_value(o, o.def); else if (step) set_value(o, o.cur + step);
+}
+const char *const kIdleNote = "Not in use right now. Docked, Picture softness sets how sharp the picture looks.";
 /* "‹ value ›", right-aligned at x; returns its left edge */
 float value_text(ImDrawList *dl, float x, float mid, const char *v, ImU32 col) {
     ImVec2 vs = text_size(S.value, v), cs = text_size(S.body, "›");
@@ -453,7 +461,7 @@ void quick_page(float w, float h, float fps, float frame_ms) {
     bg->AddRectFilled(ImVec2(w * 0.68f, 0), ImVec2(w, h), a2);
     begin_page("quick"); rows_begin();
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    float x = w - u(440) + u(36), iw = u(440 - 36 - 40), y = u(28);
+    float x = w - u(480) + u(36), iw = u(480 - 36 - 40), y = u(28);
     text(dl, S.title, ImVec2(x, y), kGoldText, "Paused"); y += u(38);
     /* the frame rate is on the HUD already */
     ornament(dl, ImVec2(x, y + u(4)), u(220)); y += u(20);
@@ -467,30 +475,27 @@ void quick_page(float w, float h, float fps, float frame_ms) {
         return r.clicked;
     };
     auto rule = [&]() { float ry = ImGui::GetCursorScreenPos().y + u(8); dl->AddLine(ImVec2(x + u(36), ry), ImVec2(x + iw, ry), kLine, u(1)); ImGui::SetCursorScreenPos(ImVec2(x, ry + u(9))); };
-    bool resume = item("resume", "Resume", 48, kCream, false);
+    bool resume = item("resume", "Resume", 42, kCream, false);
     /* the menu opens on Resume */
     ImGui::SetItemDefaultFocus();
     if (resume) S.open = false;
-    if (item("settings", "All settings", 42, kCream, true)) { S.page = PAGE_SETTINGS; S.focus_first = true; }
-    if (S.set.controls && item("layout", "Controls", 42, kCream, true)) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_QUICK; S.pad_row = 0; S.focus_first = true; }
+    if (item("settings", "All settings", 38, kCream, true)) { S.page = PAGE_SETTINGS; S.focus_first = true; }
+    if (S.set.controls && item("layout", "Controls", 38, kCream, true)) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_QUICK; S.pad_row = 0; S.focus_first = true; }
     rule();
     for (Option &o : g_options) {
         if (!o.has('Q') || o.page() || !shown(o)) continue;
-        Row r = row(o.key.c_str(), iw, u(38));
+        Row r = row(o.key.c_str(), iw, u(36));
         float mid = (r.a.y + r.b.y) / 2; ImVec2 ls = text_size(S.body, o.label.c_str());
-        text(dl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : kCream, o.label.c_str());
+        text(dl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : idle_setting(o) ? kMuted : kCream, o.label.c_str());
         value_text(dl, r.b.x - u(16), mid, o.names[o.cur].c_str(), idle_setting(o) ? kMuted : kJade);
-        int step = r.clicked ? 1 : 0;
-        if (r.focused && left_pressed()) step = -1;
-        if (r.focused && right_pressed()) step = 1;
-        if (r.focused && pressed(BTN_X)) set_value(o, o.def); else if (step) set_value(o, o.cur + step);
+        row_change(o, r);
         ImGui::SetCursorScreenPos(ImVec2(x, r.b.y + u(2)));
     }
     rule();
     if (S.set.report) {
         S.set.report(0, nullptr, S.report, sizeof S.report);
         float ry = ImGui::GetCursorScreenPos().y;
-        Row r = row("report", iw, u(42));
+        Row r = row("report", iw, u(38));
         { ImVec2 ts = text_size(S.head, "Save bug report"); text(dl, S.head, ImVec2(r.a.x + u(36), (r.a.y + r.b.y - ts.y) / 2), r.focused ? kGoldText : kCream, "Save bug report");
           if (r.focused || !S.report[0]) value_text(dl, r.b.x - u(16), (r.a.y + r.b.y) / 2, S.report_capture ? "+ frame capture" : "video, log and save", kJade);
           if (r.focused && (left_pressed() || right_pressed())) S.report_capture = !S.report_capture;
@@ -509,10 +514,10 @@ void quick_page(float w, float h, float fps, float frame_ms) {
             const char *shown = strncmp(S.report, "Bug report saved: ", 18) ? S.report : strrchr(S.report, '/') ? strrchr(S.report, '/') + 1 : S.report;
             char t[120]; snprintf(t, sizeof t, "%s%s", shown == S.report ? "" : "saved \u00b7 ", shown);
             if (!strncmp(t, "Saving the bug report: ", 23)) memmove(t, t + 23, strlen(t + 23) + 1);
-            ImVec2 ts = text_size(S.small, t); text(dl, S.small, ImVec2(x + iw - u(16) - ts.x, ry + (u(42) - ts.y) / 2), kJade, t);
+            ImVec2 ts = text_size(S.small, t); text(dl, S.small, ImVec2(x + iw - u(16) - ts.x, ry + (u(38) - ts.y) / 2), kJade, t);
         }
     }
-    if (S.set.quit && item("quit", "Quit to startup screen", 42, kMuted, false)) S.set.quit();
+    if (S.set.quit && item("quit", "Quit to startup screen", 38, kMuted, false)) S.set.quit();
     ImVec2 p(x, h - u(26) - u(24));
     hint(dl, p, "A", "Select"); hint(dl, p, "B", "Resume"); hint(dl, p, "‹ ›", "Change");
     if (pressed(BTN_B)) S.open = false;
@@ -552,7 +557,8 @@ void settings_page(float w, float h) {
     dl->AddLine(uv(56, 96), ImVec2(w - u(56), u(96)), kLine, u(1));
 
     // the rows
-    float top = u(120), bottom = h - u(76), list_w = w - u(56) - u(400) - u(40) - u(56);
+    const float panel_w = u(470);
+    float top = u(116), bottom = h - u(72), list_w = w - u(56) - panel_w - u(40) - u(56);
     auto listed = [&](const Option &o) { return o.tab == g_tabs[S.tab] && !o.heading() && shown(o); };
     if (S.focused < 0 || S.focused >= (int)g_options.size() || !listed(g_options[S.focused])) {
         S.focused = -1; for (int i = 0; i < (int)g_options.size() && S.focused < 0; i++) if (listed(g_options[i])) S.focused = i; }
@@ -562,14 +568,14 @@ void settings_page(float w, float h) {
     for (int i = 0; i < (int)g_options.size(); i++) {
         Option &o = g_options[i]; if (o.tab != g_tabs[S.tab] || !shown(o)) continue;
         if (o.heading()) {
-            ImVec2 p = ImGui::GetCursorScreenPos(); float hh = u(S.rows ? 44 : 30); ImVec2 ts = text_size(S.head, o.label.c_str());
+            ImVec2 p = ImGui::GetCursorScreenPos(); float hh = u(S.rows ? 40 : 28); ImVec2 ts = text_size(S.head, o.label.c_str());
             text(rl, S.head, ImVec2(p.x + u(14), p.y + hh - u(8) - ts.y), kGoldText, o.label.c_str());
             ImGui::Dummy(ImVec2(list_w, hh)); continue;
         }
-        Row r = row(o.key.c_str(), list_w, u(52));
+        Row r = row(o.key.c_str(), list_w, u(40));
         if (r.focused || r.clicked) S.focused = i;
         float mid = (r.a.y + r.b.y) / 2; ImVec2 ls = text_size(S.body, o.label.c_str());
-        text(rl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : kCream, o.label.c_str());
+        text(rl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : idle_setting(o) ? kMuted : kCream, o.label.c_str());
         float right = r.b.x - u(16), left;
         if (o.page()) {
             char v[48]; int n = layout_changes(); if (r.focused || r.clicked) layout_read();
@@ -579,10 +585,7 @@ void settings_page(float w, float h) {
             if (r.clicked) { layout_read(); S.page = PAGE_CONTROLS; S.controls_back = PAGE_SETTINGS; S.pad_row = 0; S.focus_first = true; }
         } else {
             left = value_text(rl, right, mid, o.names[o.cur].c_str(), idle_setting(o) ? kMuted : kJade);
-            int step = r.clicked ? 1 : 0;
-            if (r.focused && left_pressed()) step = -1;
-            if (r.focused && right_pressed()) step = 1;
-            if (r.focused && pressed(BTN_X)) set_value(o, o.def); else if (step) set_value(o, o.cur + step);
+            row_change(o, r);
         }
         float tw = 0;
         if (idle_setting(o)) tag(rl, ImVec2(left - u(18), mid), "NOT IN USE", IM_COL32(238, 232, 216, 110), kSoft, &tw);
@@ -599,21 +602,29 @@ void settings_page(float w, float h) {
     ImGui::EndChild();
 
     // the detail panel
-    ImVec2 pa(w - u(56) - u(400), top), pb(w - u(56), bottom);
+    ImVec2 pa(w - u(56) - panel_w, top), pb(w - u(56), bottom);
     brackets(dl, pa, pb);
     if (S.focused >= 0) {
-        const Option &o = g_options[S.focused]; float px = pa.x + u(28), pw = u(400 - 56), py = pa.y + u(28);
+        const Option &o = g_options[S.focused]; float px = pa.x + u(26), pw = panel_w - u(52), py = pa.y + u(24);
         text(dl, S.head, ImVec2(px, py), kGoldText, o.label.c_str(), pw); py += text_size(S.head, o.label.c_str(), pw).y + u(14);
-        text(dl, S.help, ImVec2(px, py), kHelp, o.help.c_str(), pw); py += text_size(S.help, o.help.c_str(), pw).y + u(16);
+        text(dl, S.help, ImVec2(px, py), kHelp, o.help.c_str(), pw); py += text_size(S.help, o.help.c_str(), pw).y + u(14);
         if (idle_setting(o)) { text(dl, S.help, ImVec2(px, py), kOchreText, kIdleNote, pw); py += text_size(S.help, kIdleNote, pw).y + u(16); }
-        /* the choices, closer together when many would run past the footer line (Render resolution has nine) */
-        float step = o.names.empty() ? u(34) : std::max(u(24), std::min(u(34), (pb.y - u(64) - py) / o.names.size()));
-        for (size_t i = 0; i < o.names.size() && !o.page(); i++) {
-            bool on = (int)i == o.cur; ImVec2 ns = text_size(S.help, o.names[i].c_str()); float cy = py + step / 2;
-            diamond(dl, ImVec2(px + u(15), cy), u(3.5f), on ? kJade : 0, on ? kJade : kSoft);
-            text(dl, S.help, ImVec2(px + u(30), cy - ns.y / 2), on ? kJade : kSoft, o.names[i].c_str());
-            if ((int)i == o.def && !on) { ImVec2 d = text_size(S.small, "default"); text(dl, S.small, ImVec2(px + u(30) + ns.x + u(10), cy - d.y / 2), kMuted, "default"); }
-            py += step;
+        /* the choices: two columns when there are more than five and they fit (down the first, then the second),
+           closer together when they would still run past the footer line */
+        size_t n = o.page() ? 0 : o.names.size(), cols = 1;
+        if (n > 5) { float widest = 0; for (size_t i = 0; i < n; i++) widest = std::max(widest, text_size(S.help, o.names[i].c_str()).x);
+            if (u(30) + widest + u(26) <= pw / 2) cols = 2; }
+        size_t per = n ? (n + cols - 1) / cols : 0;
+        float step = per ? std::max(u(26), std::min(u(32), (pb.y - u(64) - py) / per)) : 0, cw = pw / cols;
+        for (size_t i = 0; i < n; i++) {
+            bool on = (int)i == o.cur; const char *name = o.names[i].c_str(); ImVec2 ns = text_size(S.help, name);
+            float cx = px + cw * (i / per), cy = py + step * (i % per) + step / 2;
+            diamond(dl, ImVec2(cx + u(15), cy), u(3.5f), on ? kJade : 0, on ? kJade : kSoft);
+            text(dl, S.help, ImVec2(cx + u(30), cy - ns.y / 2), on ? kJade : kSoft, name);
+            /* the default: a word beside it, where it fits in the column */
+            if ((int)i == o.def && !on) {
+                ImVec2 ds = text_size(S.small, "default"); float dx = cx + u(30) + ns.x + u(8);
+                if (dx + ds.x <= cx + cw) text(dl, S.small, ImVec2(dx, cy - ds.y / 2), kMuted, "default"); }
         }
         const char *applies = o.page() || o.live() ? "Takes effect immediately." : "Saved. Takes effect the next time the game starts.";
         dl->AddLine(ImVec2(px, pb.y - u(56)), ImVec2(pb.x - u(28), pb.y - u(56)), kLine, u(1));
