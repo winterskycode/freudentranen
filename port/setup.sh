@@ -5,7 +5,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FORK=https://github.com/winterskycode/MacNativeGames.git
-COMMIT=d7763a4714c815febe6e74154570766a7ce81c3d
+COMMIT=8fac559323829ecc5e2bc81e57d54c0ff2857f3d
 if [ ! -d "$ROOT/MacNativeGames/.git" ]; then
   git clone -q "$FORK" "$ROOT/MacNativeGames"
   git -C "$ROOT/MacNativeGames" fetch -q origin android
