@@ -17,6 +17,11 @@ static PFN_vkGetPastPresentationTimingGOOGLE pace_get_past;
 static VkSwapchainKHR pace_chain;
 /* ns; anchor: a past refresh */
 static uint64_t pace_refresh, pace_anchor, pace_last_target;
+/* hle_nvn.c's frame clock: the panel's refresh period as the display reports it (VK_GOOGLE_display_timing), 0 unknown.
+   Panels run off their nominal rate (the Odin's 120 Hz mode refreshes every 8.22 ms, SurfaceFlinger's vsync model
+   agrees), so a frame clock of exactly 1/30 s falls behind four refreshes by 0.45 ms a frame and every ~18th picture
+   stays a refresh longer. */
+uint64_t nvn_display_refresh_ns(void) { return pace_ext ? pace_refresh : 0; }
 /* From a present until its picture is drawn (its GPU work done: a high estimate), and from then until the screen shows it
    when nothing holds it back. A picture that is not ready before the refresh the next one is due at is dropped, so the plan
    leads by both. */
