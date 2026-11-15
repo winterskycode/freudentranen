@@ -119,7 +119,17 @@ static void pace_learn(void) {
         { uint64_t sub = pace_submit[past[i].presentID % 64], a = past[i].actualPresentTime;
           if (sub && a > sub && a - sub < 200000000) { float ms = (a - sub) / 1e6f; pace_screen_ms = pace_screen_ms ? pace_screen_ms * 0.95f + ms * 0.05f : ms; } }
         if (last_actual && pace_refresh && past[i].actualPresentTime > last_actual) {
-            uint64_t k = (past[i].actualPresentTime - last_actual + pace_refresh / 2) / pace_refresh; hist[k < 5 ? k : 5]++;
+            uint64_t dt = past[i].actualPresentTime - last_actual, k = (dt + pace_refresh / 2) / pace_refresh; hist[k < 5 ? k : 5]++;
+            /* The period measured from the pictures' own times: what the display reports can be the mode's nominal one
+               (8.33 ms where the Odin's panel refreshes every 8.22 ms, as SurfaceFlinger's vsync model has it), and the
+               game's frame clock (hle_nvn.c panel_period) counts whole refreshes of it. Over 600 pictures, the time
+               between them over the refreshes each one stayed; a period within 3% of the current one replaces it. */
+            { static uint64_t sum_dt, sum_k, pictures;
+              if (k >= 1 && k <= 8) { sum_dt += dt; sum_k += k; }
+              if (++pictures >= 600) {
+                  if (sum_k >= 300) { uint64_t m = sum_dt / sum_k, d = m > pace_refresh ? m - pace_refresh : pace_refresh - m;
+                      if (d * 33 < pace_refresh && d > 20000) { LOG("[pacing] refresh measured from the pictures: %.3f ms (was %.3f)", m / 1e6, pace_refresh / 1e6); pace_refresh = m; } }
+                  sum_dt = sum_k = pictures = 0; } }
             if (!(++hist_n % 600)) { LOG("[pacing] on screen for 1/2/3/4/5+ refreshes: %llu %llu %llu %llu %llu (last 600 pictures)",
                 (unsigned long long)hist[1], (unsigned long long)hist[2], (unsigned long long)hist[3], (unsigned long long)hist[4], (unsigned long long)hist[5]); memset(hist, 0, sizeof hist); } }
         last_actual = past[i].actualPresentTime;
