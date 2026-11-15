@@ -111,7 +111,7 @@ static int ucap_seen(const ucap_range *r, int n, uint64_t lo, uint64_t hi) {
 int dm_android_read_ranges(int n, const uint64_t *ranges, uint8_t *base, const size_t *off);
 /* hle_nvn.c: the ops EndRecording indexed */
 extern const uint32_t *nvn_copy_op_index(uint64_t handle, uint32_t *n) __attribute__((weak));
-/* hle_nvn.c: the recording's distinct uniform ranges, sorted (its ubo_range_t has this {lo, hi} layout), and its OP_CALL count */
+/* hle_nvn.c: the recording's distinct uniform ranges, sorted (its ubo_range_t has this {lo, hi} layout), and the calls still to follow for ranges */
 extern const ucap_range *nvn_copy_ubo_ranges(uint64_t handle, uint32_t *n, uint32_t *calls) __attribute__((weak));
 static void ucap_add(ucap_range **r, int *n, int *cap, const p_bind_buf *b) {
     if (b->addr && b->size && b->size <= 65536 && !ucap_seen(*r, *n, b->addr, b->addr + b->size)) {
