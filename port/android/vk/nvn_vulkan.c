@@ -2547,8 +2547,24 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
 static const tex_t *present_last; static double present_last_period; static int present_last_crop[4], present_last_has_crop;
 static void fill_start(void);
 void runtime_audio_hold(int on) __attribute__((weak));
+/* The menu's preview replays (hle_nvn.c frz_replay): while held, the overlay's own presents pause, since the replays
+   draw into the very window texture they show; a quiet replay's present only ends its frame (temporal anti-aliasing's
+   history and jitter move on) and shows nothing, so only the last replay reaches the screen. */
+static _Atomic int preview_held, preview_quiet;
+void mtl_preview_hold(int on) {
+    /* a present of the overlay's already under way finishes first: the replays' work is queued after its copy */
+    pthread_mutex_lock(&present_serial); atomic_store(&preview_held, on); pthread_mutex_unlock(&present_serial);
+}
+void mtl_preview_quiet(int on) { atomic_store(&preview_quiet, on); }
 uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     pthread_mutex_lock(&present_serial);
+    if (atomic_load(&preview_quiet)) {
+        if (async_recording_owned) mtl_sub_commit();
+        uint64_t ticket = mtl_last_fence();
+        fg_frame_end(t, crop);
+        pthread_mutex_unlock(&present_serial);
+        return ticket;
+    }
     /* The mixer starts silent until the renderer says the game is up: nvn_mtl.m does it after its shader warm-up, which this
        backend does not have, so the first picture does. Without this the game is silent. */
     { static int released; if (!released) { released = 1; if (runtime_audio_hold) runtime_audio_hold(0); } }
@@ -2597,6 +2613,7 @@ static void *overlay_present_thread(void *arg) {
     for (;;) {
         struct timespec ts = {0, 16000000}; nanosleep(&ts, NULL);
         if (!overlay_wants_present() || !present_last) { saved = 0; continue; }
+        if (atomic_load(&preview_held)) continue;
         atomic_store(&present_paused, 1);
         pthread_mutex_lock(&present_serial);
         /* prepare mode shows its panel over the boot frame: the player's last frame stays */

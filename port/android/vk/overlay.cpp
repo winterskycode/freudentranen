@@ -83,6 +83,10 @@ struct State {
     Framebuffer fbs[8] = {}; unsigned next_fb = 0;
     /* mono: the fps number (digits of one width: a steady readout) */
     ImFont *title = nullptr, *head = nullptr, *body = nullptr, *value = nullptr, *help = nullptr, *small = nullptr, *tag = nullptr, *mono = nullptr;
+    /* the full settings page's larger set (settings_page swaps them in) */
+    ImFont *head_l = nullptr, *body_l = nullptr, *value_l = nullptr, *help_l = nullptr, *small_l = nullptr;
+    /* the settings list: a scroll position asked for by its scrollbar (< 0: none) */
+    float list_scroll_to = -1;
     std::atomic<bool> open{false};
     /* a picture setting changed in the menu: the game draws on until then (monotonic ns), so the picture behind the
        menu shows the change; the controller stays neutral meanwhile (overlay_input_held) */
@@ -217,9 +221,11 @@ void set_value(Option &o, int index) {
     o.cur = index; o.touched = true;
     if (o.live() && S.set.apply) {
         S.set.apply(o.key.c_str(), o.values[o.cur].c_str());
-        /* the moment behind the menu drawn again with the change, or without a preview frame the game draws on a moment */
-        if (preview_frozen()) S.preview_runs += o.key == "TOTK_AA" || o.key == "TOTK_TAA_SOFTNESS" ? kPreviewRunsTemporal : kPreviewRuns;
-        else S.step_until = now_ns() + kStepNs; }
+        /* a picture setting (the Graphics tab's): the moment behind the menu drawn again with it, or without a preview
+           frame the game draws on a moment; the rest show in the menu or in play */
+        if (o.tab == "Graphics") {
+            if (preview_frozen()) S.preview_runs += o.key == "TOTK_AA" || o.key == "TOTK_TAA_SOFTNESS" ? kPreviewRunsTemporal : kPreviewRuns;
+            else S.step_until = now_ns() + kStepNs; } }
     if (!o.live()) S.changed_restart = true;
     if (o.key == "TOTK_FPS_CAP" || o.key == "TOTK_FG" || o.key == "TOTK_FG_MODE" || o.key == "TOTK_LSFG_MODE") frame_apply();
     save_options();
@@ -288,7 +294,13 @@ bool init(VkFormat format) {
        wide (0.6 em) */
     { ImFontConfig c; c.OversampleH = 2; c.OversampleV = 1; S.mono = io.Fonts->AddFontFromFileTTF("/system/fonts/DroidSansMono.ttf", kHudFontPx, &c, ranges);
       static const ImWchar arrows[] = {0x2190, 0x2193, 0}; if (S.mono) font_asset("fonts/Figtree-Regular.ttf", kHudFontPx, arrows, kHudFontPx * 0.6f); }
+    S.head_l = font_asset("fonts/MarcellusSC-Regular.ttf", 36, ranges);
+    S.body_l = font_asset("fonts/Figtree-Regular.ttf", 36, ranges);
+    S.value_l = font_asset("fonts/Figtree-Medium.ttf", 35, ranges);
+    S.help_l = font_asset("fonts/Figtree-Regular.ttf", 29, ranges);
+    S.small_l = font_asset("fonts/Figtree-Regular.ttf", 24, ranges);
     for (ImFont **f : {&S.title, &S.head, &S.value, &S.help, &S.small, &S.tag}) if (!*f) *f = S.body;
+    if (!S.head_l) S.head_l = S.head; if (!S.body_l) S.body_l = S.body; if (!S.value_l) S.value_l = S.value; if (!S.help_l) S.help_l = S.help; if (!S.small_l) S.small_l = S.small;
     if (!S.mono) S.mono = S.head;
     ImGuiStyle &st = ImGui::GetStyle();
     st.WindowRounding = 0; st.ChildRounding = 0; st.FrameRounding = 0; st.WindowBorderSize = 0; st.ChildBorderSize = 0;
@@ -526,7 +538,15 @@ void quick_page(float w, float h, float fps, float frame_ms) {
 }
 
 /* ---- the full settings ---- */
+void settings_page_in(float w, float h);
+/* the full settings, in the larger fonts */
 void settings_page(float w, float h) {
+    ImFont *keep[5] = {S.head, S.body, S.value, S.help, S.small};
+    S.head = S.head_l; S.body = S.body_l; S.value = S.value_l; S.help = S.help_l; S.small = S.small_l;
+    settings_page_in(w, h);
+    S.head = keep[0]; S.body = keep[1]; S.value = keep[2]; S.help = keep[3]; S.small = keep[4];
+}
+void settings_page_in(float w, float h) {
     ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(7, 11, 13, 205));
     begin_page("settings"); rows_begin();
     ImDrawList *dl = ImGui::GetWindowDrawList();
@@ -557,7 +577,7 @@ void settings_page(float w, float h) {
     dl->AddLine(uv(56, 96), ImVec2(w - u(56), u(96)), kLine, u(1));
 
     // the rows
-    const float panel_w = u(470);
+    const float panel_w = u(520);
     float top = u(116), bottom = h - u(72), list_w = w - u(56) - panel_w - u(40) - u(56);
     auto listed = [&](const Option &o) { return o.tab == g_tabs[S.tab] && !o.heading() && shown(o); };
     if (S.focused < 0 || S.focused >= (int)g_options.size() || !listed(g_options[S.focused])) {
@@ -568,11 +588,11 @@ void settings_page(float w, float h) {
     for (int i = 0; i < (int)g_options.size(); i++) {
         Option &o = g_options[i]; if (o.tab != g_tabs[S.tab] || !shown(o)) continue;
         if (o.heading()) {
-            ImVec2 p = ImGui::GetCursorScreenPos(); float hh = u(S.rows ? 40 : 28); ImVec2 ts = text_size(S.head, o.label.c_str());
+            ImVec2 p = ImGui::GetCursorScreenPos(); float hh = u(S.rows ? 44 : 30); ImVec2 ts = text_size(S.head, o.label.c_str());
             text(rl, S.head, ImVec2(p.x + u(14), p.y + hh - u(8) - ts.y), kGoldText, o.label.c_str());
             ImGui::Dummy(ImVec2(list_w, hh)); continue;
         }
-        Row r = row(o.key.c_str(), list_w, u(40));
+        Row r = row(o.key.c_str(), list_w, u(44));
         if (r.focused || r.clicked) S.focused = i;
         float mid = (r.a.y + r.b.y) / 2; ImVec2 ls = text_size(S.body, o.label.c_str());
         text(rl, S.body, ImVec2(r.a.x + u(36), mid - ls.y / 2), r.focused ? kGoldText : idle_setting(o) ? kMuted : kCream, o.label.c_str());
@@ -599,7 +619,23 @@ void settings_page(float w, float h) {
         ImGui::Dummy(ImVec2(list_w, u(18) + text_size(S.help, S.info, list_w - u(52)).y));
     }
     rows_end();
+    if (S.list_scroll_to >= 0) { ImGui::SetScrollY(S.list_scroll_to); S.list_scroll_to = -1; }
+    float scroll = ImGui::GetScrollY(), scroll_max = ImGui::GetScrollMaxY();
     ImGui::EndChild();
+
+    // the list's scrollbar, left of it, when it does not fit: drag or tap to scroll
+    if (scroll_max > 0) {
+        float bx = u(56) - u(26), track = bottom - top, thumb = std::max(u(36), track * track / (track + scroll_max));
+        float ty = top + (track - thumb) * scroll / scroll_max;
+        dl->AddRectFilled(ImVec2(bx - u(2), top), ImVec2(bx + u(2), bottom), kLine, u(2));
+        dl->AddRectFilled(ImVec2(bx - u(3), ty), ImVec2(bx + u(3), ty + thumb), kSoft, u(3));
+        ImVec2 save = ImGui::GetCursorScreenPos();
+        touch_button("scrollbar", ImVec2(bx - u(18), top), ImVec2(u(36), track));
+        if (ImGui::IsItemActive()) {
+            float f = (ImGui::GetIO().MousePos.y - top - thumb / 2) / std::max(1.0f, track - thumb);
+            S.list_scroll_to = std::min(std::max(f, 0.0f), 1.0f) * scroll_max; }
+        ImGui::SetCursorScreenPos(save);
+    }
 
     // the detail panel
     ImVec2 pa(w - u(56) - panel_w, top), pb(w - u(56), bottom);
@@ -615,7 +651,7 @@ void settings_page(float w, float h) {
         if (n > 5) { float widest = 0; for (size_t i = 0; i < n; i++) widest = std::max(widest, text_size(S.help, o.names[i].c_str()).x);
             if (u(30) + widest + u(26) <= pw / 2) cols = 2; }
         size_t per = n ? (n + cols - 1) / cols : 0;
-        float step = per ? std::max(u(26), std::min(u(32), (pb.y - u(64) - py) / per)) : 0, cw = pw / cols;
+        float step = per ? std::max(u(28), std::min(u(36), (pb.y - u(64) - py) / per)) : 0, cw = pw / cols;
         for (size_t i = 0; i < n; i++) {
             bool on = (int)i == o.cur; const char *name = o.names[i].c_str(); ImVec2 ns = text_size(S.help, name);
             float cx = px + cw * (i / per), cy = py + step * (i % per) + step / 2;
