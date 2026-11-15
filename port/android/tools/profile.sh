@@ -29,14 +29,16 @@ case "$(cat "$OUT/device.txt")" in *"mode ${BENCH_FAN_MODE:-4} "*) ;; *) echo "W
 # The benchmark save: files/bench-save.orig (a copy of the profile whose newest slot is the still-scene save) is
 # restored to files/bench-profile before every run and used through TOTK_PROFILE_DIR, so "Continue" always loads the
 # same spot and the user's saves are not touched. BENCH_PROFILE=0: the user's profile (the latest save) instead.
+# SAVE_ORIG=<dir under files/>: another such copy instead of bench-save.orig (a save from a bug report, for one spot).
+ORIG=${SAVE_ORIG:-bench-save.orig}
 BENCH=""
-if [ "${BENCH_PROFILE:-1}" != 0 ] && adb shell run-as dev.tok.totk test -d files/bench-save.orig; then
+if [ "${BENCH_PROFILE:-1}" != 0 ] && adb shell run-as dev.tok.totk test -d files/$ORIG; then
     # copied over in place (no recursive delete); if a run left files the original lacks (other than the game's
     # empty temp/), a fresh directory instead
     B=bench-profile
-    extra=$(adb shell run-as dev.tok.totk sh -c "'cd files/bench-profile 2>/dev/null && find . ! -path ./temp | while read f; do [ -e ../bench-save.orig/\$f ] || echo \$f; done'" | tr -d '\r')
+    extra=$(adb shell run-as dev.tok.totk sh -c "'cd files/bench-profile 2>/dev/null && find . ! -path ./temp | while read f; do [ -e ../$ORIG/\$f ] || echo \$f; done'" | tr -d '\r')
     [ -n "$extra" ] && B=bench-profile-$(date +%s) && echo "bench-profile has extra files; using files/$B (delete old ones by hand)" >&2
-    adb shell run-as dev.tok.totk sh -c "'mkdir -p files/$B && cp -a files/bench-save.orig/. files/$B/'"
+    adb shell run-as dev.tok.totk sh -c "'mkdir -p files/$B && cp -a files/$ORIG/. files/$B/'"
     BENCH="TOTK_PROFILE_DIR=/data/data/dev.tok.totk/files/$B"
 fi
 { printf 'TOTK_VK_FRAMEPROF=1\nTOTK_UNCAPPED_HZ=120\nTOTK_DISPLAY_HZ=120\nTOTK_FRAMEGEN=0\nTOTK_LSFG=0\nTOTK_HUD=off\n'; for e in "$@"; do echo "$e"; done; [ -n "$BENCH" ] && echo "$BENCH"; } |

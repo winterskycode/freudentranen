@@ -1,6 +1,6 @@
 /* Object motion (TOTK_OBJ_MOTION, mvs_settle): last frame's position of what the G-buffer draws, for frame interpolation, after
    totk-pc-recomp's per-object motion (MIT, Copyright (c) 2026 Valiantsin Dzerakh). A qualifying G-buffer draw (indexed,
-   depth tested and written, full size, its position reading the scene camera c4 and an object block c5 or c7) is listed
+   depth tested and written, full size, its position reading the scene camera c4 and an object block, MO_OBJECT_BANKS) is listed
    with the descriptor set of its vertex shader's motion variant (program_motion_shader: last frame's position at location
    15, its banks bound to last frame's blocks, mv_prev_block) and its buffers. The game splits its G-buffer into many
    passes; once they end (the next pass is another or has another depth, or the batch ends, so the sets and buffers are
@@ -117,6 +117,30 @@ static float mo_bone_px(void) {
     }
     e->px = px + 1; return px;
 }
+/* The banks that place an object: c5 (bones), c7 (place), and those of attached gear and some armour (c6, c9, c15, c16:
+   Link's shield and pack read c4 with c15, c16 or c6 and neither c5 nor c7) */
+#define MO_OBJECT_BANKS (1u << 5 | 1u << 6 | 1u << 7 | 1u << 9 | 1u << 15 | 1u << 16)
+/* TOTK_MO_WHY=1: skipped G-buffer draws whose c5 or c7 binding changed since last frame (so they move by themselves), by
+   vertex shader: no variant (the position reads no object bank, or no output
+   free), the location, the banks the position reads; the 24 most drawn, logged with the summary */
+#define MO_WHY 256
+static struct { char id[17]; int location; uint32_t banks; uint64_t n; } mo_why[MO_WHY]; static unsigned mo_nwhy;
+static int mo_why_on(void) { static int on = -1; if (on < 0) { const char *e = getenv("TOTK_MO_WHY"); on = e && atoi(e) > 0; } return on; }
+static void mo_why_note(const shader_entry *vs, const shader_entry *m) {
+    int location = m ? m->mv_location : -1; uint32_t banks = m ? m->mv_banks : 0;
+    for (unsigned i = 0; i < mo_nwhy; i++) if (!strncmp(mo_why[i].id, vs->game_id, 16) && mo_why[i].location == location && mo_why[i].banks == banks) { mo_why[i].n++; return; }
+    if (mo_nwhy == MO_WHY) return;
+    snprintf(mo_why[mo_nwhy].id, 17, "%.16s", vs->game_id); mo_why[mo_nwhy].location = location; mo_why[mo_nwhy].banks = banks; mo_why[mo_nwhy].n = 1; mo_nwhy++;
+}
+static void mo_why_log(void) {
+    for (int k = 0; k < 24; k++) {
+        unsigned best = MO_WHY; for (unsigned i = 0; i < mo_nwhy; i++) if (mo_why[i].n && (best == MO_WHY || mo_why[i].n > mo_why[best].n)) best = i;
+        if (best == MO_WHY) break;
+        LOG("[motion] skipped: vs %s %.1f a frame, %s location %d banks %#x", mo_why[best].id, mo_why[best].n / 600.0, mo_why[best].location < 0 ? "no variant," : "variant", mo_why[best].location, mo_why[best].banks);
+        mo_why[best].n = 0;
+    }
+    mo_nwhy = 0;
+}
 /* After a G-buffer draw: list it when it qualifies (see the top). */
 static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, poly_st polygon, const VkBuffer *vb, const VkDeviceSize *vo,
                       VkBuffer ib, VkDeviceSize io, VkIndexType it, uint32_t count, const p_draw_idx *indexed, const VkViewport *viewport, const VkRect2D *scissor) {
@@ -126,10 +150,14 @@ static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, po
     unsigned index = 0; while (index < state.program->nstage && program_shader(state.program, index) != vs) index++;
     if (index == state.program->nstage) return;
     shader_entry *m = program_motion_shader(&state, state.program, index);
-    if (!m || m->mv_location != 15 || !(m->mv_banks >> 4 & 1) || !(m->mv_banks & (1u << 5 | 1u << 7))) { mo.skipped++; return; }
-    /* only what moved itself: an object whose bones (c5) and place (c7) are as last frame's has camera motion, which the
+    if (!m || m->mv_location != 15 || !(m->mv_banks >> 4 & 1) || !(m->mv_banks & MO_OBJECT_BANKS)) { mo.skipped++;
+        /* TOTK_MO_WHY=1 (diagnostic): why, per vertex shader and its object banks, in the summary */
+        if (mo_why_on()) { int moved = 0; for (unsigned n = 2; n <= 4 && !moved; n += 2) { p_bind_buf tmp; if (state.ubo[0][n].addr) { mv_prev_block(0, n, &tmp); moved = mv_prev_changed; } }
+            if (moved) mo_why_note(vs, m); }
+        return; }
+    /* only what moved itself: an object whose object blocks are as last frame's has camera motion, which the
        consumers compute from the depth (wind on foliage, from the clock block c14, is left to that too) */
-    { int moved = 0; for (unsigned n = 5; n <= 7 && !moved; n += 2) if (m->mv_banks >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
+    { int moved = 0; for (unsigned n = 5; n <= 16 && !moved; n++) if ((MO_OBJECT_BANKS & m->mv_banks) >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
       /* TOTK_OBJ_MOTION=2 (diagnostic): still objects too, to check the camera half against the depth */
       if (!moved && mvs.motion < 2) { mo.still++; return; } }
     /* TOTK_MO_MINPX=<pixels> (default 0: off): a skinned object that moves less than that keeps the camera's motion
@@ -285,6 +313,7 @@ static void mo_frame(void) {
         mo.listed / 600.0, mo.skipped / 600.0, mo.still / 600.0, mo.small / 600.0, mo.drawn / 600.0, mo.flushes / 600.0, (unsigned long long)mo.pipes_made);
     LOG("[motion] camera: %.1f bindings a frame given last frame's camera, %.1f without one", mo_cam_hits / 600.0, mo_cam_misses / 600.0);
     mo_cam_hits = mo_cam_misses = 0;
+    if (mo_why_on()) mo_why_log();
     if (mo.timing > 0) LOG("[motion] GPU %.3f ms a frame in its passes", mo.gpu_ms / 600.0);
     mo.gpu_ms = 0;
     mo.listed = mo.skipped = mo.still = mo.small = mo.drawn = mo.flushes = 0;
