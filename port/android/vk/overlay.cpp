@@ -87,6 +87,10 @@ struct State {
     /* a picture setting changed in the menu: the game draws on until then (monotonic ns), so the picture behind the
        menu shows the change; the controller stays neutral meanwhile (overlay_input_held) */
     std::atomic<uint64_t> step_until{0};
+    /* the menu's preview (hle_nvn.c): replays of the frame drawn as the menu opened, asked for after a picture setting
+       changes; opened_at: when the menu opened (monotonic ns), the game draws until that frame is recorded or a moment
+       has passed (a loading screen presents nothing to record) */
+    std::atomic<int> preview_runs{0}; std::atomic<uint64_t> opened_at{0};
     /* overlay_toggle from other threads, applied by the drawing thread (overlay_record) */
     std::atomic<int> toggles{0};
     int page = PAGE_QUICK, controls_back = PAGE_QUICK, tab = 0, focused = -1, pad_row = 0, rows = 0, row_focused = -1, loop_to = -1; bool focus_first = false, changed_restart = false;
@@ -112,6 +116,13 @@ uint64_t now_ns() { timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint
 /* how long the game draws after a picture setting changes in the menu: a few frames, enough for temporal
    anti-aliasing to settle */
 constexpr uint64_t kStepNs = 300000000ull;
+/* replays of the preview frame after a change: temporal anti-aliasing builds up over several, the rest needs one */
+constexpr int kPreviewRuns = 2, kPreviewRunsTemporal = 12;
+/* how long the game may draw after the menu opens before its preview frame is recorded */
+constexpr uint64_t kPreviewWaitNs = 400000000ull;
+extern "C" int nvn_preview_frozen(void) __attribute__((weak));
+bool preview_on() { static int on = -1; if (on < 0) { const char *e = getenv("TOTK_MENU_PREVIEW"); on = !(e && !strcmp(e, "0")); } return on; }
+bool preview_frozen() { return preview_on() && nvn_preview_frozen && nvn_preview_frozen(); }
 PFN_vkVoidFunction load(const char *name, void *) { return S.vk.proc(name, nullptr); }
 #define VKF(name) reinterpret_cast<PFN_##name>(S.vk.proc(#name, nullptr))
 
@@ -204,7 +215,11 @@ void set_value(Option &o, int index) {
     int n = (int)o.values.size(); index = (index % n + n) % n;
     if (index == o.cur) return;
     o.cur = index; o.touched = true;
-    if (o.live() && S.set.apply) { S.set.apply(o.key.c_str(), o.values[o.cur].c_str()); S.step_until = now_ns() + kStepNs; }
+    if (o.live() && S.set.apply) {
+        S.set.apply(o.key.c_str(), o.values[o.cur].c_str());
+        /* the moment behind the menu drawn again with the change, or without a preview frame the game draws on a moment */
+        if (preview_frozen()) S.preview_runs += o.key == "TOTK_AA" || o.key == "TOTK_TAA_SOFTNESS" ? kPreviewRunsTemporal : kPreviewRuns;
+        else S.step_until = now_ns() + kStepNs; }
     if (!o.live()) S.changed_restart = true;
     if (o.key == "TOTK_FPS_CAP" || o.key == "TOTK_FG" || o.key == "TOTK_FG_MODE" || o.key == "TOTK_LSFG_MODE") frame_apply();
     save_options();
@@ -951,7 +966,16 @@ void overlay_forget_image(VkImage image) {
     for (Framebuffer &f : S.fbs) if (f.fb && f.image == image) {
         VKF(vkDestroyFramebuffer)(S.vk.device, f.fb, nullptr); VKF(vkDestroyImageView)(S.vk.device, f.view, nullptr); f = {}; }
 }
-int overlay_open(void) { return (S.open.load() && now_ns() >= S.step_until.load()) || S.preparing.load(); }
+int overlay_open(void) {
+    if (S.preparing.load()) return 1;
+    if (!S.open.load()) return 0;
+    uint64_t now = now_ns();
+    /* the game draws the preview frame first */
+    if (preview_on() && nvn_preview_frozen && !nvn_preview_frozen() && now < S.opened_at.load() + kPreviewWaitNs) return 0;
+    return now >= S.step_until.load();
+}
+int overlay_preview_wanted(void) { return S.open.load() && preview_on() && (preview_frozen() || now_ns() < S.opened_at.load() + kPreviewWaitNs); }
+int overlay_preview_take(void) { return S.preview_runs.exchange(0); }
 int overlay_input_held(void) { return S.open.load() || S.preparing.load(); }
 int overlay_wants_present(void) { return S.open.load() || S.preparing.load(); }
 void overlay_prepare(int active, const char *stage, const char *detail, float fraction) {
@@ -1006,7 +1030,7 @@ int overlay_record(VkCommandBuffer cb, VkImage image, VkFormat format, uint32_t 
     /* Opening and closing happen here, on the thread that draws the menu (the menu changes its own page and state here
        too), and only when the menu can be drawn: the game never pauses behind a menu that is not shown. */
     if (S.toggles.exchange(0) & 1) {
-        if (S.open.load() || init(format)) { S.open = !S.open.load(); S.page = PAGE_QUICK; fprintf(stderr, "[overlay] %s\n", S.open.load() ? "open (game paused)" : "closed"); }
+        if (S.open.load() || init(format)) { S.open = !S.open.load(); S.page = PAGE_QUICK; S.opened_at = now_ns(); S.preview_runs = 0; fprintf(stderr, "[overlay] %s\n", S.open.load() ? "open (game paused)" : "closed"); }
         else fprintf(stderr, "[overlay] 【红】the menu cannot be drawn (initialisation failed): not opened\n");
     }
     bool open = S.open.load();

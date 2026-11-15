@@ -28,6 +28,9 @@ void mtl_freeze_frozen(void) {
         if (!r->bytes || dm_android_read_memory(r->lo, r->bytes, n)) { free(r->bytes); r->bytes = NULL; continue; } bytes += n; }
     LOG("[freeze] %d GPU-written guest ranges, %.1f MiB", frz_nranges, bytes / 1048576.0);
 }
+/* the in-game menu's preview (hle_nvn.c): images only, the zero-copy pools (particle simulations) are left to run on */
+static int frz_images_only;
+void mtl_freeze_preview(int images_only) { frz_images_only = images_only; }
 typedef struct frz_pool { VkBuffer source, buffer; VkDeviceMemory memory; VkDeviceSize size; struct frz_pool *next; } frz_pool;
 static frz_pool *frz_pools;
 static void frz_snapshot_pools(void) {
@@ -67,6 +70,7 @@ static void frz_all_memory_barrier(void) {
 
 void mtl_freeze_release(void);
 void mtl_freeze_snapshot(void) {
+    uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
     mtl_freeze_release(); mtl_finish(); mtl_sub_begin(); graphics_pass_end();
     frz_nranges = 0; frz_noting = 1;
     unsigned count = 0; VkDeviceSize bytes = 0;
@@ -92,12 +96,12 @@ void mtl_freeze_snapshot(void) {
         frz_copy(e, e->image, s->image);
         s->e = e; s->next = frz_shadows; frz_shadows = s; count++; bytes += req.size;
     }
-    frz_snapshot_pools();
+    if (!frz_images_only) frz_snapshot_pools();
     frz_all_memory_barrier();
     /* the barrier above synchronised them all */
     for (image_entry *e = image_list; e; e = e->next) { e->last_stage = 0; e->last_access = 0; }
     mtl_wait(mtl_sub_commit(), UINT64_MAX);
-    LOG("[freeze] snapshot: %u images, %.1f MiB", count, bytes / 1048576.0);
+    LOG("[freeze] snapshot: %u images, %.1f MiB in %.1f ms", count, bytes / 1048576.0, (dm_android_clock_ns(CLOCK_MONOTONIC) - t0) / 1e6);
 }
 /* An image the game frees while a frame is frozen (image_retire_locked; its entry is freed once its fence passes)
    leaves the replay: restoring into it would copy into a destroyed image (tu_CmdCopyImage2 on a null image). Its shadow
