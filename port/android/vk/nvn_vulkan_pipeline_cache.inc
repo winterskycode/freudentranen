@@ -18,6 +18,8 @@ static VkPhysicalDeviceProperties pipeline_disk_properties;
 static char pipeline_disk_name[80];
 static _Atomic uint64_t pipeline_cache_generation,pipeline_cache_saved,pipeline_cache_changed;
 static uint64_t pipeline_disk_attempt;
+/* load_cap: a loading screen shows */
+static _Atomic int pipeline_disk_loading;
 /* The driver's cache size at the last write (or just after loading). Most creations are hits that add nothing:
    writing every time rewrites 294 MB three times in a 33 s run for 14 KB of new data, so a save first asks for the
    size. */
@@ -112,8 +114,11 @@ static void pipeline_disk_poll(void) {
     if(pipeline_disk_dir<0||!presents||presents%60)return;
     uint64_t generation=atomic_load(&pipeline_cache_generation),saved=atomic_load(&pipeline_cache_saved);if(generation==saved)return;
     uint64_t now=dm_android_clock_ns(CLOCK_MONOTONIC),changed=atomic_load(&pipeline_cache_changed);
-    /* the whole file is rewritten each time: not more than every 5 minutes. Leaving the game saves too (mtl_drain), so
-       only a crash loses what was compiled since */
+    /* only while a loading screen shows (load_cap): the driver holds the cache's lock for the whole copy (Mesa
+       vk_common_GetPipelineCacheData, ~60 ms for each of the size query and the copy at 355 MB), and every pipeline
+       created meanwhile waits for it. The whole file is rewritten each time: not more than every 5 minutes. Leaving
+       the game saves too (mtl_drain), so only a crash loses what was compiled since */
+    if(!atomic_load(&pipeline_disk_loading))return;
     uint64_t written=atomic_load(&pipeline_disk_written);if(written&&now-written<300000000000ull)return;
     pthread_mutex_lock(&pipeline_disk_mutex);
     uint64_t cooldown=pipeline_disk_attempted?30000000000ull:5000000000ull;
@@ -143,7 +148,8 @@ static void pipeline_cache_note(VkResult result) {
 }
 /* VkPipelineCache is internally synchronized (no EXTERNALLY_SYNCHRONIZED flag): creations run in parallel (the background
    pipeline workers, nvn_vulkan_draw.inc, and the translation thread's compute pipelines), and the change bookkeeping is
-   atomics, so a creation waits neither for another compile nor for a save's copy of the cache. */
+   atomics, so a creation does not wait for another compile; it does wait for a save's copy of the cache (the driver
+   holds the cache's lock for it), hence saves only on loading screens. */
 /* set on the pipeline thread: its creations are not the frame's */
 static __thread int pipeline_create_background;
 /* creations on the translation thread, inside a frame (the hitch log) */

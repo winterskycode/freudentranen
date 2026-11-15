@@ -2215,8 +2215,8 @@ void runtime_sync_spin_boost(int on) __attribute__((weak));
 static void load_cap(uint64_t draws) {
     static int cap = -1, low = 0, applied = 0, saved = 0, loading = 0;
     if (cap < 0) { const char *e = getenv("TOTK_LOAD_CAP"); cap = e ? atoi(e) : 30; }
-    if (draws < 50) { if (++low >= 20 && !loading) { loading = 1; LOG("[load] loading screen: waiters spin until it ends"); idle_keepers(1); if (runtime_sync_spin_boost) runtime_sync_spin_boost(1); if (cap) { saved = nvn_frame_cap_get(); if (saved <= 0 || saved > cap) { nvn_frame_cap_set(cap); applied = 1; } } } }
-    else { low = 0; if (loading) { loading = 0; LOG("[load] loading screen over"); idle_keepers(0); if (runtime_sync_spin_boost) runtime_sync_spin_boost(0); if (applied) { nvn_frame_cap_set(saved); applied = 0; } } }
+    if (draws < 50) { if (++low >= 20 && !loading) { loading = 1; LOG("[load] loading screen: waiters spin until it ends"); atomic_store(&pipeline_disk_loading, 1); idle_keepers(1); if (runtime_sync_spin_boost) runtime_sync_spin_boost(1); if (cap) { saved = nvn_frame_cap_get(); if (saved <= 0 || saved > cap) { nvn_frame_cap_set(cap); applied = 1; } } } }
+    else { low = 0; if (loading) { loading = 0; LOG("[load] loading screen over"); atomic_store(&pipeline_disk_loading, 0); idle_keepers(0); if (runtime_sync_spin_boost) runtime_sync_spin_boost(0); if (applied) { nvn_frame_cap_set(saved); applied = 0; } } }
 }
 /* TOTK_IDLE_KEEPERS=<n> (default 0 = off): while a loading screen shows (the load_cap detector), n threads at SCHED_IDLE,
    one per host core from cpu 0, spin so the cores never enter their deep idle state (cpuidle exit latency on the Odin:

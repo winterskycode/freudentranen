@@ -73,7 +73,7 @@ static void image_memory_take(const VkMemoryRequirements *req, uint32_t type, im
         pthread_mutex_lock(&image_pool_lock);
         /* blocks in use first: the empty ones are the reserve */
         for (int empty = 0; empty < 2 && !out->block; empty++) for (image_block *b = image_blocks; b; b = b->next) {
-            if (!b->images != empty || !image_block_carve(b, req->size, req->alignment, &out->offset)) continue;
+            if ((!b->images) != empty || !image_block_carve(b, req->size, req->alignment, &out->offset)) continue;
             if (!b->images++) { image_pool_empty--; pthread_cond_signal(&image_pool_cv); }
             out->block = b; out->memory = b->memory; image_pool_used += req->size; image_pool_carved++; break;
         }
