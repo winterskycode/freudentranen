@@ -2616,6 +2616,8 @@ static void *overlay_present_thread(void *arg) {
         if (atomic_load(&preview_held)) continue;
         atomic_store(&present_paused, 1);
         pthread_mutex_lock(&present_serial);
+        /* a replay burst may have started while this thread waited for the lock */
+        if (atomic_load(&preview_held)) { pthread_mutex_unlock(&present_serial); continue; }
         /* prepare mode shows its panel over the boot frame: the player's last frame stays */
         if (!saved++ && !prepare_mode()) backdrop_save(present_last, present_last_has_crop ? present_last_crop : NULL);
         present_one(present_last, present_last_period, present_last_has_crop ? present_last_crop : NULL, NULL, 1);

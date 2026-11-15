@@ -120,6 +120,8 @@ static float mo_bone_px(void) {
 /* The banks that place an object: c5 (bones), c7 (place), and those of attached gear and some armour (c6, c9, c15, c16:
    Link's shield and pack read c4 with c15, c16 or c6 and neither c5 nor c7) */
 #define MO_OBJECT_BANKS (1u << 5 | 1u << 6 | 1u << 7 | 1u << 9 | 1u << 15 | 1u << 16)
+/* TOTK_MO_BANKS=<hex bank mask> (diagnostic, for A/Bs): another set, e.g. a0 for c5 and c7 alone */
+static uint32_t mo_object_banks(void) { static uint32_t m; if (!m) { const char *e = getenv("TOTK_MO_BANKS"); m = e && *e ? (uint32_t)strtoul(e, NULL, 16) : MO_OBJECT_BANKS; if (!m) m = MO_OBJECT_BANKS; } return m; }
 /* TOTK_MO_WHY=1: skipped G-buffer draws whose c5 or c7 binding changed since last frame (so they move by themselves), by
    vertex shader: no variant (the position reads no object bank, or no output
    free), the location, the banks the position reads; the 24 most drawn, logged with the summary */
@@ -150,14 +152,14 @@ static void mo_record(shader_entry *vs, const pipeline_key *key, ds_st depth, po
     unsigned index = 0; while (index < state.program->nstage && program_shader(state.program, index) != vs) index++;
     if (index == state.program->nstage) return;
     shader_entry *m = program_motion_shader(&state, state.program, index);
-    if (!m || m->mv_location != 15 || !(m->mv_banks >> 4 & 1) || !(m->mv_banks & MO_OBJECT_BANKS)) { mo.skipped++;
+    if (!m || m->mv_location != 15 || !(m->mv_banks >> 4 & 1) || !(m->mv_banks & mo_object_banks())) { mo.skipped++;
         /* TOTK_MO_WHY=1 (diagnostic): why, per vertex shader and its object banks, in the summary */
         if (mo_why_on()) { int moved = 0; for (unsigned n = 2; n <= 4 && !moved; n += 2) { p_bind_buf tmp; if (state.ubo[0][n].addr) { mv_prev_block(0, n, &tmp); moved = mv_prev_changed; } }
             if (moved) mo_why_note(vs, m); }
         return; }
     /* only what moved itself: an object whose object blocks are as last frame's has camera motion, which the
        consumers compute from the depth (wind on foliage, from the clock block c14, is left to that too) */
-    { int moved = 0; for (unsigned n = 5; n <= 16 && !moved; n++) if ((MO_OBJECT_BANKS & m->mv_banks) >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
+    { int moved = 0; for (unsigned n = 5; n <= 16 && !moved; n++) if ((mo_object_banks() & m->mv_banks) >> n & 1) { p_bind_buf tmp; mv_prev_block(0, n - 3, &tmp); moved = mv_prev_changed; }
       /* TOTK_OBJ_MOTION=2 (diagnostic): still objects too, to check the camera half against the depth */
       if (!moved && mvs.motion < 2) { mo.still++; return; } }
     /* TOTK_MO_MINPX=<pixels> (default 0: off): a skinned object that moves less than that keeps the camera's motion

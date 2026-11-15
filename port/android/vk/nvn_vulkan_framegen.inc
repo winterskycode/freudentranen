@@ -329,9 +329,9 @@ static int mvs_similar(const uint8_t *cur, const uint8_t *old, uint64_t n, unsig
    the neighbour one of its meshes bound (mv_prev_lookup). */
 static int mvs_has_mesh(const mvs_seen *e) { if (!e || !mvs_mesh) return 0; for (unsigned i = 0; i < e->nmesh; i++) if (e->mesh[i] == mvs_mesh) return 1; return 0; }
 static void mvs_draw(void) {
-    /* the survey's banks, or c5 and c7 for object motion alone, which only needs the blocks noted */
-    static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11}, motion_banks[] = {2, 4};
-    const uint32_t *banks = mvs.survey ? survey_banks : motion_banks; unsigned nbanks = mvs.survey ? 6 : 2;
+    /* the survey's banks, or the tracked ones (mv_tracked) for object motion alone, which only needs the blocks noted */
+    static const uint32_t survey_banks[] = {2, 3, 4, 6, 8, 11, 12, 13}, motion_banks[] = {2, 3, 4, 6, 12, 13};
+    const uint32_t *banks = mvs.survey ? survey_banks : motion_banks; unsigned nbanks = mvs.survey ? 8 : 6;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
     for (unsigned b = 0; b < nbanks; b++) {
         uint32_t bank = banks[b]; const p_bind_buf *u = &state.ubo[0][bank];
@@ -371,7 +371,10 @@ static void mvs_draw(void) {
     }
     mvs.ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
 }
-/* Last frame's copy of the vertex block at binding index `index` (c5 or c7; the other banks keep this frame's), by the
+/* The binding indices whose last frame's copy is looked up: c5 (bones), c6, c7 (place), c9, c15, c16 (attached gear and
+   armour), index = bank - 3 */
+static int mv_tracked(unsigned index) { return index == 2 || index == 3 || index == 4 || index == 6 || index == 12 || index == 13; }
+/* Last frame's copy of the vertex block at binding index `index` (mv_tracked; the other banks keep this frame's), by the
    two-copy rule and the similarity check (as mvs_draw counts them), read from the submit capture where it holds the
    copy: *out with that address, or this frame's block when there is no copy (bound at the same address last frame, a
    new object, another object's block). */
@@ -380,7 +383,7 @@ static int mv_prev_changed;
 static const p_bind_buf *mv_prev_lookup(unsigned stage, unsigned index, p_bind_buf *out) {
     mv_prev_changed = 0;
     const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
-    if (!u || stage != 0 || mvs.on <= 0 || (index != 2 && index != 4) || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
+    if (!u || stage != 0 || mvs.on <= 0 || !mv_tracked(index) || !u->addr || !u->size || u->size > 65536 || !mvs.t[1]) return u;
     if (mvs_find(mvs.t[1], u->addr, index, 0)) return u;
     uint64_t step = (u->size + 255) & ~(uint64_t)255;
     const mvs_seen *eu = mvs_find(mvs.t[1], u->addr + step, index, 0), *ed = u->addr >= step ? mvs_find(mvs.t[1], u->addr - step, index, 0) : NULL;
@@ -407,7 +410,7 @@ static const p_bind_buf *mv_prev_lookup(unsigned stage, unsigned index, p_bind_b
 /* mv_prev_lookup once a frame per block: an object's draws share their blocks */
 static const p_bind_buf *mv_prev_block(unsigned stage, unsigned index, p_bind_buf *out) {
     const p_bind_buf *u = index < 16 ? &state.ubo[stage][index] : NULL;
-    mvs_seen *e = u && stage == 0 && mvs.on > 0 && (index == 2 || index == 4) && u->addr && mvs.t[0] ? mvs_find(mvs.t[0], u->addr, index, 1) : NULL;
+    mvs_seen *e = u && stage == 0 && mvs.on > 0 && mv_tracked(index) && u->addr && mvs.t[0] ? mvs_find(mvs.t[0], u->addr, index, 1) : NULL;
     if (e && e->memo && e->memo_size == u->size) {
         mv_prev_changed = e->changed;
         if (e->memo < 0) return u;
