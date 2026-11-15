@@ -58,3 +58,22 @@ __attribute__((weak)) void runtime_shader_seed(const char *corpus, const char *l
 __attribute__((weak)) void runtime_totk_projection_probe(void) { fprintf(stderr, "probe-quest-fov: Mac only\n"); }
 /* the VR compositor's camera search hook (totk_vr.m on the Mac) */
 void (*g_vr_find_camera)(const float *);
+/* MacNativeGames' Metal renderer since upstream 3edfb0b6, not in the Vulkan backend: the guest queue ordering
+   (nvn_queue_order.inc, on for Ocarina of Time only: never called here), the pool address map for Metal argument
+   buffers, the write-back storage reuse note, the no-read probe and the dispatch-barrier statistics. */
+__attribute__((weak)) void mtl_dispatch_barrier_stats(uint64_t v[5]) { for (int i = 0; i < 5; i++) v[i] = 0; }
+__attribute__((weak)) void mtl_noread_mark_frame(void) {}
+__attribute__((weak)) void mtl_pool_addressed(const void *owner, const void *mem, uint64_t size) { (void)owner; (void)mem; (void)size; }
+__attribute__((weak)) void mtl_pool_forget_address(const void *owner) { (void)owner; }
+__attribute__((weak)) void mtl_wb_storage_reused(const uint8_t *mem, uint64_t n) { (void)mem; (void)n; }
+__attribute__((weak)) int mtl_qo_event_ready(volatile uint32_t *val, uint32_t mode, uint32_t target) { (void)val; (void)mode; (void)target; return 1; }
+__attribute__((weak)) void mtl_qo_cpu_signal(volatile uint32_t *val) { (void)val; }
+__attribute__((weak)) int mtl_qo_event_gpu_projected(volatile uint32_t *val) { (void)val; return 0; }
+__attribute__((weak)) void mtl_qo_arm(int on) { (void)on; }
+__attribute__((weak)) int mtl_qo_stopped(void) { return 0; }
+__attribute__((weak)) int mtl_qo_cursor(const uint8_t **out, int max) { (void)out; (void)max; return 0; }
+__attribute__((weak)) void mtl_qo_set_callers(const uint8_t *const *outer_first, int n) { (void)outer_first; (void)n; }
+__attribute__((weak)) void *mtl_qo_state_save(void) { return NULL; }
+__attribute__((weak)) void mtl_qo_state_restore(void *p) { (void)p; }
+__attribute__((weak)) void *mtl_ucap_overlay(const void *base, const void *over) { (void)base; (void)over; return NULL; }
+__attribute__((weak)) void mtl_sub_snapshot_ubos_rest(const uint64_t *h, int n, int ncur, uint64_t top, void *cap) { (void)h; (void)n; (void)ncur; (void)top; (void)cap; }
