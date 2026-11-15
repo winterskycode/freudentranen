@@ -160,6 +160,13 @@ static void taa_offset(float *m, float jx, float jy) {
     float dx = 2.0f * jx / taa.vw, dy = -2.0f * jy / taa.vh;
     for (int c = 0; c < 4; c++) { m[c] += dx * m[12 + c]; m[4 + c] += dy * m[12 + c]; }
 }
+/* whether taa_uniform would change these bytes now (read only: the submit capture's bytes, ucap_taa_camera) */
+static int taa_bytes_jitter(const uint8_t *data, uint32_t size) {
+    if (taa.on <= 0 || fg.menu || taa.px <= 0 || taa.vw <= 0 || taa.vh <= 0 || (taa.jx == 0 && taa.jy == 0 && taa.pjx == 0 && taa.pjy == 0)) return 0;
+    const float *f = (const float *)data; uint32_t n = size / 4;
+    for (uint32_t o = 0; o + 16 <= n; o += 4) if (taa_camera_matrix(f + o)) return 1;
+    return 0;
+}
 static void taa_uniform(uintptr_t address, uint32_t size, uint8_t *data) {
     if (taa.on <= 0 || fg.menu || taa.px <= 0 || taa.vw <= 0 || taa.vh <= 0 || (taa.jx == 0 && taa.jy == 0 && taa.pjx == 0 && taa.pjy == 0)) return;
     float *f = (float *)data; uint32_t n = size / 4;

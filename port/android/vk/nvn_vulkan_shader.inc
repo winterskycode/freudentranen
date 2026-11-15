@@ -518,9 +518,11 @@ static VkDescriptorBufferInfo uniform_buffer(shader_entry *s,const shader_bindin
               else{inplace_why[inplace_kept(u->addr)?IF_UBO_KEPT:pool?IF_UBO_ALIGN:IF_UBO_POOL]++;if(!pool&&!inplace_kept(u->addr))inplace_classify(u->addr,range);}
               inplace_fallback++;}
           if(ucap_bind_on()){int exact=ubo_robust_ok&&(!used||used>u->size);
-              if(!exact&&!used)ucap_miss(UCAP_EXTENT_UNKNOWN,n);else if(!exact&&used>u->size)ucap_miss(UCAP_READS_PAST,n);else if(taa_enabled()>0)ucap_miss(UCAP_TAA,n);
+              if(!exact&&!used)ucap_miss(UCAP_EXTENT_UNKNOWN,n);else if(!exact&&used>u->size)ucap_miss(UCAP_READS_PAST,n);
               else{if(!s->umemo){s->umemo=calloc(s->count?s->count:1,sizeof *s->umemo);if(!s->umemo)die("Vulkan uniform memo");}
-                  if(ucap_bind(u->addr,n,exact?(n+15)&~15u:65536,&info,&s->umemo[b-s->bindings]))return uniform_dynamic_split(s,b,info,dynamic_offset);}} }
+                  /* a block holding a camera matrix TAA jitters goes to the arena (our copy); the rest binds from the capture */
+                  if(taa_enabled()>0&&ucap_taa_camera(u->addr,n,&s->umemo[b-s->bindings]))ucap_miss(UCAP_TAA,n);
+                  else if(ucap_bind(u->addr,n,exact?(n+15)&~15u:65536,&info,&s->umemo[b-s->bindings]))return uniform_dynamic_split(s,b,info,dynamic_offset);}} }
         if(uniform_compose_on()&&!(n&3)&&async_unknown(u->addr,n)&&forward_compose_possible(u->addr,n,forward_scope_marker))return uniform_dynamic_split(s,b,uniform_compose(u->addr,n),dynamic_offset);
         return uniform_dynamic_split(s,b,uniform_read_cached(u->addr,n),dynamic_offset);}
     die("Unsupported Vulkan constant slot %u",b->slot);

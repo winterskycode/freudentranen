@@ -287,6 +287,27 @@ static int ucap_range_of(const ucap *c, uint64_t address, ucap_memo_entry *m) {
     if (ucap_memo[slot].serial == ucap_serial && ucap_memo[slot].address == address) return ucap_memo[slot].index;
     int lo = ucap_first(c, address); ucap_memo[slot].address = address; ucap_memo[slot].serial = ucap_serial; ucap_memo[slot].index = lo; return lo;
 }
+/* TAA (nvn_vulkan_taa.inc): whether the block's captured bytes hold a matrix taa_uniform jitters. Such a block takes the
+   arena path, whose copy is ours to change; every other block binds from the capture as it is. Once per block a capture
+   (a block is bound by many draws). 1 when the capture does not hold the block: the arena path reads and scans it.
+   TOTK_TAA_ARENA=1: every block takes the arena path under TAA; =2: a block bound from the capture is also read as the
+   arena path would read it, and one TAA would have jittered there is logged. */
+static int taa_bytes_jitter(const uint8_t *data, uint32_t size);
+static struct { uint64_t address, serial; uint32_t size; int camera; } ucap_taa_memo[4096];
+static int ucap_taa_camera(uintptr_t address, uint32_t size, ucap_memo_entry *m) {
+    static int mode = -1; if (mode < 0) { const char *e = getenv("TOTK_TAA_ARENA"); mode = e ? atoi(e) : 0; }
+    ucap *c = ucap_current; if (mode == 1 || !c || !c->n || !c->buf.buffer) return 1;
+    unsigned slot = (unsigned)(((address >> 4) ^ size) * 0x9E3779B97F4A7C15ull >> 52) & 4095;
+    if (ucap_taa_memo[slot].serial == ucap_serial && ucap_taa_memo[slot].address == address && ucap_taa_memo[slot].size == size) return ucap_taa_memo[slot].camera;
+    int lo = ucap_range_of(c, address, m), camera = 1;
+    if (lo < c->n && c->r[lo].lo <= address && c->r[lo].hi >= (uint64_t)address + size) { ucap_wait(c); camera = taa_bytes_jitter(c->bytes + c->off[lo] + (address - c->r[lo].lo), size); }
+    ucap_taa_memo[slot].address = address; ucap_taa_memo[slot].serial = ucap_serial; ucap_taa_memo[slot].size = size; ucap_taa_memo[slot].camera = camera;
+    if (mode == 2 && !camera) { static uint64_t checked, missed; checked++;
+        if (!uniform_read_current(address, size) && taa_bytes_jitter(uniform_read_scratch, size) && missed++ < 50)
+            LOG("[taa-check] %#llx+%u bound from the capture holds a camera matrix as the arena path reads it (%llu of %llu)", (unsigned long long)address, size, (unsigned long long)missed, (unsigned long long)checked);
+        if (!(checked % 200000)) LOG("[taa-check] %llu blocks checked, %llu would have been jittered", (unsigned long long)checked, (unsigned long long)missed); }
+    return camera;
+}
 /* range: the descriptor's (65536, or the exact bound bytes under robustBufferAccess2) */
 static int ucap_bind(uintptr_t address, uint32_t size, uint32_t range, VkDescriptorBufferInfo *info, ucap_memo_entry *m) {
     ucap *c = ucap_current; if (!c || !c->n || !c->buf.buffer) { ucap_miss(UCAP_NO_CAPTURE, size); return 0; }
