@@ -303,14 +303,19 @@ kern_return_t mach_vm_remap(vm_map_t task, mach_vm_address_t *target, mach_vm_si
     return KERN_SUCCESS;
 }
 
+/* A range is split where backings end: each part in a backing is punched out of its file, a part in none is dropped. */
 int compat_decommit(void *address, size_t size) {
-    pthread_mutex_lock(&backing_lock);
-    Backing *b = backing_at((uintptr_t)address);
-    int fd = b && (uintptr_t)address + size <= b->base + b->size ? b->fd : -1; off_t off = fd >= 0 ? (off_t)((uintptr_t)address - b->base) : 0;
-    pthread_mutex_unlock(&backing_lock);
     if (mprotect(address, size, PROT_NONE)) return -1;
-    if (fd >= 0) return fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, (off_t)size);
-    return madvise(address, size, MADV_DONTNEED);
+    for (uintptr_t a = (uintptr_t)address, end = a + size; a < end;) {
+        pthread_mutex_lock(&backing_lock);
+        Backing *b = backing_at(a); int fd = b ? b->fd : -1; off_t off = b ? (off_t)(a - b->base) : 0;
+        uintptr_t stop = b ? (b->base + b->size < end ? b->base + b->size : end) : end;
+        if (!b) for (unsigned i = 0; i < nbackings; i++) if (backings[i].base > a && backings[i].base < stop) stop = backings[i].base;
+        pthread_mutex_unlock(&backing_lock);
+        if (fd >= 0 ? fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, (off_t)(stop - a)) : madvise((void *)a, stop - a, MADV_DONTNEED)) return -1;
+        a = stop;
+    }
+    return 0;
 }
 
 /* /proc/self/maps: the region containing *address, else the next one above it (Darwin's semantics). */
