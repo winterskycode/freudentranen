@@ -446,7 +446,7 @@ void row_change(Option &o, const Row &r) {
     if (r.focused && right_pressed()) step = 1;
     if (r.focused && pressed(BTN_X)) set_value(o, o.def); else if (step) set_value(o, o.cur + step);
 }
-const char *const kIdleNote = "Not in use right now. Docked, Picture softness sets how sharp the picture looks.";
+const char *const kIdleNote = "Not in use for Docked mode. Use Picture softness instead.";
 /* "‹ value ›", right-aligned at x; returns its left edge */
 float value_text(ImDrawList *dl, float x, float mid, const char *v, ImU32 col) {
     ImVec2 vs = text_size(S.value, v), cs = text_size(S.body, "›");
