@@ -12,6 +12,10 @@
 # - turnip-gralloc-ubwc-detect.patch: reads the UBWC flag of every gralloc buffer, not only of buffers carrying the
 #   'gmsm' magic. The Odin's swapchain buffers lack the magic, so upstream takes them as linear while the compositor
 #   reads them compressed: the whole screen is noise in vertical stripes.
+# - turnip-empty-shader-dynamic-sizes.patch: the placeholder tessellation and geometry shaders report each descriptor
+#   set's dynamic descriptor size as unknown (-1), as the placeholder fragment shader does. Left at 0, they overwrite the
+#   vertex shader's sizes when a fast-linked pipeline merges its stages, so a fragment shader from a library with
+#   independent sets finds its dynamic uniform buffers at the vertex set's start (a blown-out picture).
 # Needs: git, python3 with venv, ninja, glslangValidator, bison, flex; the NDK below.
 set -e
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd); W=$ROOT/work/turnip-build
@@ -33,6 +37,7 @@ sed -i -E 's/([a-z_]+)->handle->/((const native_handle_t *)\1->handle)->/g' src/
 sed -i "/-Werror=gnu-empty-initializer/d" meson.build
 git apply "$ROOT/patches/turnip-a8xx-pvtmem-stack-pad.patch"
 git apply "$ROOT/patches/turnip-a8xx-double-threadsize.patch"
+git apply "$ROOT/patches/turnip-empty-shader-dynamic-sizes.patch"
 cat > "$W/android-aarch64.txt" <<EOF
 [binaries]
 ar = '$NDK/llvm-ar'
@@ -62,4 +67,4 @@ ninja -C "$B" -j"$(nproc)" src/freedreno/vulkan/libvulkan_freedreno.so
 OUT=$ROOT/work/android/turnip; mkdir -p "$OUT/previous"
 [ -f "$OUT/libvulkan_freedreno.so" ] && cp "$OUT/libvulkan_freedreno.so" "$OUT/previous/"
 cp "$B/src/freedreno/vulkan/libvulkan_freedreno.so" "$OUT/libvulkan_freedreno.so"
-echo "built $OUT/libvulkan_freedreno.so ($(du -h "$OUT/libvulkan_freedreno.so" | cut -f1), Mesa $(cat VERSION) $(git rev-parse --short HEAD) + pvtmem fix, 128 wide, UBWC detect)"
+echo "built $OUT/libvulkan_freedreno.so ($(du -h "$OUT/libvulkan_freedreno.so" | cut -f1), Mesa $(cat VERSION) $(git rev-parse --short HEAD) + pvtmem fix, 128 wide, UBWC detect, empty-shader sizes)"

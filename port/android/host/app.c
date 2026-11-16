@@ -211,6 +211,8 @@ static void start_game(ANativeActivity *activity) {
       if (libdir && (!choice || !strcmp(choice, "turnip")) && !access("/dev/kgsl-3d0", F_OK)
           && snprintf(lib, sizeof lib, "%s/libvulkan_freedreno.so", libdir) < (int)sizeof lib && !access(lib, F_OK)) {
           default_env("DM_VK_DRIVER_DIR", libdir); default_env("DM_VK_DRIVER_NAME", "libvulkan_freedreno.so");
+          /* our own build (tools/build_turnip.sh): the translator relies on its fixes (vk/nvn_vulkan_shader.inc) */
+          default_env("TOTK_VK_DRIVER_BUNDLED", "1");
           snprintf(path, sizeof path, "%s/shader-cache-turnip", activity->internalDataPath); mkdir(path, 0700); default_env("DM_VK_SHADERS", path);
           snprintf(lib, sizeof lib, "%s/host-subgroup-size.txt", path);
           if (access(lib, F_OK)) { FILE *f = fopen(lib, "w"); if (f) { fputs("128\n", f); fclose(f); } } } }

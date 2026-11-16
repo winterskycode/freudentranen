@@ -1,0 +1,14 @@
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index bc5bf6ef241..17b296300b7 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -4154,6 +4154,9 @@ tu_empty_shader_create(struct tu_device *dev,
+    if (!shader)
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
++   for (unsigned i = 0; i < MAX_SETS; i++)
++      shader->dynamic_descriptor_sizes[i] = -1;
++
+    pthread_mutex_lock(&dev->pipeline_mutex);
+    VkResult result = tu_suballoc_bo_alloc(&shader->bo, &dev->pipeline_suballoc,
+                                           32 * 4, 128);

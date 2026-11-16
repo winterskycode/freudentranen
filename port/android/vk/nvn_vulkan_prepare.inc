@@ -12,7 +12,7 @@ static _Atomic int prepare_stage, prepare_finished;
 static uint64_t prepare_begin;
 /* The libraries' shape: a change that alters what the prepare step builds (layouts, shader patches) bumps it, so the
    startup screen offers the step again. */
-enum { PREPARE_FORMAT = 2 };
+enum { PREPARE_FORMAT = 3 };
 static void prepared_path(char *path, size_t n) { const char *f = getenv("TOTK_FILES_DIR"); snprintf(path, n, "%s/prepared.txt", f ? f : "."); }
 static void *prepare_progress_main(void *unused) {
     (void)unused; pthread_setname_np(pthread_self(), "totk-prepare-ui");

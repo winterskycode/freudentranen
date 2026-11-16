@@ -285,13 +285,15 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
         if(guest_candidates>dynamic_limit)for(unsigned i=0;i<s->count;i++)if(s->binding_plan[i].type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){s->binding_plan[i].type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;bindings[i].descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;}
     }
     /* With pipeline libraries (gpl_state) the fragment shader's set follows a set its library does not know, so the start
-       of its dynamic offsets is known only at link time; Turnip gets it wrong in fast-linked pipelines on both the Odin's
-       a8xx and the Thor's a740 (the fragment stage reads wrong offsets: a blown-out picture). Only the vertex shader's
-       set, the first, keeps dynamic uniform buffers (its start is 0 at compile time on every driver); fragment shaders
-       bind theirs statically, so no driver has to patch an offset at link time. Cost (Kakariko, Odin): ~1.3 ms of
-       translation-thread CPU a frame (more descriptor writes), fps unchanged. TOTK_VK_GPL_FS_DYNAMIC=1 keeps them (to
-       test a driver's fix). */
-    { static int keep=-1;if(keep<0){const char *e=getenv("TOTK_VK_GPL_FS_DYNAMIC");keep=e&&atoi(e);}
+       of its dynamic offsets is known only at link time. Upstream Turnip gets it wrong in fast-linked pipelines (its
+       placeholder tessellation and geometry shaders report the vertex set's dynamic size as 0: the fragment stage reads
+       the vertex set's buffers, a blown-out picture); the bundled driver carries the fix
+       (patches/turnip-empty-shader-dynamic-sizes.patch). Any other driver (a zip, the system's) gets fragment shaders
+       whose uniform buffers bind statically, so no driver has to patch an offset at link time; only the vertex shader's
+       set, the first, keeps dynamic ones (its start is 0 at compile time on every driver). Cost of the static binding
+       (Kakariko, Odin): ~1.3 ms of translation-thread CPU a frame (more descriptor writes). TOTK_VK_GPL_FS_DYNAMIC=0/1
+       overrides. */
+    { static int keep=-1;if(keep<0){const char *e=getenv("TOTK_VK_GPL_FS_DYNAMIC"),*b=getenv("TOTK_VK_DRIVER_BUNDLED");keep=e?atoi(e)>0:b&&atoi(b)>0;}
       if(gpl_state>0&&s->stage==1&&!keep)for(unsigned i=0;i<s->count;i++)if(s->binding_plan[i].type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){s->binding_plan[i].type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;bindings[i].descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;} }
     // Dynamic offsets are ranked by ascending binding number: Vulkan requires that array order to follow binding
     // numbers, which reflection order does not guarantee.
