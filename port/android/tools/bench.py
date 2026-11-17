@@ -14,7 +14,9 @@ the route starts where he lands (map markers are not at ground height); the came
 world is in, then flies; the frames of the flight are the scene's.
 
 A run: waits until the device is cool, builds a test profile from the save (default: the 100% save; the player's own
-profile is only read, for its account and options), starts the game with the survey and the frame log on, presses
+profile is only read, for its account and options), pins the graphics settings that change the GPU's work or the
+display's cadence to BASELINE (the player's options otherwise decide them: --as-played keeps them, --env overrides one),
+starts the game with the survey and the frame log on, presses
 through the title, flies every scene, and reports per scene the average FPS, the 1%
 and 0.1% lows and the worst frame, with temperatures and the fan and performance modes (frame times only compare in
 the same mode: profile.sh). The scenes' hours are not set (--clock), so time of day and weather follow the save and the
@@ -49,6 +51,11 @@ DEFAULT_SCENES = 6
 # a run starts once thermal status is 0 and the hottest CPU sensor is below this (idle: 54-58 C, the vendor service
 # keeps CPU clock floors up)
 COOL_C = 60.0
+# the graphics settings every run uses unless --as-played, so a change in the player's options cannot move the numbers:
+# handheld at its native resolution, a 120 Hz display (a 60 Hz request holds every late frame for 33 ms), no
+# anti-aliasing, the plain upscaler
+BASELINE = ['TOTK_OPERATION_MODE=handheld', 'TOTK_RENDER_RES=0', 'TOTK_DISPLAY_HZ=120', 'TOTK_AA=off', 'TOTK_TAA=0',
+            'TOTK_UPSCALER=bilinear', 'TOTK_SOFTNESS=soft']
 
 
 def adb(*args, check=True, input=None, timeout=120):
@@ -357,8 +364,10 @@ def run(args):
     # frame generation's picture quality: at 60, each would-be generated picture against the real frame (fg_eval)
     if args.fgeval:
         uncapped += ['TOTK_UNCAPPED_HZ=60', 'TOTK_FRAMEGEN=60', 'TOTK_FG_EVAL=1'] + ([f'TOTK_FG_EVAL_DUMP={args.fgeval}'] if args.fgeval > 0 else [])
+    # debug.env is read in order and the last line for a name wins, so --env still overrides the baseline
+    graphics = [] if args.as_played else BASELINE
     env = [f'TOTK_PROFILE_DIR={FILES}/bench-profile', 'TOTK_SURVEY=1', 'TOTK_SLOT_OWNER=claude',
-           f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', *uncapped, *args.env]
+           f'TOTK_BENCH_FRAMES={FILES}/bench-frames.txt', *uncapped, *graphics, *args.env]
     # the frame profile times every draw and logs every frame, which costs the frame rate it measures: only on request
     if args.frameprof:
         env.append('TOTK_VK_FRAMEPROF=1')
@@ -493,7 +502,7 @@ def run(args):
         common = set.intersection(*({x[0] for x in e if x[7] == v} for v in variants))
         per = [summary([x for x in e if x[7] == v and x[0] in common]) for v in variants]
         return dict(per[0], fg_variants=per)
-    report = dict(label=args.label, env=args.env, uncapped=not args.as_played, save=str(save), before=before, after=after, clock=clock_ok,
+    report = dict(label=args.label, env=args.env, uncapped=not args.as_played, baseline=[] if args.as_played else BASELINE, save=str(save), before=before, after=after, clock=clock_ok,
                   scenes=[dict(s, **(stats(frames, s['begin'], s['end']) or {}), **fg_quality(s['begin'], s['end'])) for s in segments])
     allf = [s for s in report['scenes'] if 'frames' in s]
     report['total'] = dict(frames=sum(s['frames'] for s in allf), avg_fps=round(sum(s['frames'] for s in allf) / max(sum(s['seconds'] for s in allf), 1e-9), 1))
@@ -563,8 +572,8 @@ def main():
     ap.add_argument('--scenes', help=f'comma-separated parts of scene names, or "all" (default: the first {DEFAULT_SCENES})')
     ap.add_argument('--label', default='')
     ap.add_argument('--env', action='append', default=[], help='an extra debug.env line, e.g. TOTK_ASYNC_PREEMPT=1 (repeatable)')
-    ap.add_argument('--as-played', action='store_true', help="keep the player's frame rate cap and frame generation "
-                    '(default: uncapped, no frame generation)')
+    ap.add_argument('--as-played', action='store_true', help="keep the player's frame rate cap, frame generation and "
+                    'graphics settings (default: uncapped, no frame generation, the BASELINE graphics settings)')
     ap.add_argument('--allow-cpu-limit', action='store_true', help='run with CPU clusters capped below their top speed '
                     '(to measure an underclock; otherwise the run stops)')
     ap.add_argument('--laps', type=int, default=1, help='laps per scene (a second lap shows the place without first-visit loading)')
