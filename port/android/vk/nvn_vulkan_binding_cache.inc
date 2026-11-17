@@ -71,8 +71,10 @@ typedef struct { uint64_t lo, hi; } ucap_range;
    install and kept up to date by pp_add (ucap_mark_dirty), in place of two pending-page queries on every bind. A write
    that publishes later leaves the flag set: the capture was taken before that write landed, so the arena is right. */
 typedef struct { int n; ucap_range *r; size_t *off; uint8_t *bytes; uint8_t *dirty; vk_buffer buf; uint64_t borrowed;
-    /* copied: the bytes are in (mtl_sub_capture_copy, on the game thread, after the submission was queued) */
-    _Atomic int copied, waiters; } ucap;
+    /* copied: the bytes are in (mtl_sub_capture_copy, on the game thread, after the submission was queued); next / done:
+       the blocks of UCAP_COPY_BLOCK ranges taken and finished, by the game thread and by a translation thread that
+       needs the bytes before they are in (ucap_copy_blocks) */
+    _Atomic int copied, waiters, next, done; } ucap;
 static ucap *ucap_current;
 static int ucap_bind_state = -1;
 static int ucap_bind_on_slow(void);
@@ -236,35 +238,56 @@ void *mtl_sub_capture_ubos(const uint64_t *h, int n) {
     return c;
 }
 /* The bytes of the capture, read on the game thread after the submission was handed to the translation thread (the
-   translation of the first draws, ~0.25 ms, overlaps this ~0.2 ms copy; the submit call still returns only once the
-   bytes are in, so the game may rewrite its pools after the call). The translation thread waits for the bytes only
-   where it reads them (ucap_wait: the CPU paths) and before a command buffer that may read them reaches the GPU
-   (every vkQueueSubmit). */
+   translation of the first draws, ~0.3 ms, overlaps this ~0.3 ms copy; the submit call still returns only once the
+   bytes are in, so the game may rewrite its pools after the call). The translation thread needs the bytes only where
+   it reads them (ucap_wait: the CPU paths) and before a command buffer that may read them reaches the GPU (every
+   vkQueueSubmit); arriving there first, it copies the blocks the game thread has not taken instead of waiting. */
 #include <linux/futex.h>
 #include <sys/syscall.h>
+#define UCAP_COPY_BLOCK 64
+/* Copy blocks of ranges until none is left to take; the thread that finishes the last block publishes the bytes (the
+   acq_rel count makes every block's bytes visible to it before its release of copied). */
+static void ucap_copy_blocks(ucap *c) {
+    int blocks = (c->n + UCAP_COPY_BLOCK - 1) / UCAP_COPY_BLOCK;
+    for (;;) {
+        int b = atomic_fetch_add_explicit(&c->next, 1, memory_order_relaxed);
+        if (b >= blocks) return;
+        int first = b * UCAP_COPY_BLOCK, n = c->n - first < UCAP_COPY_BLOCK ? c->n - first : UCAP_COPY_BLOCK;
+        /* {lo, hi} pairs, as ucap_range lays them out */
+        dm_android_read_ranges(n, (const uint64_t *)(c->r + first), c->bytes, c->off + first);
+        if (atomic_fetch_add_explicit(&c->done, 1, memory_order_acq_rel) + 1 == blocks) {
+            atomic_store_explicit(&c->copied, 1, memory_order_release);
+            if (atomic_load(&c->waiters)) syscall(SYS_futex, &c->copied, FUTEX_WAKE_PRIVATE, INT_MAX, NULL, NULL, 0);
+        }
+    }
+}
+/* Until another thread's last block is in: a short spin, then the futex. */
+static void ucap_wait_copied(ucap *c) {
+    for (int i = 0; i < 2000 && !atomic_load_explicit(&c->copied, memory_order_acquire); i++) __asm__ volatile("yield");
+    if (atomic_load_explicit(&c->copied, memory_order_acquire)) return;
+    atomic_fetch_add(&c->waiters, 1);
+    while (!atomic_load_explicit(&c->copied, memory_order_acquire)) { struct timespec ts = {0, 2000000}; syscall(SYS_futex, &c->copied, FUTEX_WAIT_PRIVATE, 0, &ts, NULL, 0); }
+    atomic_fetch_sub(&c->waiters, 1);
+}
 void mtl_sub_capture_copy(void *cap) {
     ucap *c = cap; if (!c || atomic_load(&c->copied)) return;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
-    /* {lo, hi} pairs, as ucap_range lays them out */
-    dm_android_read_ranges(c->n, (const uint64_t *)c->r, c->bytes, c->off);
-    atomic_store_explicit(&c->copied, 1, memory_order_release);
-    if (atomic_load(&c->waiters)) syscall(SYS_futex, &c->copied, FUTEX_WAKE_PRIVATE, INT_MAX, NULL, NULL, 0);
+    ucap_copy_blocks(c);
+    /* the game may rewrite its pools once the call returns: the blocks a translation thread took must be in too */
+    ucap_wait_copied(c);
     ucap_prof.copy_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
     if (++ucap_prof.n == 600) { LOG("[vulkan] submit capture per call: collect %.3f ms, sort %.3f, merge %.3f (%.0f pool checks), buffer %.3f, copy %.3f (after the hand-off); %.0f ranges collected, %.0f kept, %.2f MB; the translation waited for the bytes %.2f times, %.3f ms",
             ucap_prof.collect_ns / 600e6, ucap_prof.sort_ns / 600e6, ucap_prof.merge_ns / 600e6, ucap_prof.lookups / 600.0, ucap_prof.alloc_ns / 600e6, ucap_prof.copy_ns / 600e6, ucap_prof.collected / 600.0, ucap_prof.ranges / 600.0, ucap_prof.bytes / 600.0 / 1048576,
             ucap_prof.waits / 600.0, ucap_prof.wait_ns / 600e6); memset(&ucap_prof, 0, sizeof ucap_prof); }
 }
+/* The translation thread needs the bytes: it copies blocks the game thread has not taken yet, then waits for the rest. */
 static void ucap_wait(const ucap *cc) {
     ucap *c = (ucap *)cc; if (!c || atomic_load_explicit(&c->copied, memory_order_acquire)) return;
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
-    for (int i = 0; i < 2000 && !atomic_load_explicit(&c->copied, memory_order_acquire); i++) __asm__ volatile("yield");
-    if (!atomic_load_explicit(&c->copied, memory_order_acquire)) {
-        if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_IN, 0);
-        atomic_fetch_add(&c->waiters, 1);
-        while (!atomic_load_explicit(&c->copied, memory_order_acquire)) { struct timespec ts = {0, 2000000}; syscall(SYS_futex, &c->copied, FUTEX_WAIT_PRIVATE, 0, &ts, NULL, 0); }
-        atomic_fetch_sub(&c->waiters, 1);
-        if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_OUT, 0);
-    }
+    if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_IN, 0);
+    ucap_copy_blocks(c);
+    ucap_wait_copied(c);
+    if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_OUT, 0);
     ucap_prof.waits++; ucap_prof.wait_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
 }
 static void ucap_wait_current(void) { ucap_wait(ucap_current); }
