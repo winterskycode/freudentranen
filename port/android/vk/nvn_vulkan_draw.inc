@@ -418,6 +418,7 @@ static void draw_graphics(const p_draw *draw,const p_draw_idx *indexed,const dra
     /* measurement only: TOTK_VK_EXP=conddraw draws what a render condition turned off (gated clears stay off) */
     /* TOTK: SetRenderEnable(false) */
     if(state.render_disabled){static int all=-1;if(all<0)all=exp_env("conddraw");if(!all||!state.render_cond_off)return;}
+    { static uint64_t marked;if(totk_tl&&marked!=ucap_serial){marked=ucap_serial;totk_tl(TL_MARK,TL_MARK_FIRST_DRAW,0);} }
     DRAW_SEG(-1);uint64_t phase=dm_cpu_phase_begin();draw_graphics_inner(draw,indexed,plan);dm_cpu_phase_end(DM_CPU_PHASE_DRAW,phase);
 }
 static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,const draw_plan *plan) {

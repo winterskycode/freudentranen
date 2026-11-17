@@ -1884,14 +1884,17 @@ uint64_t mtl_sub_commit(void) {
 }
 
 uint64_t mtl_last_fence(void) { return atomic_load(&submitted); }
-int mtl_wait(uint64_t fence, uint64_t timeout) {
+__attribute__((noinline)) int mtl_wait(uint64_t fence, uint64_t timeout) {
     uint64_t wait_started=dm_android_clock_ns(CLOCK_MONOTONIC);
     pthread_mutex_lock(&completion_lock); int ready = atomic_load(&completed) >= fence,blocked=!ready&&timeout;
+    if(blocked&&totk_tl){static uintptr_t base;if(!base){Dl_info info;base=dladdr((void*)mtl_wait,&info)?(uintptr_t)info.dli_fbase:1;}
+        totk_tl(TL_MARK,TL_MARK_GPU_WAIT_IN,(uintptr_t)__builtin_return_address(0)-base);}
     struct timespec until; clock_gettime(CLOCK_REALTIME, &until); uint64_t seconds = timeout / 1000000000ull, ns = until.tv_nsec + timeout % 1000000000ull;
     if (timeout != UINT64_MAX) { until.tv_sec += seconds + ns / 1000000000ull; until.tv_nsec = ns % 1000000000ull; }
     while (!ready && timeout) { int e = timeout == UINT64_MAX ? pthread_cond_wait(&completion_condition, &completion_lock) : pthread_cond_timedwait(&completion_condition, &completion_lock, &until);
         ready = atomic_load(&completed) >= fence; if (e == ETIMEDOUT) break; if (e) die("NVN fence condition: %d", e); }
     pthread_mutex_unlock(&completion_lock);
+    if(blocked&&totk_tl)totk_tl(TL_MARK,TL_MARK_GPU_WAIT_OUT,0);
     if(blocked)atomic_fetch_add(&fence_wait_unlocked_ns,dm_android_clock_ns(CLOCK_MONOTONIC)-wait_started);return ready;
 }
 void mtl_finish(void) { mtl_wait(mtl_last_fence(), UINT64_MAX); }
@@ -2313,7 +2316,7 @@ static float present_shown = 1;
 /* frame generation's GPU time per game frame, averaged (the overlay's frame time split) */
 static float present_gen_ms;
 /* source: present this image (the whole of it) instead of t's picture, without counting a game frame (frame generation) */
-static uint64_t present_one(const tex_t *t, double period, const int crop[4], image_entry *source, int repeat) {
+static uint64_t present_one_body(const tex_t *t, double period, const int crop[4], image_entry *source, int repeat) {
     /* not a game frame: no counters, hooks or statistics */
     int inner = source || repeat;
     uint64_t acquire_ns=0,present_ns=0,present_lock_ns=0;
@@ -2370,7 +2373,9 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         uint32_t index = 0; VkResult result = VK_ERROR_OUT_OF_DATE_KHR;
         for (int attempt = 0; swapchain && attempt < 2; attempt++) {
             uint64_t acquire_start=dm_android_clock_ns(CLOCK_MONOTONIC);
+            if (totk_tl) totk_tl(TL_MARK, TL_MARK_ACQUIRE_IN, 0);
             result = vkAcquireNextImageKHR(device, swapchain, SCREEN_ACQUIRE_TIMEOUT_NS, screen_acquired, VK_NULL_HANDLE, &index);
+            if (totk_tl) totk_tl(TL_MARK, TL_MARK_ACQUIRE_OUT, 0);
             acquire_ns+=dm_android_clock_ns(CLOCK_MONOTONIC)-acquire_start;
             dm_cpu_phase_end(DM_CPU_PHASE_ACQUIRE,acquire_start);
             wsi_count(wsi_acquire, result);
@@ -2455,7 +2460,9 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         if (pace_ext && pace_get_past) { present_time = (VkPresentTimeGOOGLE){++pace_id, pace_on() && pace_desired > 0 ? (uint64_t)pace_desired : 0}; pace_submit[pace_id % 64] = present_start; pace_ticket[pace_id % 64] = screen_acquire_ticket;
             if (totk_tl_at) totk_tl_at(TL_PLAN, present_start, pace_id, present_time.desiredPresentTime);
             present_times = (VkPresentTimesInfoGOOGLE){.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE, .swapchainCount = 1, .pTimes = &present_time}; pi.pNext = &present_times; }
-        result = vkQueuePresentKHR(queue, &pi);present_ns=dm_android_clock_ns(CLOCK_MONOTONIC)-present_start;present_block_ns+=acquire_ns+present_ns+previous_acquire_ns;
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_PRESENT_CALL_IN, 0);
+        result = vkQueuePresentKHR(queue, &pi);present_ns=dm_android_clock_ns(CLOCK_MONOTONIC)-present_start;
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_PRESENT_CALL_OUT, 0);present_block_ns+=acquire_ns+present_ns+previous_acquire_ns;
         pace_learn();
         dm_cpu_phase_end(DM_CPU_PHASE_PRESENT,present_lock_start);
         pthread_mutex_unlock(&queue_lock);
@@ -2543,6 +2550,12 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
         texture_calls_previous=calls;texture_blocks_previous=blocks;texture_ns_previous=ns;}
     frame_stability_record(ticket,previous_acquire_ns,acquire_ns,present_ns,present_lock_ns);
     return completion_ticket;
+}
+static uint64_t present_one(const tex_t *t, double period, const int crop[4], image_entry *source, int repeat) {
+    if (totk_tl) totk_tl(TL_MARK, TL_MARK_PRESENT_ONE_IN, (uint64_t)(source || repeat));
+    uint64_t ticket = present_one_body(t, period, crop, source, repeat);
+    if (totk_tl) totk_tl(TL_MARK, TL_MARK_PRESENT_ONE_OUT, 0);
+    return ticket;
 }
 static const tex_t *present_last; static double present_last_period; static int present_last_crop[4], present_last_has_crop;
 static void fill_start(void);

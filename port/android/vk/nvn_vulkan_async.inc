@@ -732,8 +732,10 @@ static unsigned async_begin_locked(void) {
         }
         if(!async_first)die("Vulkan asynchronous slot corruption");
         uint64_t wait_start=dm_android_clock_ns(CLOCK_MONOTONIC);async_ring_stalls++;
+        if(totk_tl)totk_tl(TL_MARK,TL_MARK_SLOT_WAIT_IN,screen_submission);
         // Waiting releases queue_lock so the completed GPU's worker can publish results and free a slot.
         int result=pthread_cond_wait(&async_condition,&queue_lock);if(result)die("Vulkan asynchronous slot wait %d",result);
+        if(totk_tl)totk_tl(TL_MARK,TL_MARK_SLOT_WAIT_OUT,screen_submission);
         uint64_t elapsed=dm_android_clock_ns(CLOCK_MONOTONIC)-wait_start;
         fence_wait_total_ns+=elapsed;stability_ring_wait_ns+=elapsed;
     }

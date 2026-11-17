@@ -10,6 +10,8 @@
    ranges like "0-5" or "6,7". Terms joined by "+" are a union: "fast:0+fast:2" is the fastest core and the third fastest.
    Unset: dflt. */
 #pragma once
+#include <sys/resource.h>
+#include <unistd.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +67,17 @@ static inline int totk_cpus(const char *e, cpu_set_t *out) {
     return n;
 }
 /* The calling thread's affinity from env (or dflt): the cores pinned to, 0 when not pinned ("all", nothing valid) */
+/* <NAME>_NICE next to <NAME>_CPUS: the calling thread's nice value (unset: inherited). Our latency-critical threads
+   inherit the game threads' nice, so on their cores a game thread keeps its time slice while they wait to run. */
+static inline void totk_nice_self(const char *cpus_env) {
+    char name[96]; size_t n = strlen(cpus_env);
+    if (n < 5 || n >= sizeof name || strcmp(cpus_env + n - 5, "_CPUS")) return;
+    memcpy(name, cpus_env, n - 5); memcpy(name + n - 5, "_NICE", 6);
+    const char *v = getenv(name);
+    if (v && *v) setpriority(PRIO_PROCESS, (id_t)gettid(), atoi(v));
+}
 static inline int totk_pin_self(const char *env, const char *dflt) {
+    totk_nice_self(env);
     const char *e = getenv(env);
     if (!e || !*e) e = dflt;
     if (!e || !*e) return 0;

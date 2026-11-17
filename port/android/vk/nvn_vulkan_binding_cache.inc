@@ -229,9 +229,11 @@ static void ucap_wait(const ucap *cc) {
     uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
     for (int i = 0; i < 2000 && !atomic_load_explicit(&c->copied, memory_order_acquire); i++) __asm__ volatile("yield");
     if (!atomic_load_explicit(&c->copied, memory_order_acquire)) {
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_IN, 0);
         atomic_fetch_add(&c->waiters, 1);
         while (!atomic_load_explicit(&c->copied, memory_order_acquire)) { struct timespec ts = {0, 2000000}; syscall(SYS_futex, &c->copied, FUTEX_WAIT_PRIVATE, 0, &ts, NULL, 0); }
         atomic_fetch_sub(&c->waiters, 1);
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_CAPTURE_WAIT_OUT, 0);
     }
     ucap_prof.waits++; ucap_prof.wait_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
 }

@@ -101,11 +101,15 @@ static void dv_publish_locked(void) {
 }
 static void dv_publish(void) { pthread_mutex_lock(&dv.mu); dv_publish_locked(); pthread_mutex_unlock(&dv.mu); }
 /* Everything recorded so far has reached the driver. */
+void totk_tl(int kind, uint64_t a, uint64_t b) __attribute__((weak));
+#include "totk_timeline.h"
 static void dv_drain(void) {
     if (dv.on <= 0) return;
     pthread_mutex_lock(&dv.mu); dv_publish_locked();
     if (dv.replayed != dv.published) { uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC);
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_DRAIN_IN, 0);
         while (dv.replayed != dv.published) pthread_cond_wait(&dv.idle, &dv.mu);
+        if (totk_tl) totk_tl(TL_MARK, TL_MARK_DRAIN_OUT, 0);
         dv.drain_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0; }
     pthread_mutex_unlock(&dv.mu);
     /* the presents drain once a frame: every 300 of them, what the recorder did per frame */
@@ -313,7 +317,7 @@ static VkResult dv_vkResetCommandBuffer(VkCommandBuffer cb, VkCommandBufferReset
     VkCommandBufferResetFlags *r = dv_alloc(DV_RESET_COMMAND_BUFFER, cb, sizeof *r); *r = f; return VK_SUCCESS;
 }
 static VkResult dv_vkQueueSubmit(VkQueue q, uint32_t n, const VkSubmitInfo *s, VkFence fence) {
-    if (!dv_enabled()) return DV_REAL(vkQueueSubmit)(q, n, s, fence);
+    if (!dv_enabled()) { if (totk_tl) totk_tl(TL_MARK, TL_MARK_QUEUE_SUBMIT, fence != VK_NULL_HANDLE); return DV_REAL(vkQueueSubmit)(q, n, s, fence); }
     size_t bytes = 0;
     for (uint32_t i = 0; i < n; i++) { if (s[i].pNext) die("Vulkan deferred submit with a pNext chain");
         bytes += sizeof(VkSubmitInfo) + s[i].waitSemaphoreCount * (sizeof(VkSemaphore) + sizeof(VkPipelineStageFlags)) + s[i].commandBufferCount * sizeof(VkCommandBuffer) + s[i].signalSemaphoreCount * sizeof(VkSemaphore); }
@@ -393,6 +397,7 @@ static void dv_replay(const uint8_t *p, const uint8_t *end) {
                 s[i].pCommandBuffers = (const void *)t; t += s[i].commandBufferCount * sizeof(VkCommandBuffer);
                 s[i].pSignalSemaphores = (const void *)t; t += s[i].signalSemaphoreCount * sizeof(VkSemaphore);
             }
+            if (totk_tl) totk_tl(TL_MARK, TL_MARK_QUEUE_SUBMIT, r->fence != VK_NULL_HANDLE);
             VK_CHECK(DV_REAL(vkQueueSubmit)(r->q, r->n, s, r->fence)); break; }
         default: die("Vulkan deferred record op %u", h->op);
         }
