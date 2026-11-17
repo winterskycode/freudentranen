@@ -23,6 +23,18 @@ static FILE *totk_xl_in, *totk_xl_out;
 static uint64_t totk_translated;
 
 static int totk_request_constants(int st, char *out, size_t cap);
+/* The cache's small notes are read at the next start (the driver check reads host-subgroup-size.txt before this runs):
+   an unchanged note is not rewritten, and a new one replaces the old by rename, so a power loss leaves the old or the
+   new note, never a truncated or zero-filled one. */
+static int totk_cache_note(const char *path, const char *text) {
+    size_t n = strlen(text); char old[1024]; FILE *f = fopen(path, "r");
+    if (f) { size_t got = fread(old, 1, sizeof old, f); fclose(f); if (got == n && !memcmp(old, text, n)) return 1; }
+    char tmp[1200]; if (snprintf(tmp, sizeof tmp, "%s.tmp", path) >= (int)sizeof tmp) return 0;
+    if (!(f = fopen(tmp, "w"))) return 0;
+    int ok = fwrite(text, 1, n, f) == n; ok &= fflush(f) == 0; ok &= fsync(fileno(f)) == 0; ok &= fclose(f) == 0;
+    if (!ok || rename(tmp, path)) { unlink(tmp); return 0; }
+    return 1;
+}
 static const char *totk_cache_dir(void) {
     static char dir[1024];
     if (dir[0]) return dir;
@@ -32,15 +44,15 @@ static const char *totk_cache_dir(void) {
     snprintf(dir, sizeof dir, "%s", e);
     mkdir(dir, 0700);
     // the D2R loader's profile check
-    char path[1100]; snprintf(path, sizeof path, "%s/host-subgroup-size.txt", dir);
-    FILE *f = fopen(path, "w"); if (!f) die("shader cache %s not writable", dir);
-    fprintf(f, "%u\n", gpu_subgroup_size); fclose(f);
+    char path[1100], text[1024]; snprintf(path, sizeof path, "%s/host-subgroup-size.txt", dir);
+    snprintf(text, sizeof text, "%u\n", gpu_subgroup_size);
+    if (!totk_cache_note(path, text)) die("shader cache %s not writable", dir);
     snprintf(path, sizeof path, "%s/request-profile.json", dir);
-    if ((f = fopen(path, "w"))) { char c[160];
-        fprintf(f, "{\"chain\": \"android-vk1\"");
-        static const struct { int st; const char *name; } stages[] = {{0, "vs"}, {1, "ps"}, {5, "cs"}};
-        for (int i = 0; i < 3; i++) { totk_request_constants(stages[i].st, c, sizeof c); fprintf(f, ", \"%s\": {%s}", stages[i].name, c); }
-        fprintf(f, "}\n"); fclose(f); }
+    size_t n = (size_t)snprintf(text, sizeof text, "{\"chain\": \"android-vk1\""); char c[160];
+    static const struct { int st; const char *name; } stages[] = {{0, "vs"}, {1, "ps"}, {5, "cs"}};
+    for (int i = 0; i < 3 && n < sizeof text; i++) { totk_request_constants(stages[i].st, c, sizeof c); n += (size_t)snprintf(text + n, sizeof text - n, ", \"%s\": {%s}", stages[i].name, c); }
+    if (n + 2 >= sizeof text) die("shader cache request profile is too long");
+    snprintf(text + n, sizeof text - n, "}\n"); totk_cache_note(path, text);
     return dir;
 }
 

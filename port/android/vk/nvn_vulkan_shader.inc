@@ -105,6 +105,8 @@ static void shader_profile_check(void) {
     if(!file){if(errno!=ENOENT)die("Vulkan shader profile open");LOG("[vulkan] shader subgroup profile unknown; shader execution subgroup=%u",gpu_subgroup_size);return;}
     char data[32];size_t n=fread(data,1,sizeof data-1,file);int extra=fgetc(file),error=ferror(file);fclose(file);data[n]=0;
     errno=0;char *end;unsigned long size=strtoul(data,&end,10);while(*end==' '||*end=='\n'||*end=='\r'||*end=='\t')end++;
+    /* no number at all (a note lost to a power cut reads as zeros): as unknown as a missing note, rewritten at the cache's opening */
+    if(!error&&end==data){LOG("[vulkan] shader subgroup profile unreadable; shader execution subgroup=%u",gpu_subgroup_size);return;}
     if(error||extra!=EOF||errno||end==data||*end||!size||size>128||(size&(size-1)))die("Invalid Vulkan shader subgroup profile");
     if(size!=gpu_subgroup_size)die("Vulkan shader subgroup profile %lu differs from selected shader execution %u; rebuild for the actual policy",size,gpu_subgroup_size);
     LOG("[vulkan] shader subgroup profile=%lu matches selected shader execution",size);

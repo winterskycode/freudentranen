@@ -277,6 +277,8 @@ static int profile_matches(dm_vk_driver *d,const char *directory) {
         driver_log("shader folder %s has no subgroup profile yet: its first translation writes it (subgroup %u)",directory,d->effective_shader_subgroup_size);return 1;}
     char text[32];size_t n=fread(text,1,sizeof text-1,file);int extra=fgetc(file),error=ferror(file);fclose(file);text[n]=0;
     errno=0;char *end;unsigned long size=strtoul(text,&end,10);while(isspace((unsigned char)*end))end++;
+    /* no number at all (a note lost to a power cut reads as zeros) is as unknown as a missing note */
+    if(!error&&end==text){driver_log("shader folder %s has an unreadable subgroup profile: its first translation rewrites it (subgroup %u)",directory,d->effective_shader_subgroup_size);return 1;}
     if(error||extra!=EOF||errno||end==text||*end||(size!=32&&size!=64&&size!=128))return driver_error(d,"invalid shader subgroup profile");
     if(size!=d->effective_shader_subgroup_size)return driver_error(d,"shader host subgroup %lu differs from selected shader%u (physical default%u); rebuild the cache",size,d->effective_shader_subgroup_size,d->subgroup_size);
     driver_log("shader host subgroup=%lu matches selected shader size; physical_default=%u explicit_request=%u",size,d->subgroup_size,d->requested_subgroup_size);return 1;
