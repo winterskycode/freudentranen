@@ -167,29 +167,57 @@ static void ucap_sort(ucap_range *r, int n) {
     if (from != r) memcpy(r, from, (size_t)n * sizeof *r);
 }
 /* where the submit call's time goes (on the game thread, ahead of the translation thread's start): logged every 600 captures */
-static struct { uint64_t n, collect_ns, sort_ns, alloc_ns, copy_ns, ranges, bytes, waits, wait_ns; } ucap_prof;
+static struct { uint64_t n, collect_ns, sort_ns, merge_ns, alloc_ns, copy_ns, ranges, collected, lookups, bytes, waits, wait_ns; } ucap_prof;
+/* pool_sorted's running maximum of base + size (the furthest any pool up to i reaches), kept for one pool_gen: a range
+   that no pool at or before i reaches past cannot be inside an earlier pool, so the backward search stops there. */
+static uint64_t *ucap_pool_reach; static size_t ucap_pool_reach_cap, ucap_pool_reach_n; static uint64_t ucap_pool_reach_gen = UINT64_MAX;
+static void ucap_pools_prepare(void) {
+    uint64_t gen = atomic_load_explicit(&pool_gen, memory_order_acquire);
+    if (gen == ucap_pool_reach_gen && ucap_pool_reach_n == pool_sorted_n) return;
+    if (pool_sorted_n > ucap_pool_reach_cap) { ucap_pool_reach_cap = pool_sorted_n + 64; free(ucap_pool_reach); ucap_pool_reach = malloc(ucap_pool_reach_cap * sizeof *ucap_pool_reach); if (!ucap_pool_reach) die("uniform capture pools"); }
+    uint64_t reach = 0;
+    for (size_t i = 0; i < pool_sorted_n; i++) { uint64_t end = (uintptr_t)pool_sorted[i]->base + pool_sorted[i]->size; if (end > reach) reach = end; ucap_pool_reach[i] = reach; }
+    ucap_pool_reach_n = pool_sorted_n; ucap_pool_reach_gen = gen;
+}
+/* With pools_lock held, after ucap_pools_prepare: [lo, hi) wholly inside one pool, as mtl_addr decides it. *cur is the
+   last pool starting at or below the previous lo; queries come in nearly ascending lo, so it mostly steps forward. */
+static int ucap_in_pools(uint64_t lo, uint64_t hi, size_t *cur) {
+    size_t n = pool_sorted_n, c = *cur;
+    if (!n) return 0;
+    ucap_prof.lookups++;
+    if (c >= n || (uintptr_t)pool_sorted[c]->base > lo) {
+        size_t a = 0, b = n; while (a < b) { size_t m = (a + b) / 2; if ((uintptr_t)pool_sorted[m]->base <= lo) a = m + 1; else b = m; }
+        if (!a) { *cur = 0; return 0; }
+        c = a - 1;
+    } else while (c + 1 < n && (uintptr_t)pool_sorted[c + 1]->base <= lo) c++;
+    *cur = c;
+    for (size_t i = c + 1; i-- > 0;) {
+        if (ucap_pool_reach[i] < hi) return 0;
+        uint64_t base = (uintptr_t)pool_sorted[i]->base, size = pool_sorted[i]->size;
+        if (lo >= base && lo - base <= size && hi - lo <= size - (lo - base)) return 1;
+    }
+    return 0;
+}
 void *mtl_sub_capture_ubos(const uint64_t *h, int n) {
     ucap_range *r = NULL; int count = 0, cap = 0;
-    uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC), t1 = t0, t2 = t0, t3 = t0;
+    uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC), t1 = t0, ts = t0, t2 = t0, t3 = t0;
     /* 0 marks a never-used slot */
     if (!++ucap_gen) ucap_gen = 1;
     for (int i = 0; i < n; i++) ucap_collect(&r, &count, &cap, (const uint8_t *)(uintptr_t)h[i], 0);
     t1 = dm_android_clock_ns(CLOCK_MONOTONIC);
     ucap *c = calloc(1, sizeof *c); if (!c) die("uniform capture");
     if (count) {
-        ucap_sort(r, count);
+        ucap_sort(r, count); ts = dm_android_clock_ns(CLOCK_MONOTONIC); ucap_prof.collected += (uint64_t)count;
         int k = -1;
-        /* the same ranges come every frame: ranges found inside a pool are remembered while the pools stand (pool_adds) */
-        static struct { uint64_t lo, hi, pools; } known[4096]; uint64_t pools = atomic_load(&pool_adds);
-        #define UCAP_IN_POOL(LO, HI) ({ uint64_t lo_ = (LO), hi_ = (HI); unsigned s_ = (unsigned)((lo_ ^ hi_ * 0x9E3779B97F4A7C15ull) >> 20) & 4095; int ok_; \
-            if (known[s_].lo == lo_ && known[s_].hi == hi_ && known[s_].pools == pools) ok_ = 1; \
-            else { ok_ = mtl_addr(lo_, hi_ - lo_, NULL, NULL); if (ok_) known[s_].lo = lo_, known[s_].hi = hi_, known[s_].pools = pools; } ok_; })
+        /* r is sorted by lo, and the pools by base: one walk of both under one lock decides, for each range, what
+           mtl_addr would (wholly inside one pool, overlapping pools included) without a locked search per range */
+        pthread_mutex_lock(&pools_lock); ucap_pools_prepare(); size_t cur = 0;
         for (int i = 0; i < count; i++) {
-            if (k >= 0 && r[i].lo <= r[k].hi) { if (r[i].hi > r[k].hi && UCAP_IN_POOL(r[k].lo, r[i].hi)) r[k].hi = r[i].hi; if (r[i].hi <= r[k].hi) continue; }
-            if (!UCAP_IN_POOL(r[i].lo, r[i].hi)) continue;
+            if (k >= 0 && r[i].lo <= r[k].hi) { if (r[i].hi > r[k].hi && ucap_in_pools(r[k].lo, r[i].hi, &cur)) r[k].hi = r[i].hi; if (r[i].hi <= r[k].hi) continue; }
+            if (!ucap_in_pools(r[i].lo, r[i].hi, &cur)) continue;
             r[++k] = r[i];
         }
-        #undef UCAP_IN_POOL
+        pthread_mutex_unlock(&pools_lock);
         c->n = k + 1; size_t total = 0; int gpu = ucap_bind_on();
         uint64_t align = gpu && gpu_limits.minUniformBufferOffsetAlignment ? gpu_limits.minUniformBufferOffsetAlignment : 1;
         c->off = malloc(sizeof *c->off * (size_t)(c->n ? c->n : 1)); if (!c->off) die("uniform capture");
@@ -202,7 +230,7 @@ void *mtl_sub_capture_ubos(const uint64_t *h, int n) {
         /* the bytes follow in mtl_sub_capture_copy */
         c->r = r; ucap_prof.ranges += (uint64_t)c->n; ucap_prof.bytes += total;
     } else { free(r); atomic_store(&c->copied, 1); }
-    ucap_prof.collect_ns += t1 - t0; ucap_prof.sort_ns += t2 - t1; ucap_prof.alloc_ns += t3 - t2;
+    ucap_prof.collect_ns += t1 - t0; ucap_prof.sort_ns += (count ? ts : t2) - t1; ucap_prof.merge_ns += count ? t2 - ts : 0; ucap_prof.alloc_ns += t3 - t2;
     return c;
 }
 /* The bytes of the capture, read on the game thread after the submission was handed to the translation thread (the
@@ -220,8 +248,8 @@ void mtl_sub_capture_copy(void *cap) {
     atomic_store_explicit(&c->copied, 1, memory_order_release);
     if (atomic_load(&c->waiters)) syscall(SYS_futex, &c->copied, FUTEX_WAKE_PRIVATE, INT_MAX, NULL, NULL, 0);
     ucap_prof.copy_ns += dm_android_clock_ns(CLOCK_MONOTONIC) - t0;
-    if (++ucap_prof.n == 600) { LOG("[vulkan] submit capture per call: collect %.3f ms, sort+merge %.3f, buffer %.3f, copy %.3f (after the hand-off); %.0f ranges, %.2f MB; the translation waited for the bytes %.2f times, %.3f ms",
-            ucap_prof.collect_ns / 600e6, ucap_prof.sort_ns / 600e6, ucap_prof.alloc_ns / 600e6, ucap_prof.copy_ns / 600e6, ucap_prof.ranges / 600.0, ucap_prof.bytes / 600.0 / 1048576,
+    if (++ucap_prof.n == 600) { LOG("[vulkan] submit capture per call: collect %.3f ms, sort %.3f, merge %.3f (%.0f pool checks), buffer %.3f, copy %.3f (after the hand-off); %.0f ranges collected, %.0f kept, %.2f MB; the translation waited for the bytes %.2f times, %.3f ms",
+            ucap_prof.collect_ns / 600e6, ucap_prof.sort_ns / 600e6, ucap_prof.merge_ns / 600e6, ucap_prof.lookups / 600.0, ucap_prof.alloc_ns / 600e6, ucap_prof.copy_ns / 600e6, ucap_prof.collected / 600.0, ucap_prof.ranges / 600.0, ucap_prof.bytes / 600.0 / 1048576,
             ucap_prof.waits / 600.0, ucap_prof.wait_ns / 600e6); memset(&ucap_prof, 0, sizeof ucap_prof); }
 }
 static void ucap_wait(const ucap *cc) {
