@@ -149,15 +149,17 @@ static void ucap_collect(ucap_range **r, int *n, int *cap, const uint8_t *p, int
         p += h.size;
     }
 }
-/* Sort ranges by lo: an LSD radix sort over the 40 address bits (5 passes of 8). qsort with a comparator callback
+/* Sort ranges by lo: an LSD radix sort, a pass per byte in which the addresses differ (at most 5 for 40 bits). qsort with a comparator callback
    takes 0.25 ms of the submit call (on the game thread, ahead of translation) for a few thousand ranges. */
 static void ucap_sort(ucap_range *r, int n) {
     static __thread ucap_range *tmp; static __thread int tmp_cap;
     if (n < 2) return;
     if (n > tmp_cap) { free(tmp); tmp_cap = n + n / 2; tmp = malloc((size_t)tmp_cap * sizeof *tmp); if (!tmp) die("uniform capture sort"); }
-    uint64_t high = 0; for (int i = 0; i < n; i++) high |= r[i].lo;
+    /* the bits in which some key differs from the first: a byte where all keys agree needs no pass */
+    uint64_t differ = 0; for (int i = 1; i < n; i++) differ |= r[i].lo ^ r[0].lo;
     ucap_range *from = r, *to = tmp;
-    for (unsigned shift = 0; shift < 64 && (high >> shift); shift += 8) {
+    for (unsigned shift = 0; shift < 64 && (differ >> shift); shift += 8) {
+        if (!((differ >> shift) & 255)) continue;
         unsigned count[256] = {0};
         for (int i = 0; i < n; i++) count[(from[i].lo >> shift) & 255]++;
         unsigned sum = 0; for (unsigned k = 0; k < 256; k++) { unsigned c = count[k]; count[k] = sum; sum += c; }

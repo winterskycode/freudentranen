@@ -45,7 +45,8 @@ static void vk_free_memory_counted(VkDevice d, VkDeviceMemory m, const VkAllocat
 typedef struct { _Atomic unsigned references; uint64_t activation; } buffer_owner;
 typedef struct { VkBuffer buffer; VkDeviceMemory memory; void *mapped; uint64_t size, capacity; buffer_owner *owner; uint64_t slab_offset; int slab; } vk_buffer;
 typedef struct cached_buffer { vk_buffer buffer; struct cached_buffer *next; } cached_buffer;
-static cached_buffer *buffer_cache;
+/* one list per capacity (a power of two from 4 KiB: index log2(capacity) - 12), most recently freed first */
+static cached_buffer *buffer_cache[24];
 static pthread_mutex_t buffer_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t buffer_cache_bytes, buffer_allocations, buffer_reuses, snapshot_bytes, active_buffer_bytes, buffer_activation;
 // Large buffers (> 8 MiB) are accounted separately: buffer_large_cache_bytes is the part of buffer_cache_bytes held by large buffers (see buffer_destroy).
@@ -1316,10 +1317,9 @@ static void buffer_slab_give(const vk_buffer *b) {
 static vk_buffer buffer_create(uint64_t size) {
     if (!size || size > (1ull << 32)) die("Invalid Vulkan buffer size %llu", (unsigned long long)size);
     uint64_t capacity = 4096; while (capacity < size) capacity *= 2;
-    pthread_mutex_lock(&buffer_cache_lock); cached_buffer **link = &buffer_cache;
+    pthread_mutex_lock(&buffer_cache_lock); cached_buffer **link = &buffer_cache[__builtin_ctzll(capacity) - 12];
     // Give each allocation or cache reuse a unique activation so reused handles/owners cannot match stale derived data.
     uint64_t activation=++buffer_activation;if(!activation)die("Vulkan buffer activation overflow");
-    while (*link && (*link)->buffer.capacity != capacity) link = &(*link)->next;
     if (*link) { cached_buffer *entry = *link; *link = entry->next; vk_buffer b = entry->buffer;
         buffer_cache_bytes -= capacity; buffer_reuses++; active_buffer_bytes += capacity;
         if (capacity > DM_VK_SMALL_BUFFER_MAX) { buffer_large_cache_bytes -= capacity; buffer_large_reuses++; }
@@ -1366,7 +1366,8 @@ static void buffer_destroy(vk_buffer *b) {
     int large = !small && b->capacity > DM_VK_SMALL_BUFFER_MAX && b->capacity <= DM_VK_LARGE_BUFFER_MAX && buffer_large_cache_bytes + b->capacity <= DM_VK_LARGE_CACHE_BUDGET;
     if (small || large) {
         cached_buffer *entry = malloc(sizeof *entry); if (!entry) die("Vulkan buffer cache allocation");
-        entry->buffer = *b; entry->next = buffer_cache; buffer_cache = entry; buffer_cache_bytes += b->capacity;
+        cached_buffer **list = &buffer_cache[__builtin_ctzll(b->capacity) - 12];
+        entry->buffer = *b; entry->next = *list; *list = entry; buffer_cache_bytes += b->capacity;
         if (large) buffer_large_cache_bytes += b->capacity;
         pthread_mutex_unlock(&buffer_cache_lock); memset(b, 0, sizeof *b); return;
     }
