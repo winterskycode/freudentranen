@@ -185,10 +185,14 @@ void main() {
     // as the camera follows him, between his legs). The previous picture there is that nearer thing (streaks of hair, a
     // ghost leg); the far side's own texel in the current picture stands in (opt.z bit 2).
     bool hole_both = hole && inside && t < 1.0 && (int(p.opt.z) & 4) != 0 && hidden_before(up, d_far);
+    // Off the previous picture's edge (what a pan brings into view): only the current picture shows it, so the motion
+    // candidate is the current picture alone with the hole's fixed score. Without it the band, as wide as the pan's step,
+    // would show the current picture unmoved, and its inner edge a seam.
+    bool edge = !inside;
     // The scene motion is geometry (depth and camera, or the object's own), right for nearly everything that does not
     // move on its own; in fine detail (nets, railings, foliage) the patch comparison is noisy, and without a head start
     // the choice flips between candidates pixel by pixel and picture by picture: a shimmer along edges.
-    float em_raw = !inside ? 1e9 : hole || occl ? p.size.w * p.opt.y : mismatch(uc, up), em = hole || occl ? em_raw : max(em_raw - p.tune.z * p.opt.y, 0.0);
+    float em_raw = hole || occl || edge ? p.size.w * p.opt.y : mismatch(uc, up), em = hole || occl || edge ? em_raw : max(em_raw - p.tune.z * p.opt.y, 0.0);
     // The previous picture blends in only where the scene motion's match is unsure (none below a quarter of the
     // threshold, all of tune.w at it): blended everywhere, generated pictures lost 6-10% of the real frames' detail (a
     // softness flicker at the game's rate); where the match is good, the current picture warped is the sharper answer.
@@ -205,7 +209,7 @@ void main() {
     // generated picture to the next, which shows as a flickering outline; weights fade between them instead.
     // Exponents relative to the best score: with sharp weights the absolute ones underflow, and 0/0 drew black specks.
     float k = 1.0 / (p.tune.x * p.opt.y), best = min(min(em, es), p.opt.y);
-    float wm = inside ? exp(-(em - best) * k) : 0.0, ws = own ? 0.0 : exp(-(es - best) * k), wc = exp(-(p.opt.y - best) * k) * p.tune.y;
+    float wm = exp(-(em - best) * k), ws = own ? 0.0 : exp(-(es - best) * k), wc = exp(-(p.opt.y - best) * k) * p.tune.y;
     float wsum = wm + ws + wc;
     // Only the samples that count: a candidate under 1/512 of the weight, or the previous picture where it is not blended
     // in, changes the colour by less than a step of the output's 8 bits.
@@ -213,7 +217,8 @@ void main() {
     float cut = wsum * (1.0 / 512.0);
     vec3 mc = vec3(0.0), cu = vec3(0.0), st = vec3(0.0);
     if (wm > cut) {
-        if (hole_both) mc = bicubic(cur_pic, far_src);
+        if (edge) mc = bicubic(cur_pic, uc);
+        else if (hole_both) mc = bicubic(cur_pic, far_src);
         else if (hole && t < 1.0) mc = bicubic(prev_pic, up);
         else { mc = bicubic(cur_pic, uc); if (!occl && wp > 0.0) mc = mix(mc, bicubic(prev_pic, up), wp); }
     }
