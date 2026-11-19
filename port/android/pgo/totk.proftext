@@ -373,7 +373,7 @@
 # Num Counters:
 2
 # Counter Values:
-65349
+88231
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/applet_host.c;try_pop_launch_parameter
@@ -405,20 +405,20 @@
 # Num Counters:
 15
 # Counter Values:
-4050105
+4050030
 0
-3240084
+3240024
 0
 0
 0
-2160056
+2160016
 0
-2160056
+2160016
 0
-2160056
-1890049
+2160016
+1890014
 0
-1890049
+1890014
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_mixer.c;mix_effects
@@ -434,49 +434,49 @@
 0
 0
 0
-270007
+270002
 0
 0
-1295222400
-1295222400
-388810080
+1298724480
+1298724480
+388802880
 0
 0
 0
-1295222400
-1295222400
-1295222400
+1298724480
+1298724480
+1298724480
 0
-1295222400
+1298724480
 0
-270007
+270002
 0
 0
 0
-1080028
+1080008
 0
 0
 0
-1620042
+1620012
 0
 0
 0
-38881008
+38880288
 0
-5396760
+5411352
 0
-14580378
+14580108
 0
 0
-1083408
+1068696
 0
 0
-899460
-1620042
+901892
+1620012
 0
 0
-899460
-899460
+901892
+901892
 0
 0
 0
@@ -485,22 +485,22 @@
 0
 0
 0
-1080028
-270007
+1080008
+270002
 0
 0
 0
-270007
-1080028
-2430063
-270007
+270002
+1080008
+2430018
+270002
 0
-270007
+270002
 0
-15134
+15831
 0
 0
-180568
+178116
 0
 0
 0
@@ -527,11 +527,11 @@
 0
 0
 0
-1080028
-1080028
-1080028
+1080008
+1080008
+1080008
 0
-1295222400
+1298724480
 0
 0
 0
@@ -541,7 +541,7 @@
 0
 0
 0
-19286500
+19367155
 0
 0
 # Num Value Kinds:
@@ -587,7 +587,7 @@
 # Num Counters:
 10
 # Counter Values:
-675011
+673214
 0
 0
 0
@@ -604,21 +604,21 @@
 # Num Counters:
 15
 # Counter Values:
-129602112
-64801056
+129257088
+64628544
 0
-675011
-0
-0
-675011
-675011
+673214
 0
 0
+673214
+673214
+0
+0
+56
 0
 0
 0
-0
-129602111
+129257088
 # Num Value Kinds:
 2
 # ValueKind = IPVK_IndirectCallTarget:
@@ -642,32 +642,32 @@
 # Num Counters:
 26
 # Counter Values:
-1189653363
-946146683
-1189576301
-946145372
-939243476
-250332130
-939243476
-250332130
-939243476
-250332130
+1207106410
+957687889
+1207026348
+957686517
+956277154
+250748480
+956277154
+250748480
+956277154
+250748480
 0
 0
-939243476
-18729
-939223450
-4030
+956277154
+19857
+956255997
+4006
 0
 0
-250332130
+250748480
 0
 0
 0
-4030
-428888568
+4006
+431382732
 0
-250332130
+250748480
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_mixer.c;splitter_filter
 # Func Hash:
@@ -678,9 +678,9 @@
 0
 0
 0
-5436990
+5229602
 0
-5436990
+5229602
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -697,12 +697,12 @@
 # Counter Values:
 0
 0
-6377630
-6376880
+6429103
+6428319
 0
 0
 0
-6377630
+6429103
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_mixer.c;walk_step
 # Func Hash:
@@ -710,12 +710,12 @@
 # Num Counters:
 10
 # Counter Values:
-84958
-1187506796
-1187506057
-2725
-498622
-2725
+89191
+1203088223
+1203087483
+2706
+502089
+2706
 0
 0
 0
@@ -727,21 +727,21 @@
 # Num Counters:
 15
 # Counter Values:
-5845468
-6350174
-6346592
-25920672
-2717
-5972072
-2717
+5893129
+6401346
+6397711
+25920192
+2690
+6029748
+2690
 0
 0
-5881925
+5929951
 0
-498407
-5881925
+501892
+5929951
 0
-5881925
+5929951
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;manager_handler
 # Func Hash:
@@ -817,26 +817,19 @@
 # Num Counters:
 38
 # Counter Values:
-269036
+269433
 0
 0
 0
 0
 0
 0
-269036
-269036
+269433
+269433
 0
-269036
+269433
 0
-269036
-0
-0
-0
-0
-0
-0
-0
+269433
 0
 0
 0
@@ -850,7 +843,14 @@
 0
 0
 0
-269036
+0
+0
+0
+0
+0
+0
+0
+269433
 0
 0
 0
@@ -883,37 +883,35 @@
 # Num Counters:
 62
 # Counter Values:
-107614000
-34123780
-52593396
-35062264
-51654912
-25827456
-25827456
-4304576
-538070
-107614000
-25827360
-4304560
-538070
-5953363
+107773200
+33591268
+54419604
+36279736
+51731136
+25865568
+25865568
+4310928
+538866
+107773200
+25865568
+4310928
+538866
+6019200
 0
-5953442
-25827456
+6019283
+25865568
 0
-4304560
-0
-0
-19874093
-19874093
-5953363
-1931
-0
-269035
-0
-269036
+4310928
 0
 0
+19846368
+19846368
+6019200
+2005
+0
+269433
+0
+269433
 0
 0
 0
@@ -938,13 +936,15 @@
 0
 0
 0
-269036
-0
-269035
-269035
 0
 0
-2870488
+269433
+0
+269433
+269433
+0
+0
+2872166
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -952,7 +952,7 @@
 # NumValueSites:
 1
 1
-513:269036
+513:269433
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;skip_empty
 # Func Hash:
@@ -962,14 +962,14 @@
 # Counter Values:
 0
 0
-6376726
+6428192
 0
-6376726
+6428192
 0
 0
 0
-6376726
-6380332
+6428192
+6431843
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;update_voice
 # Func Hash:
@@ -977,18 +977,18 @@
 # Num Counters:
 14
 # Counter Values:
-11910588
-23813452
-8218839
-501146
-5955294
-3783
+12042410
+24076800
+8195185
+504985
+6021205
+3927
 0
-5953442
-12517
-77458
-5863388
-1939
+6019283
+10700
+89066
+5919434
+2005
 0
 0
 
@@ -1000,8 +1000,8 @@
 # Counter Values:
 0
 0
-15134
-15134
+15831
+15831
 0
 0
 0
@@ -1073,7 +1073,7 @@
 # Num Counters:
 5
 # Counter Values:
-47752
+47856
 48
 48
 48
@@ -1146,11 +1146,11 @@
 # Num Counters:
 5
 # Counter Values:
-16578
+16548
 96
 96
 96
-36
+76
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/fs_host.c;extend_save_data
 # Func Hash:
@@ -1166,7 +1166,7 @@
 # Num Counters:
 6
 # Counter Values:
-34863
+34974
 0
 0
 0
@@ -1218,32 +1218,32 @@
 0
 0
 0
-3264
-612
-612
-144
-204
-348
-204
-204
-348
-204
+2624
+492
+492
+112
+164
+276
+164
+164
+276
+164
 0
-204
+164
 0
-348
-204
-348
+276
+164
+276
 0
-204
-204
+164
+164
 0
-108
-204
-204
-204
-144
-144
+68
+164
+164
+164
+112
+112
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/fs_host.c;is_mounted
 # Func Hash:
@@ -1338,8 +1338,8 @@
 18
 # Counter Values:
 0
-69222
-69168
+69286
+69226
 48
 0
 48
@@ -1405,7 +1405,7 @@
 10
 # Counter Values:
 0
-50123
+50313
 0
 0
 0
@@ -1421,7 +1421,7 @@
 # Num Counters:
 1
 # Counter Values:
-48541
+48597
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/fs_host.c;remove_tree
 # Func Hash:
@@ -1463,12 +1463,12 @@
 11
 # Counter Values:
 0
-0
-0
-0
-0
-0
-0
+32
+32
+32
+32
+32
+32
 0
 0
 0
@@ -2337,7 +2337,7 @@
 # Num Counters:
 1
 # Counter Values:
-126328
+0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/input.c;handheld_states
 # Func Hash:
@@ -2345,7 +2345,7 @@
 # Num Counters:
 1
 # Counter Values:
-0
+171437
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/input.c;hold_type
 # Func Hash:
@@ -2396,7 +2396,7 @@
 6
 # Counter Values:
 0
-505312
+685748
 0
 0
 0
@@ -2450,13 +2450,13 @@
 # Num Counters:
 7
 # Counter Values:
-378984
-378984
-378984
-126328
+514311
+514311
+514311
+171437
 0
-378984
-126328
+0
+0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/input.c;supported_ids
 # Func Hash:
@@ -2687,10 +2687,10 @@
 # Num Counters:
 4
 # Counter Values:
-2430036
+2429991
 0
-810012
-270004
+809997
+269999
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/movie_host.c;decode_one
 # Func Hash:
@@ -3417,27 +3417,27 @@
 # Num Counters:
 21
 # Counter Values:
-85722
-874
+85764
+888
 0
 0
-85722
-85742
-455
-85742
-85742
-85742
-135253
-85722
-135253
-85742
+85764
+85778
+525
+85778
+85774
+85778
+135143
+85766
+135141
+85770
 0
-85742
+85770
 0
 0
-85722
+85764
 0
-85722
+85768
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/romfs.c;sha_fd
 # Func Hash:
@@ -3477,7 +3477,7 @@
 # Counter Values:
 0
 0
-50127
+50313
 0
 0
 0
@@ -3559,7 +3559,7 @@
 # Num Counters:
 6
 # Counter Values:
-287254
+310847
 0
 0
 0
@@ -3707,7 +3707,7 @@
 # Num Counters:
 5
 # Counter Values:
-757968
+1028622
 0
 0
 0
@@ -3848,8 +3848,8 @@
 # Num Counters:
 3
 # Counter Values:
-82987
-82987
+82768
+82768
 0
 # Num Value Kinds:
 1
@@ -3858,7 +3858,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:82987
+** External Symbol **:82768
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/services.c;observed_region
 # Func Hash:
@@ -3866,8 +3866,8 @@
 # Num Counters:
 11
 # Counter Values:
-20486
-20486
+20391
+20391
 0
 0
 0
@@ -3884,7 +3884,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:20486
+** External Symbol **:20391
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/services.c;observed_sdk_init
 # Func Hash:
@@ -4458,7 +4458,7 @@
 # Num Counters:
 7
 # Counter Values:
-27334721
+35528328
 0
 0
 0
@@ -4491,22 +4491,24 @@
 10
 # Counter Values:
 0
-3386139
+4450075
 0
 0
 0
 0
-40585206
+53788778
 0
 0
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/threads.c;game_pin_self
 # Func Hash:
-271263511962524130
+157411390315686723
 # Num Counters:
-11
+13
 # Counter Values:
+0
+0
 0
 0
 0
@@ -4551,19 +4553,19 @@
 # Num Counters:
 13
 # Counter Values:
-206857289
-10143310
-95719977
-93397072
-93293825
-7774990
-6474064
-3397551
-3491499
-3232620
-1931698
-4377439
-240447
+280164167
+12703471
+137338715
+134323163
+134013138
+9976912
+8754174
+4006248
+4467762
+3856695
+2634067
+5970664
+266596
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/threads.c;se_unbind
 # Func Hash:
@@ -4678,17 +4680,17 @@
 # Num Counters:
 11
 # Counter Values:
-348555
-348555
-348555
-15973896
-348555
+349150
+349150
+349150
+15805178
+349150
 0
-348555
-269011
-79544
-351007
-269011
+349150
+269378
+79772
+351002
+269378
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/threads.c;yield_backoff_ns
 # Func Hash:
@@ -4696,7 +4698,7 @@
 # Num Counters:
 10
 # Counter Values:
-32652375
+43746901
 0
 0
 0
@@ -4705,7 +4707,7 @@
 0
 0
 0
-32537104
+43571995
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/threads.c;yield_host_on
 # Func Hash:
@@ -4713,7 +4715,7 @@
 # Num Counters:
 3
 # Counter Values:
-32235477
+43107591
 0
 0
 
@@ -4825,8 +4827,8 @@
 # Num Counters:
 2
 # Counter Values:
-58
-58
+74
+74
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/time_host.c;to_calendar_rule
 # Func Hash:
@@ -4871,14 +4873,14 @@
 # Num Counters:
 9
 # Counter Values:
-66711
-66711
-66711
-200133
-200133
-200133
-200133
-66711
+91233
+91233
+91233
+273699
+273699
+273699
+273699
+91233
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/world_survey.c;force_at
@@ -4908,19 +4910,19 @@
 # Num Counters:
 13
 # Counter Values:
-35333
-234528
-200406
-199195
-1211
-7953
-603
-7736
-19644
-639
-3061
+48339
+318226
+271467
+269887
+1580
+10760
+778
+10687
+26892
+794
+3966
 0
-35333
+48339
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;bind_handles_rec
 # Func Hash:
@@ -4946,7 +4948,7 @@
 0
 0
 0
-153171494
+205721839
 0
 0
 0
@@ -4956,7 +4958,7 @@
 0
 0
 0
-21634217
+29417276
 0
 0
 0
@@ -4974,7 +4976,7 @@
 # NumValueSites:
 1
 1
-8:152603039
+8:205045906
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;call_ref_on
 # Func Hash:
@@ -4982,7 +4984,7 @@
 # Num Counters:
 4
 # Counter Values:
-155915150
+216244390
 0
 0
 0
@@ -4994,14 +4996,14 @@
 12
 # Counter Values:
 0
-981
+1533
 0
-1061399
-1060418
+1442279
+1440746
 0
-1060418
-151771963
-134993
+1440746
+207984288
+182519
 0
 0
 0
@@ -5015,7 +5017,7 @@
 0
 0
 0
-130698
+176462
 0
 0
 0
@@ -5026,7 +5028,7 @@
 # Num Counters:
 7
 # Counter Values:
-26196086
+35628148
 0
 0
 0
@@ -5040,7 +5042,7 @@
 # Num Counters:
 5
 # Counter Values:
-151426051
+206697598
 0
 0
 0
@@ -5048,152 +5050,182 @@
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;copy_walk
 # Func Hash:
-72260273205559818
+509108733033726299
 # Num Counters:
-85
+99
 # Counter Values:
 0
 0
-431121855
-562444251
+579524232
+765657693
 0
 0
+2725794283
 0
 0
-562395090
+765627170
 0
-9778435
-481384535
-4126039475
-5331883520
-4126039475
+13332495
+460914554
+4021217575
+5399608320
+4021217575
 0
-2989921642
-431128261
-80
-993374890
-5984789
-55
-993343286
-1061367
-562245350
-2005022375
-324892579
-2666060283
-825166592
-20828655
-12
+4061069210
+176
+1345310678
+59261447
+7242517
+121
+1345315747
+1442269
+59261397
+765561193
+2725927139
+445138823
+3616940378
+804191838
+21092695
+21
+415103
 8
-562210765
-0
-0
-364082165
-5985748
-183271934
-5985629
-134663
-0
-4167333
-183375922
-0
-4166811
-134663
-4168537
-4165481
-4165474
-50
-5
+20
+765567454
 0
 0
 0
+498700784
+7243394
+0
+7243197
+182006
+0
+4863645
 0
 0
-0
+4862253
+182006
+2447084
+4864042
+4218337
+4218337
+24
+11
 0
 0
 0
 0
 0
 0
-329671478
-562239959
-363904486
+0
+0
+0
+0
+0
+0
+0
+0
+451242975
+765589015
+498541519
 8
-10839802
-993421452
+14774764
 0
-5915792
-5915792
 0
-4168194
-4168172
-24980460
-134663
+1345335201
 0
-4169177
+7164641
+7164641
 0
-4169122
-5985505
-5985505
-5985503
-1328231
+0
+0
+4863618
+4863618
+4863618
+25302723
+182004
+2447162
+0
+4864605
+0
+4864544
+7243223
+7243111
+7243062
+1781531
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
-5
+6
 1
-513:5985436
+513:7243057
 15
-513:1145713
-129:506078
-17:498551
-257:470268
-4:354634
-8:322134
-65:311292
-9:201816
-33:157916
-16:114512
-32:73193
-256:4442
-512:4291
-64:2086
-128:1856
+513:1551606
+129:664759
+257:646203
+17:464749
+65:397495
+4:341212
+8:286898
+9:175627
+33:152545
+16:96114
+32:63623
+256:9258
+512:7347
+128:3544
+64:3280
 10
-513:1469816
-65:791808
-33:650968
-64:639630
-129:334554
-257:217090
-32:28597
-128:16870
-512:9095
-256:7395
+513:1790599
+32:640582
+65:541759
+129:485709
+33:324512
+257:274551
+64:66854
+512:32663
+256:30794
+128:30535
 11
-513:1469811
-65:791809
-33:650926
-64:639572
-129:334545
-257:217090
-32:28597
-128:16870
-512:9095
-256:7395
-16:3288
+513:1790599
+16:645955
+32:640546
+65:541749
+129:485709
+33:324508
+257:274551
+64:66854
+512:32663
+256:30794
+128:30535
 9
-17:67958
-33:46343
-16:10659
-8:2530
-9:2328
-4:2274
-64:1758
-32:504
-65:309
+17:94875
+33:61993
+16:9320
+32:4973
+9:4115
+4:2842
+64:1909
+8:1641
+65:338
+15
+8:406130
+65:399703
+33:335603
+4:297136
+17:196242
+9:189216
+16:168663
+129:168618
+257:114660
+513:88536
+64:57198
+32:21316
+128:4087
+256:104
+512:36
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;dcmp
 # Func Hash:
@@ -5201,7 +5233,7 @@
 # Num Counters:
 1
 # Counter Values:
-3087459
+3503002
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;dpool_add
 # Func Hash:
@@ -5240,14 +5272,14 @@
 # Num Counters:
 8
 # Counter Values:
-413
-96556
-127798
-96556
-79608
-79608
-48189
-48780
+341
+110475
+170073
+110475
+115067
+115067
+55004
+55803
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;frz_copy_stream
 # Func Hash:
@@ -5301,10 +5333,10 @@
 # Num Counters:
 6
 # Counter Values:
-65342
-65342
-58962
-6380
+88233
+88233
+81750
+6483
 0
 0
 
@@ -5327,7 +5359,7 @@
 # Num Counters:
 1
 # Counter Values:
-37941863
+51072675
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBlendStateSetBlendFunc
 # Func Hash:
@@ -5335,7 +5367,7 @@
 # Num Counters:
 1
 # Counter Values:
-37940822
+51092020
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBlendStateSetBlendTarget
 # Func Hash:
@@ -5343,7 +5375,7 @@
 # Num Counters:
 1
 # Counter Values:
-37992798
+51161538
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBlendStateSetDefaults
 # Func Hash:
@@ -5351,7 +5383,7 @@
 # Num Counters:
 1
 # Counter Values:
-17803594
+23984212
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBootstrapLoader
 # Func Hash:
@@ -5367,7 +5399,7 @@
 # Num Counters:
 1
 # Counter Values:
-29708807
+39948464
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferBuilderSetDevice
 # Func Hash:
@@ -5375,7 +5407,7 @@
 # Num Counters:
 1
 # Counter Values:
-29701675
+39934463
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferBuilderSetStorage
 # Func Hash:
@@ -5383,7 +5415,7 @@
 # Num Counters:
 1
 # Counter Values:
-29702159
+39940903
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferFinalize
 # Func Hash:
@@ -5391,7 +5423,7 @@
 # Num Counters:
 1
 # Counter Values:
-29743777
+39966570
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferFlushMappedRange
 # Func Hash:
@@ -5399,9 +5431,9 @@
 # Num Counters:
 6
 # Counter Values:
-10908
-10908
-10908
+10940
+10940
+10940
 0
 0
 0
@@ -5412,9 +5444,9 @@
 # Num Counters:
 3
 # Counter Values:
-199550106
-197735270
-197706273
+270604614
+267946127
+267901265
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferGetMemoryOffset
 # Func Hash:
@@ -5446,12 +5478,12 @@
 # Num Counters:
 6
 # Counter Values:
-29704731
-29704785
-29704750
-29704536
-29703578
-29702823
+39941799
+39941334
+39941016
+39940560
+39939194
+39938357
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnBufferMap
 # Func Hash:
@@ -5459,9 +5491,9 @@
 # Num Counters:
 3
 # Counter Values:
-33404438
-33322395
-33195016
+45255402
+45260052
+45112641
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnChannelMaskStateSetChannelMask
 # Func Hash:
@@ -5469,11 +5501,11 @@
 # Num Counters:
 5
 # Counter Values:
-145253573
-145252418
-73777822
-73496980
-74244779
+195727645
+195725474
+99366586
+98960007
+99964521
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnChannelMaskStateSetDefaults
 # Func Hash:
@@ -5481,7 +5513,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnColorStateSetBlendEnable
 # Func Hash:
@@ -5489,8 +5521,8 @@
 # Num Counters:
 3
 # Counter Values:
-37961759
-37960517
+51107787
+51074109
 1396
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnColorStateSetDefaults
@@ -5499,7 +5531,7 @@
 # Num Counters:
 1
 # Counter Values:
-17809711
+23992120
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferAddControlMemory
 # Func Hash:
@@ -5507,18 +5539,18 @@
 # Num Counters:
 16
 # Counter Values:
-2148220092
-9816005
-95873082
-1101753618
-61520086
-1111569623
-5564869
-2158036097
-2158036097
-5981190
+2889055704
+11208353
+116662373
+1506010738
+75872461
+1517219091
+6818967
+2900264057
+2900264057
+7238028
 0
-5986000
+7243564
 0
 0
 0
@@ -5530,7 +5562,7 @@
 # Num Counters:
 1
 # Counter Values:
-10372659
+13726798
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindBlendState
 # Func Hash:
@@ -5538,7 +5570,7 @@
 # Num Counters:
 1
 # Counter Values:
-52740601
+71002721
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindChannelMaskState
 # Func Hash:
@@ -5546,7 +5578,7 @@
 # Num Counters:
 1
 # Counter Values:
-33007983
+44466572
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindColorState
 # Func Hash:
@@ -5554,7 +5586,7 @@
 # Num Counters:
 1
 # Counter Values:
-32607956
+43928542
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindDepthStencilState
 # Func Hash:
@@ -5562,7 +5594,7 @@
 # Num Counters:
 1
 # Counter Values:
-20131438
+27146275
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindImage
 # Func Hash:
@@ -5587,7 +5619,7 @@
 # Num Counters:
 1
 # Counter Values:
-2279039
+3093153
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindPolygonState
 # Func Hash:
@@ -5595,7 +5627,7 @@
 # Num Counters:
 1
 # Counter Values:
-20111608
+27133490
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindProgram
 # Func Hash:
@@ -5611,7 +5643,7 @@
 0
 0
 0
-47304722
+64103988
 0
 0
 0
@@ -5684,7 +5716,7 @@
 # Num Counters:
 3
 # Counter Values:
-20912019
+27653970
 0
 0
 
@@ -5705,7 +5737,7 @@
 # Num Counters:
 1
 # Counter Values:
-134172347
+179931113
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindTextures
 # Func Hash:
@@ -5721,7 +5753,7 @@
 # Num Counters:
 3
 # Counter Values:
-255166124
+347545585
 0
 0
 
@@ -5742,7 +5774,7 @@
 # Num Counters:
 2
 # Counter Values:
-41934430
+56457383
 0
 # Num Value Kinds:
 1
@@ -5751,12 +5783,12 @@
 # NumValueSites:
 1
 8
-64:35437765
-4:4125847
-33:1578524
-32:595815
-17:117292
-16:56412
+64:47708214
+4:5552957
+33:2129693
+32:819086
+17:148345
+16:65223
 8:216
 9:72
 
@@ -5766,7 +5798,7 @@
 # Num Counters:
 3
 # Counter Values:
-55155121
+74465856
 0
 0
 # Num Value Kinds:
@@ -5776,7 +5808,7 @@
 # NumValueSites:
 1
 1
-16:55045188
+16:74333083
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferBindVertexStreamState
 # Func Hash:
@@ -5784,7 +5816,7 @@
 # Num Counters:
 2
 # Counter Values:
-41859921
+56365482
 0
 # Num Value Kinds:
 1
@@ -5793,13 +5825,13 @@
 # NumValueSites:
 1
 8
-128:35403932
-8:4125893
-33:973275
-64:678084
-65:571334
-16:69008
-32:56364
+128:47685395
+8:5553021
+33:1326121
+64:918833
+65:783510
+16:68888
+32:65175
 17:0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferClearBuffer
@@ -5817,7 +5849,7 @@
 # Num Counters:
 2
 # Counter Values:
-5080441
+6720717
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferClearDepthStencil
@@ -5826,7 +5858,7 @@
 # Num Counters:
 2
 # Counter Values:
-1245884
+1647295
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferClearTexture
@@ -5881,7 +5913,7 @@
 # Num Counters:
 1
 # Counter Values:
-2462821
+3279144
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDispatchComputeIndirect
 # Func Hash:
@@ -5897,7 +5929,7 @@
 # Num Counters:
 1
 # Counter Values:
-206267
+285333
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDrawArraysIndirect
 # Func Hash:
@@ -5913,8 +5945,8 @@
 # Num Counters:
 2
 # Counter Values:
-1197480
-1197480
+1636148
+1636140
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDrawElements
 # Func Hash:
@@ -5922,7 +5954,7 @@
 # Num Counters:
 1
 # Counter Values:
-57392266
+79425627
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDrawElementsBaseVertex
 # Func Hash:
@@ -5930,7 +5962,7 @@
 # Num Counters:
 1
 # Counter Values:
-11784861
+15603899
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDrawElementsIndirect
 # Func Hash:
@@ -5946,7 +5978,7 @@
 # Num Counters:
 1
 # Counter Values:
-62118981
+84396977
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferDrawMeshTasks
 # Func Hash:
@@ -5975,24 +6007,20 @@
 0
 0
 0
-5981402
-5983156
+7237853
+7239467
 0
 0
 0
-5985081
-5979630
-483568
-5986070
+7242238
+7233418
+578523
+7243636
 0
 0
-5979611
-5979212
-90995
-0
-0
-0
-0
+7233614
+7229666
+91911
 0
 0
 0
@@ -6012,21 +6040,17 @@
 0
 0
 0
-261715
-5724355
-0
-0
-0
-1995
-294
 0
 0
 0
 0
+357554
+6886082
 0
 0
 0
-0
+2416
+358
 0
 0
 0
@@ -6034,11 +6058,19 @@
 0
 0
 0
-5983952
 0
 0
 0
-68654
+0
+0
+0
+0
+0
+7240473
+0
+0
+0
+69219
 0
 # Num Value Kinds:
 2
@@ -6052,14 +6084,14 @@
 # NumValueSites:
 1
 10
-513:2743193
-16:1325931
-257:1208179
-129:450515
-64:118756
-33:65346
-512:22691
-256:17370
+513:3611923
+16:1777990
+257:1089930
+129:482826
+64:118626
+33:88228
+512:20943
+256:18721
 65:144
 128:0
 
@@ -6094,7 +6126,7 @@
 # Num Counters:
 1
 # Counter Values:
-5984031
+7240923
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferGetControlMemoryFree
 # Func Hash:
@@ -6118,7 +6150,7 @@
 # Num Counters:
 1
 # Counter Values:
-5985074
+7242350
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferGetMemoryCallback
 # Func Hash:
@@ -6142,7 +6174,7 @@
 # Num Counters:
 1
 # Counter Values:
-5919127
+7153348
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferIsRecording
 # Func Hash:
@@ -6158,7 +6190,7 @@
 # Num Counters:
 1
 # Counter Values:
-32620358
+43931104
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetCopyImageStride
 # Func Hash:
@@ -6182,7 +6214,7 @@
 # Num Counters:
 1
 # Counter Values:
-20064193
+27063806
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetDepthRange
 # Func Hash:
@@ -6190,7 +6222,7 @@
 # Num Counters:
 1
 # Counter Values:
-11968655
+15979964
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetDepthRanges
 # Func Hash:
@@ -6212,7 +6244,7 @@
 # Num Counters:
 4
 # Counter Values:
-5920562
+7155150
 0
 0
 0
@@ -6223,7 +6255,7 @@
 # Num Counters:
 1
 # Counter Values:
-5920489
+7155116
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetPolygonOffsetClamp
 # Func Hash:
@@ -6231,7 +6263,7 @@
 # Num Counters:
 1
 # Counter Values:
-20120084
+27140434
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetRasterizerDiscard
 # Func Hash:
@@ -6239,7 +6271,7 @@
 # Num Counters:
 1
 # Counter Values:
-2278866
+3092959
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetRenderEnable
 # Func Hash:
@@ -6247,7 +6279,7 @@
 # Num Counters:
 2
 # Counter Values:
-4989021
+6592032
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetRenderEnableConditional
@@ -6256,7 +6288,7 @@
 # Num Counters:
 4
 # Counter Values:
-5404052
+7115253
 0
 0
 0
@@ -6267,17 +6299,17 @@
 # Num Counters:
 15
 # Counter Values:
-12300941
-22418689
-22418689
-22418633
-19522514
+16437889
+30040625
+30040625
+30040652
+26140293
 0
 0
 0
 0
-12310723
-3912049
+16449899
+5270031
 0
 0
 0
@@ -6290,8 +6322,8 @@
 3
 # Counter Values:
 0
-65349
-65349
+88231
+88231
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetScissor
 # Func Hash:
@@ -6299,7 +6331,7 @@
 # Num Counters:
 1
 # Counter Values:
-12666756
+16896463
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetScissors
 # Func Hash:
@@ -6329,7 +6361,7 @@
 # Num Counters:
 1
 # Counter Values:
-2279086
+3093436
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetStencilRef
 # Func Hash:
@@ -6337,7 +6369,7 @@
 # Num Counters:
 1
 # Counter Values:
-4557850
+6186263
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetStencilValueMask
 # Func Hash:
@@ -6345,7 +6377,7 @@
 # Num Counters:
 1
 # Counter Values:
-2279216
+3093557
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferSetTexturePool
 # Func Hash:
@@ -6354,9 +6386,9 @@
 8
 # Counter Values:
 0
-65349
+88231
 0
-65349
+88231
 0
 0
 0
@@ -6376,7 +6408,7 @@
 # Num Counters:
 8
 # Counter Values:
-16456546
+21177534
 0
 0
 0
@@ -6391,16 +6423,16 @@
 # NumValueSites:
 1
 11
-4:5518571
-16:2909944
-33:2247960
-64:1990781
-65:1704445
-8:1433347
-513:417974
-256:172541
-129:39312
-257:25076
+4:7348890
+16:3458182
+64:2656143
+33:2644561
+65:2279863
+8:1931793
+513:563248
+256:223887
+129:44435
+257:30597
 512:0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnCommandBufferWaitSync
@@ -6417,7 +6449,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetDepthFunc
 # Func Hash:
@@ -6425,7 +6457,7 @@
 # Num Counters:
 1
 # Counter Values:
-17874506
+24079845
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetDepthTestEnable
 # Func Hash:
@@ -6433,7 +6465,7 @@
 # Num Counters:
 1
 # Counter Values:
-17869782
+24072819
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetDepthWriteEnable
 # Func Hash:
@@ -6441,8 +6473,8 @@
 # Num Counters:
 2
 # Counter Values:
-17873673
-9380113
+24079233
+12445374
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetStencilFunc
 # Func Hash:
@@ -6450,9 +6482,9 @@
 # Num Counters:
 3
 # Counter Values:
-17866649
-17855252
-17854952
+24073638
+24061698
+24061445
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetStencilOp
 # Func Hash:
@@ -6460,9 +6492,9 @@
 # Num Counters:
 3
 # Counter Values:
-17875460
-17864482
-17864806
+24076968
+24064766
+24065007
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDepthStencilStateSetStencilTestEnable
 # Func Hash:
@@ -6470,8 +6502,8 @@
 # Num Counters:
 2
 # Counter Values:
-17874084
-17873979
+24079373
+24079310
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDeviceBuilderSetDefaults
 # Func Hash:
@@ -6519,7 +6551,7 @@
 # Num Counters:
 3
 # Counter Values:
-2887325
+3417867
 0
 0
 
@@ -6562,7 +6594,7 @@
 # Num Counters:
 2
 # Counter Values:
-158557819
+212802094
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnDeviceInitialize
@@ -6693,7 +6725,7 @@
 # Num Counters:
 1
 # Counter Values:
-13606
+13584
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolBuilderSetDevice
 # Func Hash:
@@ -6701,7 +6733,7 @@
 # Num Counters:
 1
 # Counter Values:
-13606
+13584
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolBuilderSetFlags
 # Func Hash:
@@ -6709,7 +6741,7 @@
 # Num Counters:
 1
 # Counter Values:
-13606
+13584
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolBuilderSetStorage
 # Func Hash:
@@ -6717,7 +6749,7 @@
 # Num Counters:
 1
 # Counter Values:
-13606
+13584
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolFlushMappedRange
 # Func Hash:
@@ -6725,8 +6757,8 @@
 # Num Counters:
 2
 # Counter Values:
-1212009
-1212009
+1377772
+1377745
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolGetBufferAddress
 # Func Hash:
@@ -6734,7 +6766,7 @@
 # Num Counters:
 1
 # Counter Values:
-31581225
+42026284
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolGetFlags
 # Func Hash:
@@ -6742,7 +6774,7 @@
 # Num Counters:
 1
 # Counter Values:
-80487622
+110294385
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolInitialize
 # Func Hash:
@@ -6750,22 +6782,22 @@
 # Num Counters:
 16
 # Counter Values:
-13606
-13606
+13584
+13584
 0
-13606
-0
-0
-0
-13606
+13584
 0
 0
+0
+13584
 0
 0
 0
 0
 0
-13606
+0
+0
+13584
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolMap
 # Func Hash:
@@ -6773,9 +6805,9 @@
 # Num Counters:
 3
 # Counter Values:
-562
-562
-558
+526
+526
+522
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMemoryPoolMapVirtual
 # Func Hash:
@@ -6791,7 +6823,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMultisampleStateSetDefaults
 # Func Hash:
@@ -6799,7 +6831,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMultisampleStateSetMultisampleEnable
 # Func Hash:
@@ -6807,7 +6839,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnMultisampleStateSetSampleLocations
 # Func Hash:
@@ -6831,7 +6863,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnPolygonStateSetCullFace
 # Func Hash:
@@ -6839,7 +6871,7 @@
 # Num Counters:
 1
 # Counter Values:
-17857518
+24065638
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnPolygonStateSetDefaults
 # Func Hash:
@@ -6847,7 +6879,7 @@
 # Num Counters:
 1
 # Counter Values:
-11508
+11524
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnPolygonStateSetFrontFace
 # Func Hash:
@@ -6855,7 +6887,7 @@
 # Num Counters:
 1
 # Counter Values:
-17846529
+24049985
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnPolygonStateSetPolygonMode
 # Func Hash:
@@ -6863,7 +6895,7 @@
 # Num Counters:
 1
 # Counter Values:
-17856083
+24064358
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnPolygonStateSetPolygonOffsetEnables
 # Func Hash:
@@ -6871,7 +6903,7 @@
 # Num Counters:
 1
 # Counter Values:
-17846740
+24052249
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnProgramInitialize
 # Func Hash:
@@ -6879,7 +6911,7 @@
 # Num Counters:
 1
 # Counter Values:
-27840
+27994
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnProgramSetShaders
 # Func Hash:
@@ -6887,7 +6919,7 @@
 # Num Counters:
 4
 # Counter Values:
-27840
+27994
 0
 0
 0
@@ -6898,7 +6930,7 @@
 # NumValueSites:
 1
 2
-32:27118
+32:27272
 16:722
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnProgramSetShadersExt
@@ -6907,8 +6939,8 @@
 # Num Counters:
 4
 # Counter Values:
-54710
-27708
+54998
+27852
 0
 0
 
@@ -7012,9 +7044,9 @@
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnQueuePresentTexture
 # Func Hash:
-205043908618866349
+323009965780831980
 # Num Counters:
-245
+250
 # Counter Values:
 0
 0
@@ -7030,16 +7062,16 @@
 0
 0
 0
-48292911
-1308
-3488
-326745
-261396
-654
+65202709
+1782
+4752
+441155
+352924
+891
 0
-8244639
-65400
-65400
+11067636
+89100
+89100
 0
 0
 0
@@ -7060,94 +7092,93 @@
 0
 0
 0
-65349
-65349
-65349
-65349
+88231
+88231
+88231
+88231
 0
 0
-65349
+88231
 0
 0
-65349
+88231
 0
 0
 0
 0
-65349
 0
-65349
+88231
 0
-65349
-65349
-65349
-65349
+88231
 0
-4351
+88231
+88231
+88231
+88231
 0
+5885
 0
 0
 0
 0
 0
 0
-65349
-218
-65349
 0
-65349
 0
+88231
+297
 0
-65349
 0
+88231
 0
 0
+88231
 0
 0
-65349
 0
 0
-65349
 0
+67113
 0
-65349
 0
-65349
 0
-65349
+88231
 0
-4351
 0
+88231
 0
+88231
 0
-65349
+88231
 0
-1090
+5885
 0
 0
 0
 0
+88231
 0
+1473
 0
 0
 0
 0
 0
-65349
 0
 0
 0
-1289
 0
 0
-4351
+88231
 0
-218
 0
 0
+1319
 0
 0
+5885
 0
+297
 0
 0
 0
@@ -7161,98 +7192,104 @@
 0
 0
 0
-218
-1289
 0
-218
 0
 0
 0
 0
+297
+1319
 0
+297
 0
 0
 0
-218
 0
-218
-218
 0
 0
-218
-218
 0
 0
-218
-218
+297
 0
-218
-218
-218
-218
-1289
+297
+297
 0
 0
-218
+297
+297
 0
 0
+297
+297
 0
+297
+297
+297
+297
+1319
 0
 0
+297
 0
 0
 0
-218
 0
 0
 0
 0
-1289
 0
 0
+297
 0
 0
 0
 0
+1319
 0
-65349
 0
 0
 0
 0
 0
 0
-32016
 0
-65317
 0
-1289
-65349
 0
 0
 0
 0
 0
-654
-218
+9967
 0
+88164
 0
+1319
+88231
 0
-218
 0
 0
 0
-218
 0
-218
-218
-218
-65349
-65349
+891
+297
 0
-8
 0
-65349
+0
+297
+0
+0
+0
+297
+0
+297
+297
+297
+88231
+67113
+0
+336
+0
+88231
 0
 0
 0
@@ -7273,12 +7310,11 @@
 1
 # NumValueSites:
 3
+0
 1
-513:218
+513:891
 1
-513:654
-1
-513:218
+513:297
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnQueueSubmitCommands
 # Func Hash:
@@ -7288,26 +7324,24 @@
 # Counter Values:
 0
 0
-65421
+88303
 0
-65421
-0
-0
-0
-65421
-0
-65421
-65421
-65421
-65421
+88303
 0
 0
 0
+88303
+0
+88303
+88303
+88303
+88303
 0
 0
-65421
 0
 0
+0
+88303
 0
 0
 0
@@ -7321,7 +7355,9 @@
 0
 0
 0
-110
+0
+0
+147
 0
 0
 0
@@ -7337,7 +7373,7 @@
 # NumValueSites:
 2
 1
-8:65421
+8:88303
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnQueueWaitSync
@@ -7383,7 +7419,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetCompare
 # Func Hash:
@@ -7391,7 +7427,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetDefaults
 # Func Hash:
@@ -7399,7 +7435,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetDevice
 # Func Hash:
@@ -7407,7 +7443,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetLodBias
 # Func Hash:
@@ -7415,7 +7451,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetLodClamp
 # Func Hash:
@@ -7423,7 +7459,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetLodSnap
 # Func Hash:
@@ -7439,7 +7475,7 @@
 # Num Counters:
 1
 # Counter Values:
-349
+431
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetMinMagFilter
 # Func Hash:
@@ -7447,7 +7483,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetReductionFilter
 # Func Hash:
@@ -7455,7 +7491,7 @@
 # Num Counters:
 2
 # Counter Values:
-103921
+104111
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerBuilderSetWrapMode
@@ -7464,7 +7500,7 @@
 # Num Counters:
 1
 # Counter Values:
-103921
+104111
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerFinalize
 # Func Hash:
@@ -7472,7 +7508,7 @@
 # Num Counters:
 1
 # Counter Values:
-120601
+108487
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSamplerGetReductionFilter
 # Func Hash:
@@ -7488,7 +7524,7 @@
 # Num Counters:
 3
 # Counter Values:
-103921
+104111
 0
 0
 
@@ -7517,8 +7553,8 @@
 3
 # Counter Values:
 0
-349
-349
+431
+431
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnSyncFinalize
 # Func Hash:
@@ -7558,7 +7594,7 @@
 # Num Counters:
 1
 # Counter Values:
-356911
+434104
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderGetStorageClass
 # Func Hash:
@@ -7574,7 +7610,7 @@
 # Num Counters:
 6
 # Counter Values:
-3429692
+4507600
 0
 0
 0
@@ -7587,7 +7623,7 @@
 # Num Counters:
 1
 # Counter Values:
-5048604
+6602644
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetDepth
 # Func Hash:
@@ -7595,7 +7631,7 @@
 # Num Counters:
 1
 # Counter Values:
-5048652
+6602675
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetDepthStencilMode
 # Func Hash:
@@ -7603,7 +7639,7 @@
 # Num Counters:
 2
 # Counter Values:
-5032328
+6586022
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetDevice
@@ -7612,7 +7648,7 @@
 # Num Counters:
 1
 # Counter Values:
-5049236
+6603243
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetFlags
 # Func Hash:
@@ -7620,7 +7656,7 @@
 # Num Counters:
 1
 # Counter Values:
-5048683
+6602940
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetFormat
 # Func Hash:
@@ -7628,7 +7664,7 @@
 # Num Counters:
 1
 # Counter Values:
-5049290
+6603366
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetHeight
 # Func Hash:
@@ -7636,7 +7672,7 @@
 # Num Counters:
 1
 # Counter Values:
-5049016
+6603104
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetLevels
 # Func Hash:
@@ -7644,7 +7680,7 @@
 # Num Counters:
 1
 # Counter Values:
-5048795
+6602201
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetPackagedTextureData
 # Func Hash:
@@ -7652,7 +7688,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetPackagedTextureLayout
 # Func Hash:
@@ -7660,8 +7696,8 @@
 # Num Counters:
 2
 # Counter Values:
-212
-212
+210
+210
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetSamples
 # Func Hash:
@@ -7669,7 +7705,7 @@
 # Num Counters:
 1
 # Counter Values:
-5033304
+6587210
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetSize1D
 # Func Hash:
@@ -7701,7 +7737,7 @@
 # Num Counters:
 1
 # Counter Values:
-3251958
+4227031
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetStride
 # Func Hash:
@@ -7709,7 +7745,7 @@
 # Num Counters:
 1
 # Counter Values:
-190264
+216266
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetSwizzle
 # Func Hash:
@@ -7717,7 +7753,7 @@
 # Num Counters:
 2
 # Counter Values:
-5033000
+6586963
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetTarget
@@ -7726,7 +7762,7 @@
 # Num Counters:
 1
 # Counter Values:
-5049216
+6603332
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureBuilderSetWidth
 # Func Hash:
@@ -7734,7 +7770,7 @@
 # Num Counters:
 1
 # Counter Values:
-5049092
+6603065
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureCompare
 # Func Hash:
@@ -7752,7 +7788,7 @@
 4
 # Counter Values:
 0
-3257460
+4232770
 0
 0
 
@@ -7762,7 +7798,7 @@
 # Num Counters:
 1
 # Counter Values:
-13893
+13465
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureGetDepth
 # Func Hash:
@@ -7770,7 +7806,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureGetFlags
 # Func Hash:
@@ -7778,7 +7814,7 @@
 # Num Counters:
 1
 # Counter Values:
-3990241
+5196034
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureGetHeight
 # Func Hash:
@@ -7786,7 +7822,7 @@
 # Num Counters:
 1
 # Counter Values:
-169188
+143480
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureGetRawStorageClass
 # Func Hash:
@@ -7818,10 +7854,10 @@
 # Num Counters:
 4
 # Counter Values:
-150708
-150708
-150706
-150690
+152534
+152534
+152534
+152502
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureGetWidth
 # Func Hash:
@@ -7829,7 +7865,7 @@
 # Num Counters:
 1
 # Counter Values:
-169188
+143480
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureInitialize
 # Func Hash:
@@ -7837,17 +7873,17 @@
 # Num Counters:
 15
 # Counter Values:
-3251541
-3249859
-3249787
-162876
+4226729
+4225078
+4225037
+137168
 0
-3250816
+4225854
 0
-3249828
+4225054
 0
 0
-3086902
+4087841
 0
 0
 0
@@ -7859,8 +7895,8 @@
 # NumValueSites:
 1
 2
-513:161120
-512:1756
+513:135804
+512:1364
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureInvalidateTexels
 # Func Hash:
@@ -7908,11 +7944,11 @@
 19
 # Counter Values:
 0
-3983929
-3983929
+5189738
+5189738
 0
 0
-3983929
+5189738
 0
 0
 0
@@ -7957,7 +7993,7 @@
 # Num Counters:
 1
 # Counter Values:
-10945365
+14596663
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureViewSetFormat
 # Func Hash:
@@ -7965,7 +8001,7 @@
 # Num Counters:
 2
 # Counter Values:
-81379
+104407
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureViewSetLayers
@@ -7974,7 +8010,7 @@
 # Num Counters:
 2
 # Counter Values:
-10127133
+13524049
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureViewSetLevels
@@ -7983,7 +8019,7 @@
 # Num Counters:
 2
 # Counter Values:
-10283401
+13683052
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureViewSetTarget
@@ -7992,7 +8028,7 @@
 # Num Counters:
 2
 # Counter Values:
-16030
+16176
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureWriteTexels
@@ -8001,7 +8037,7 @@
 # Num Counters:
 1
 # Counter Values:
-17115
+16687
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnTextureWriteTexelsStrided
 # Func Hash:
@@ -8017,7 +8053,7 @@
 # Num Counters:
 1
 # Counter Values:
-491930
+491568
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnVertexAttribStateSetFormat
 # Func Hash:
@@ -8025,7 +8061,7 @@
 # Num Counters:
 2
 # Counter Values:
-281534
+281374
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnVertexAttribStateSetStreamIndex
@@ -8034,7 +8070,7 @@
 # Num Counters:
 1
 # Counter Values:
-281534
+281370
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnVertexStreamStateSetDefaults
 # Func Hash:
@@ -8042,7 +8078,7 @@
 # Num Counters:
 1
 # Counter Values:
-157786
+157730
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnVertexStreamStateSetDivisor
 # Func Hash:
@@ -8050,7 +8086,7 @@
 # Num Counters:
 1
 # Counter Values:
-157498
+157442
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnVertexStreamStateSetStride
 # Func Hash:
@@ -8058,7 +8094,7 @@
 # Num Counters:
 1
 # Counter Values:
-157516
+157460
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;h_nvnWindowBuilderGetNumActiveTextures
 # Func Hash:
@@ -8174,52 +8210,49 @@
 # Counter Values:
 0
 0
-8035154
-4017577
+10818624
+5409312
 0
 0
-1105120977
-0
-0
-0
-4018540
+1064024857
 0
 0
 0
-159760463
+5410663
 0
 0
 0
-144612077
-9
+220214035
 0
 0
 0
-152375421
+198854198
 0
 0
 0
+0
+211392379
 0
 0
 0
 0
 0
 0
-84053
-9693
-0
-142455843
-0
-2619061
-1709652
-0
-138281603
-1060391
-1558943
-138275209
 0
 0
 0
+101400
+10597
+0
+196412729
+0
+3508578
+2253243
+0
+191735999
+1440722
+2068142
+189101661
 0
 0
 0
@@ -8230,14 +8263,17 @@
 0
 0
 0
-9
 0
 0
 0
 0
 0
 0
-1856179
+0
+0
+0
+0
+2481421
 0
 # Num Value Kinds:
 1
@@ -8246,17 +8282,17 @@
 # NumValueSites:
 2
 11
-33:66478288
-257:40445800
-129:28890117
-513:12798595
-65:2402381
-32:782227
-512:620169
-64:391583
-17:65349
-256:4393
-128:872
+33:92222223
+257:56169805
+129:38822063
+513:17026654
+65:3240979
+32:1055935
+512:814775
+64:528853
+17:88231
+256:6348
+128:1320
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;live_del
@@ -8265,21 +8301,21 @@
 # Num Counters:
 15
 # Counter Values:
-277240
-50760
-296443
-192585
+262385
+39795
+286392
+206115
 0
-3257460
-79
-277161
-3257460
-3257458
-296443
-296443
+4233058
 0
-296443
-50777
+262385
+4233058
+4233056
+286392
+286392
+0
+286392
+39795
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -8288,10 +8324,10 @@
 4
 0
 1
-8:489028
+8:492507
 0
 1
-8:50777
+8:39795
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;nvn_hm_get
 # Func Hash:
@@ -8300,17 +8336,17 @@
 12
 # Counter Values:
 0
-3257460
-3824922
+4233058
+5471885
 0
-567464
+1238829
 0
-3257460
+4233058
 0
-3257460
+4233058
 0
 0
-3257458
+4233056
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -8326,13 +8362,13 @@
 # Num Counters:
 11
 # Counter Values:
-3251989
-3599230
+4227098
+5238580
 0
-291075
+280484
 0
-2960914
-3251989
+3946614
+4227098
 0
 0
 0
@@ -8345,9 +8381,9 @@
 3
 0
 1
-8:291075
+8:280484
 1
-8:3599230
+8:5238580
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;nvn_init_slots
 # Func Hash:
@@ -8391,7 +8427,7 @@
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;nvn_nops_register
 # Func Hash:
@@ -8417,29 +8453,29 @@
 24
 # Counter Values:
 0
-602511
-530
-36551
+786100
+815
+48115
 0
-107509
+3468
+228
+5481046
+38535168
+3382393
+1331
+786100
+10133668
+588
+3384666
+3382393
 0
-4058812
-26476544
-2575384
-1214
-602511
-7700878
-412
-2365387
-2575384
-8
-101
-0
-0
+147
 0
 0
 0
-101
+0
+0
+147
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;pin_scan
 # Func Hash:
@@ -8447,20 +8483,20 @@
 # Num Counters:
 14
 # Counter Values:
-2077003
-3673224
-3730418
-57194
-3730418
+2964120
+5125777
+5164472
+38695
+5164472
 0
 0
-3674040
-3013985
-65421
+5126418
+4268864
+88303
 0
-13195
-133773
-109
+17527
+109085
+146
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;pin_window_start
 # Func Hash:
@@ -8468,13 +8504,13 @@
 # Num Counters:
 9
 # Counter Values:
-7310
+6740
 25
 327680
-49130
-44505
-110
-46
+49400
+44665
+147
+72
 5
 0
 
@@ -8484,8 +8520,8 @@
 # Num Counters:
 12
 # Counter Values:
-260352468
-260353500
+351830407
+351835356
 0
 0
 0
@@ -8506,7 +8542,7 @@
 0
 0
 0
-3983929
+5189738
 0
 0
 0
@@ -8520,9 +8556,9 @@
 # Num Counters:
 25
 # Counter Values:
-327288
-327288
-327288
+353656
+353656
+353656
 0
 0
 0
@@ -8578,7 +8614,7 @@
 # Num Counters:
 5
 # Counter Values:
-124911
+163697
 0
 0
 0
@@ -8607,7 +8643,7 @@
 # Num Counters:
 4
 # Counter Values:
-27518083
+32028232
 0
 0
 0
@@ -8786,7 +8822,7 @@
 # Num Counters:
 7
 # Counter Values:
-261466
+352994
 0
 0
 0
@@ -8800,13 +8836,13 @@
 # Num Counters:
 10
 # Counter Values:
-952488541
+1285328517
 0
-954547084
+1288406249
 0
 0
 0
-949113660
+1288091663
 0
 0
 0
@@ -8817,15 +8853,15 @@
 # NumValueSites:
 1
 9
-17:333551342
-32:307988690
-33:130961729
-16:125121912
-8:49546637
-129:47587571
-65:36680244
-257:11940142
-64:527768
+17:451614318
+32:415308158
+33:179118196
+16:168933778
+8:66333633
+129:63974796
+65:49423356
+257:15950450
+64:743762
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;resolve_one
 # Func Hash:
@@ -8833,12 +8869,12 @@
 # Num Counters:
 7
 # Counter Values:
-357064803
-353363210
-27304716
-23603123
-5693124
-3701593
+37129252
+31892782
+37129252
+31892782
+7469491
+5236470
 0
 # Num Value Kinds:
 1
@@ -8847,13 +8883,13 @@
 # NumValueSites:
 4
 1
-8:27304716
+8:37129252
 1
-8:3701593
+8:5236470
 1
-8:23603123
+8:31892782
 1
-8:5693124
+8:7469491
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;set_time_constraint_comp
 # Func Hash:
@@ -8861,9 +8897,9 @@
 # Num Counters:
 3
 # Counter Values:
-119
 0
-119
+0
+0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;size_chain
 # Func Hash:
@@ -8871,7 +8907,7 @@
 # Num Counters:
 7
 # Counter Values:
-5048751
+6602856
 0
 0
 0
@@ -8896,7 +8932,7 @@
 # Num Counters:
 6
 # Counter Values:
-127802
+170077
 0
 0
 0
@@ -8909,7 +8945,7 @@
 # Num Counters:
 4
 # Counter Values:
-65349
+88231
 0
 0
 0
@@ -8922,15 +8958,15 @@
 # Counter Values:
 0
 0
-21090026
+28184655
 0
-198356
-1016803
+155497
+1323185
 0
-34654937
-23441845
+46398315
+31419380
 0
-2550175
+3390222
 0
 0
 0
@@ -8998,9 +9034,9 @@
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;totk_pin_self
 # Func Hash:
-854638109746397533
+914430014227209299
 # Num Counters:
-11
+15
 # Counter Values:
 0
 0
@@ -9013,6 +9049,18 @@
 0
 0
 0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_MemOPSize:
+1
+# NumValueSites:
+1
+1
+9:0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/hle_nvn.c;trow
 # Func Hash:
@@ -9020,7 +9068,7 @@
 # Num Counters:
 6
 # Counter Values:
-4705127
+6352632
 0
 0
 0
@@ -9033,15 +9081,15 @@
 # Num Counters:
 12
 # Counter Values:
-8432
-49152
-122320302
-1409121101
-16
-1409171257
-823308209
-16
-16
+8179
+53248
+79121957
+1226509488
+17
+1226514043
+803514118
+17
+17
 0
 0
 0
@@ -9053,11 +9101,11 @@
 8
 # Counter Values:
 0
-16523820
+21268354
 0
 0
 0
-16523807
+21268301
 0
 0
 
@@ -9067,9 +9115,9 @@
 # Num Counters:
 3
 # Counter Values:
-5503
-3388230
-65421
+3801
+4409304
+88303
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_dirty.c;find
 # Func Hash:
@@ -9077,40 +9125,40 @@
 # Num Counters:
 34
 # Counter Values:
-1193133
-39718364
-35400768
-58088070
-39720828
-52285168
-21905339
-29034882
-16442002
-4317767
-4317557
-1713949993
-6850323
-4317581
-1712393166
-2531336
-20491
-4317550
-1707312978
-2532976
-1702005876
-2511324
-1702000359
-1783
-2511338
-1318529
-1702000372
-1193141
-1193150
-1193150
-1193150
-14714601
-14714601
-14714605
+1918123
+52673394
+46752816
+56307036
+52675106
+50056726
+28589626
+37499410
+20612867
+5920704
+5920524
+1368541121
+9182700
+5920526
+1368537858
+3261202
+20093
+5920518
+1364026166
+3262135
+1359384618
+3241017
+1359391010
+1989
+3241005
+1322956
+1359391001
+1918123
+1918123
+1918123
+1918123
+19619931
+19619931
+19620015
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_dirty.c;range_index_cmp
 # Func Hash:
@@ -9118,7 +9166,7 @@
 # Num Counters:
 1
 # Counter Values:
-920077663
+875886639
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_dirty.c;range_index_rebuild
 # Func Hash:
@@ -9127,15 +9175,15 @@
 10
 # Counter Values:
 6
-28947
-88480080
-79977304
-79977304
+27687
+84369220
+76517471
+76517471
 0
 0
-28953
-28953
-28947
+27693
+27693
+27687
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_tex.c;fmt_of
 # Func Hash:
@@ -9143,14 +9191,14 @@
 # Num Counters:
 8
 # Counter Values:
-71194600
-78926700
-1337372
-3060222
-7731454
-7731641
-2060938
-2614901
+92789836
+102772101
+1010791
+2651844
+9981814
+9981717
+1848085
+2289068
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_tex.c;layer_bytes
 # Func Hash:
@@ -9158,12 +9206,12 @@
 # Num Counters:
 6
 # Counter Values:
-937468
+751406
 0
-937468
+751406
 0
-10205349
-1156576
+12017158
+973178
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/nvn_tex.c;level_offset
 # Func Hash:
@@ -9171,17 +9219,17 @@
 # Num Counters:
 15
 # Counter Values:
-19399052
+17129998
 0
-7638082
+7449177
 0
-52449875
+51200778
 0
-44202664
-38939415
+44815233
+38394143
 0
-44202636
-11294793
+44815165
+12982282
 0
 0
 0
@@ -9269,7 +9317,7 @@
 # Num Counters:
 1
 # Counter Values:
-314968
+314610
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnChannelMaskStateGetChannelMask
 # Func Hash:
@@ -9320,7 +9368,7 @@
 # Num Counters:
 2
 # Counter Values:
-17787636
+23966829
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnCommandBufferDiscardColor
@@ -9449,7 +9497,7 @@
 # Num Counters:
 1
 # Counter Values:
-1395749
+1223896
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnCommandBufferSetConservativeRasterDilate
 # Func Hash:
@@ -9483,7 +9531,7 @@
 # Num Counters:
 4
 # Counter Values:
-2279323
+3093642
 0
 0
 0
@@ -9494,8 +9542,8 @@
 # Num Counters:
 3
 # Counter Values:
-3512235
-130692
+4734552
+176456
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnCommandBufferSetPointSize
@@ -9504,8 +9552,8 @@
 # Num Counters:
 3
 # Counter Values:
-6687477
-1620148
+8960770
+2156530
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnCommandBufferSetPrimitiveRestart
@@ -9514,7 +9562,7 @@
 # Num Counters:
 3
 # Counter Values:
-4181163
+5691750
 0
 0
 
@@ -9542,7 +9590,7 @@
 # Num Counters:
 1
 # Counter Values:
-359496
+462094
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnCommandBufferSetTiledCacheTileSize
 # Func Hash:
@@ -9550,7 +9598,7 @@
 # Num Counters:
 1
 # Counter Values:
-179751
+231052
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnDepthStencilStateGetDepthFunc
 # Func Hash:
@@ -9618,7 +9666,7 @@
 # Num Counters:
 1
 # Counter Values:
-261392
+352918
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnDeviceIsExternalDebuggerAttached
 # Func Hash:
@@ -9650,8 +9698,8 @@
 # Num Counters:
 2
 # Counter Values:
-805110
-804446
+1071462
+1070208
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnMemoryPoolSetDebugLabel
 # Func Hash:
@@ -9659,7 +9707,7 @@
 # Num Counters:
 1
 # Counter Values:
-3992
+4000
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnMultisampleStateGetAlphaToCoverageEnable
 # Func Hash:
@@ -9954,7 +10002,7 @@
 # Num Counters:
 1
 # Counter Values:
-103572
+103680
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnSyncSetDebugLabel
 # Func Hash:
@@ -10074,7 +10122,7 @@
 # Num Counters:
 1
 # Counter Values:
-1440442
+1942226
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetDebugID
 # Func Hash:
@@ -10098,7 +10146,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetLevels
 # Func Hash:
@@ -10106,7 +10154,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetMemoryOffset
 # Func Hash:
@@ -10130,7 +10178,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetStride
 # Func Hash:
@@ -10138,7 +10186,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetSwizzle
 # Func Hash:
@@ -10146,7 +10194,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetTarget
 # Func Hash:
@@ -10154,7 +10202,7 @@
 # Num Counters:
 1
 # Counter Values:
-162876
+137168
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnTextureGetTextureAddress
 # Func Hash:
@@ -10256,7 +10304,7 @@
 # Num Counters:
 3
 # Counter Values:
-16022
+16176
 0
 0
 
@@ -10266,7 +10314,7 @@
 # Num Counters:
 2
 # Counter Values:
-747950
+978814
 0
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;h_nvnVertexAttribStateGetFormat
@@ -10432,7 +10480,7 @@
 # Num Counters:
 1
 # Counter Values:
-22240244
+30204084
 
 @PGO_ROOT@/MacNativeGames/games/totk/third_party/d2r_gfx/gfx/nvn/totk_nvn_ext.c;x_nvnCommandBufferBindUniformBuffersDeferred
 # Func Hash:
@@ -10550,21 +10598,18 @@
 # Num Counters:
 24
 # Counter Values:
-923798427
-9418024
+912820370
+11860276
 0
 0
-754532565
-1452456
-35635528
+751484975
+1448929
+35399615
 0
-940545
-0
-0
-940545
+814305
 0
 0
-0
+814305
 0
 0
 0
@@ -10573,7 +10618,10 @@
 0
 0
 0
-940545
+0
+0
+0
+814305
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -10583,21 +10631,21 @@
 0
 0
 9
-16:3906727
-8:3198368
-4:1443126
-2:721167
-3:147654
+16:4587231
+8:4179161
+4:1962414
+2:980811
+3:149436
 9:772
+1:271
 7:168
-1:30
 6:12
 9
-8:710624
-4:352308
-2:175032
-16:146362
-3:64206
+8:706156
+4:356913
+2:175428
+16:141510
+3:64998
 9:3360
 1:480
 7:84
@@ -10609,11 +10657,11 @@
 # Num Counters:
 7
 # Counter Values:
-675011
+673214
 0
-675011
-675011
-675011
+673214
+673214
+673214
 0
 0
 # Num Value Kinds:
@@ -10623,7 +10671,7 @@
 # NumValueSites:
 1
 1
-@PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_mixer.c;pull:675012
+@PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_mixer.c;pull:673215
 
 @PGO_ROOT@/port/android/compat/src/audiotoolbox_aaudio.c;on_error
 # Func Hash:
@@ -10678,15 +10726,15 @@
 # Num Counters:
 9
 # Counter Values:
-57906
-28953
-28953
-28953
-28953
-28953
+55386
+27693
+27693
+27693
+27693
+27693
 0
-28953
-28953
+27693
+27693
 
 @PGO_ROOT@/port/android/compat/src/mach_compat.c;map_file_range
 # Func Hash:
@@ -10694,20 +10742,20 @@
 # Num Counters:
 14
 # Counter Values:
-79936945
+76477926
 0
-79979504
-79965898
-79950551
-79936945
-60114796
-13606
-13606
-15347
-28953
-19835755
-28953
-28953
+76519203
+76505619
+76491510
+76477926
+58047213
+13584
+13584
+14109
+27693
+18444297
+27693
+27693
 
 @PGO_ROOT@/port/android/compat/src/mach_compat.c;resolve
 # Func Hash:
@@ -10715,12 +10763,12 @@
 # Num Counters:
 8
 # Counter Values:
-28953
+27693
 0
 0
-28953
+27693
 0
-28953
+27693
 0
 0
 
@@ -10795,16 +10843,16 @@
 # Num Counters:
 10
 # Counter Values:
-10430548
-72688
-10357860
-45650
-45650
+13490882
+92661
+13398221
+59344
+59344
 0
 0
 0
 0
-72688
+92661
 
 @PGO_ROOT@/port/android/host/app.c;on_focus
 # Func Hash:
@@ -11057,7 +11105,7 @@
 0
 0
 0
-7550576
+8127600
 0
 0
 0
@@ -11065,7 +11113,7 @@
 0
 0
 0
-471911
+507975
 0
 0
 0
@@ -11332,7 +11380,7 @@
 0
 0
 0
-47722
+47842
 0
 0
 0
@@ -11686,12 +11734,12 @@
 # Num Counters:
 6
 # Counter Values:
-2607
-2133
-237
-237
-237
-237
+2640
+2160
+240
+240
+240
+240
 
 @PGO_ROOT@/port/android/host/report.c;copy_file
 # Func Hash:
@@ -11908,10 +11956,11 @@
 
 @PGO_ROOT@/port/android/vk/gpu_driver.c;profile_matches
 # Func Hash:
-5832817799265972
+141929909969160768
 # Num Counters:
-11
+12
 # Counter Values:
+0
 0
 0
 0
@@ -11931,7 +11980,7 @@
 5
 # Counter Values:
 0
-500724
+478292
 0
 0
 0
@@ -11942,7 +11991,7 @@
 # NumValueSites:
 2
 1
-** External Symbol **:500760
+** External Symbol **:478293
 0
 
 @PGO_ROOT@/port/android/vk/host_posix.c;safe_read_install
@@ -12180,12 +12229,10 @@
 227
 # Counter Values:
 0
-196045
-24411
+264691
+24336
 0
-934855
-0
-0
+1275345
 0
 0
 0
@@ -12196,123 +12243,35 @@
 0
 0
 0
-1436317292
-1432190135
 0
 0
-3187
-70581
-79622062
-79622062
+2756160796
+2750501392
 0
 0
-0
-0
-0
-0
-0
-26377858
-9850853
-0
-72
+3040
+94759
+109498997
+109498997
 0
 0
 0
-3160
 0
 0
 0
-16526744
 0
-0
-0
+35338145
+14065399
 0
 72
 0
 0
 0
-0
-3000
-160
-42303134
-16527077
-5413443
-5525205
-3160
-16526744
+3040
 0
 0
 0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-16526744
-0
-0
-0
-16527077
-5413443
-6606486
-0
-0
-0
-0
-0
-0
-0
-0
-326750
-0
-0
-16527005
-5413443
-0
-0
-0
-0
-4127157
-72
-72
-0
-0
-0
-0
-0
-0
-3160
-934864
-0
-4127157
-0
-16527077
-0
-0
-0
-0
-0
-0
-0
-0
-3160
-934858
-0
-0
-0
-0
-934855
-122825
-934864
-0
+21272818
 0
 0
 0
@@ -12322,14 +12281,19 @@
 0
 0
 0
+2882
+158
+57550338
+21272818
+8224103
+8383371
+3040
+21272818
 0
 0
 0
 0
 0
-934855
-0
-70581
 0
 0
 0
@@ -12337,7 +12301,66 @@
 0
 0
 0
+0
+0
+0
+0
+21272818
+0
+0
+0
+21272818
+8224103
+5400064
+0
+0
+0
+0
+0
+0
+0
+0
+441160
+0
+0
+21272746
+8224103
+0
+0
+0
+0
+5659404
 72
+72
+0
+0
+0
+0
+0
+0
+3040
+1275345
+0
+5659404
+0
+21272818
+0
+0
+0
+0
+0
+0
+0
+0
+3040
+1275348
+0
+0
+0
+0
+1275345
+169290
+1275345
 0
 0
 0
@@ -12353,6 +12376,23 @@
 0
 0
 0
+1275345
+0
+94759
+0
+0
+0
+0
+0
+0
+0
+72
+0
+0
+0
+0
+0
+72
 0
 0
 0
@@ -12400,12 +12440,21 @@
 0
 0
 0
-16527077
 0
 0
-1436317292
-1432190135
-9524040
+0
+0
+0
+0
+0
+0
+0
+21272818
+0
+0
+2756160796
+2750501392
+13624167
 # Num Value Kinds:
 2
 # ValueKind = IPVK_IndirectCallTarget:
@@ -12413,7 +12462,7 @@
 # NumValueSites:
 10
 1
-** External Symbol **:934862
+** External Symbol **:1275342
 0
 0
 0
@@ -12429,33 +12478,33 @@
 6
 0
 13
-257:38337
-513:33546
-65:17733
-129:11227
-33:7881
-16:2669
-64:2665
-32:2218
-17:2007
-128:1939
-8:1051
-512:927
-256:625
+513:51530
+257:47237
+65:28111
+129:13455
+33:6680
+128:5900
+32:3336
+16:3210
+17:2774
+64:2682
+8:1796
+256:1562
+512:1017
 0
 0
 0
 11
-4:5518458
-16:2910008
-33:2248832
-64:1991429
-65:1704501
-8:1433303
-513:418110
-256:172532
-257:90407
-129:39308
+4:7348934
+16:3458662
+64:2657272
+33:2645739
+65:2279829
+8:1931902
+513:563360
+256:223875
+257:118814
+129:44431
 512:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;async_known_copy_chain
@@ -12496,44 +12545,44 @@
 0
 0
 0
-2288694066
+2798675585
 0
 0
-2288694066
+2798675585
 0
 0
-1329456622
+1655466257
 0
-31914023
-1297542599
-0
-0
-0
-0
-132083470
+40117146
+1615349111
 0
 0
 0
 0
-0
-0
-0
-80087012
-0
-0
-0
-80087012
+165506524
 0
 0
 0
 0
 0
-80087012
+0
+0
+96143885
 0
 0
 0
-80087011
-31914023
+96143885
+0
+0
+0
+0
+0
+96143885
+0
+0
+0
+96143884
+40117146
 0
 0
 
@@ -12543,11 +12592,11 @@
 # Num Counters:
 5
 # Counter Values:
-1088587132
-1088587132
-1088587132
-737268469
-12382722
+1413015164
+1413015164
+1413015164
+975203774
+15763473
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -12555,17 +12604,17 @@
 # NumValueSites:
 1
 12
-4:539419150
-8:99292334
-16:51955741
-64:42783421
-513:1581336
-33:698134
-32:650159
-257:395494
-256:207537
-129:151281
-65:133882
+4:723175361
+8:133102149
+16:59004226
+64:55718112
+513:2077250
+32:878711
+257:525483
+256:280149
+129:191324
+65:183036
+33:69408
 512:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;async_overlay_copies
@@ -12574,19 +12623,19 @@
 # Num Counters:
 13
 # Counter Values:
-75251532
-32488941
-5272742
-32488941
-9993896
-73202279
-73202279
-25013041
-25013041
-7109980
-23348069
-23348069
-7133250
+90693416
+39299784
+6428003
+39299784
+12287983
+31073524
+31073524
+30984859
+30984859
+9335464
+29980672
+29980672
+9335464
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;async_pso_main
 # Func Hash:
@@ -12614,7 +12663,7 @@
 0
 0
 0
-21879
+20068
 0
 0
 0
@@ -12626,8 +12675,8 @@
 # Num Counters:
 3
 # Counter Values:
-3185
-3107
+351
+0
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;async_read_known_full_copy
@@ -12636,39 +12685,39 @@
 # Num Counters:
 34
 # Counter Values:
-48189238
-8753519
-54012320
-23658239
+88665
+10981025
+64357826
+28024021
 0
-23658239
-62302277
-62302277
-20513244
-1769652
-82999795
+28024021
+74356345
+74356345
+24473080
+1413610
+43060788
 0
-82999795
-34810557
-17784734
-33145585
-17025822
+43060788
+42972123
+21787539
+41967936
+21184583
 0
-17784735
-33145585
-8753519
-17784734
-16930766
-17138031
+21787540
+41967936
+10981025
+21787539
+21322728
+21654832
 0
-10494759
-9797515
-9797515
-9797515
-9797515
-9797515
-9797515
-71038142
+12907027
+11987263
+11987263
+11987263
+11987263
+11987263
+11987263
+85542409
 0
 # Num Value Kinds:
 1
@@ -12677,19 +12726,19 @@
 # NumValueSites:
 1
 4
-33:4781049
-65:2611584
-16:1715604
-256:689396
+33:5832498
+65:3350336
+16:2012079
+256:792377
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;bind_shader
 # Func Hash:
-912348165451270376
+355202997679275127
 # Num Counters:
-471
+473
 # Counter Values:
-251115036
-548739677
+332191659
+222786110
 0
 0
 0
@@ -12698,135 +12747,136 @@
 0
 0
 0
-1078459852
 0
+857251772
 0
 0
 0
 0
 0
 0
-149125916
 0
+176537512
 0
 0
 0
-478602651
-1790291123
-845224625
-218975
 0
+576327264
+2058750427
+605694264
+287443
 0
 0
-711831271
 0
-426309123
+1201498655
 0
+340474127
 0
-1348690
-92109745
 0
-663647273
-32701487
+1531959
+121309776
 0
-60756948
+781417980
+45344187
 0
+77497547
 0
+45344187
 0
 0
-663647273
 0
+781417980
 0
-7299947
-32701487
 0
-59408258
-1348690
-663623242
+9643873
+2
+75965589
+45344187
+1531958
+781392403
 0
 0
+176537512
 0
 0
-32701487
-149125916
 0
 0
+45344187
 0
 0
-663647273
+781417980
 0
 0
 0
-149125916
 0
-83461108
-1271533748
-1271533748
-1517802189
-286459984
 0
-1348690
-20354720
+176537512
+110133945
+946168391
+946168391
+1123013401
+238788351
 0
+1531958
+26820512
 0
 0
-4301
 0
-9260163
-526017907
+4264
+3504325
 0
 0
 0
+616767686
 0
 0
 0
 0
 0
 0
-1132
-149125916
+1047
+176537510
 0
+2180060206
 0
-1882400870
 0
 0
-16851120
+22221424
 0
-226172305
-43382
 0
 0
+20419374
 0
-526002660
 0
-1155398432
-1914197
 0
-14279811
+616756330
+708799814
+1141500
 0
+32477165
 0
 0
 0
-663647276
 0
+781417980
 0
 0
-226129082
 0
+20419374
 0
 0
-514521360
-448851088
 0
-13007076
+604880468
+576327267
 0
+32196007
 0
 0
 0
 0
 0
-8
 0
+4
 0
 0
 0
@@ -12838,17 +12888,17 @@
 0
 0
 0
-13007076
 0
+32196007
 0
 0
 0
-227093654
 0
+280924505
 0
 0
-13007076
 0
+32196007
 0
 0
 0
@@ -12868,186 +12918,164 @@
 0
 0
 0
-572410
 0
+734404
 0
 0
 0
 0
 0
 0
-159634714
-1082853631
-1082853631
 0
-1272170
+138213245
+1199087973
+1199087973
 0
-4442
+1676282
 0
+4369
 0
 0
-83638745
-749826965
 0
 0
+865142909
 0
 0
-103395
 0
 0
 0
 0
 0
-478596761
 0
 0
 0
+576321646
 0
-1082853631
-1082853631
 0
 0
 0
+1199087973
+1199087973
 0
 0
 0
 0
 0
-29751566
 0
 0
-233525423
-5891
-146627638
-146627638
 0
-297525167
 0
-226128923
 0
 0
-436617420
+23112593
+5620
+106017237
+106017237
 0
+303377792
 0
+20419374
 0
 0
-29648171
-1082853631
+524435643
 0
 0
 0
 0
 0
+1199087973
 0
 0
-146265199
 0
-146265199
 0
-6946276
 0
-7396500
 0
-5520
 0
-786387690
-195447824
+106017237
 0
+106017237
 0
+8981884
 0
-13007076
+2693219
 0
+4427
 0
-880149
+897097970
+10633157
 0
 0
-785176401
 0
-37132511
+32196008
 0
-1082853631
 0
-346081966
 0
 0
 0
+895427305
 0
+8580919
 0
-182050136
 0
 0
-213986453
-868867178
-5774
+516175605
 0
 0
 0
 0
 0
 0
+2856570
 0
 0
-1082853631
-849328208
+1199087973
+5502
 0
 0
 0
-868867178
 0
-318967938
 0
 0
-1082853631
 0
 0
 0
+1175975379
 0
 0
 0
+1199087973
 0
+438114021
 0
-1082853631
 0
 0
 0
-318967938
 0
 0
-868867178
 0
 0
-941946463
-269549743
 0
 0
 0
 0
 0
-868867178
 0
 0
-813303888
-269050092
+438114021
 0
 0
-813303888
-269050092
+1199087973
 0
-868867178
 0
 0
-19538970
 0
 0
-849328208
-880
 0
 0
 0
-845695
 0
-110
 0
+1199087973
 0
 0
 0
@@ -13056,16 +13084,20 @@
 0
 0
 0
-220
+1199087973
 0
 0
+23112593
 0
 0
+1175975379
+1168
 0
 0
 0
+1163623
 0
-110
+146
 0
 0
 0
@@ -13075,6 +13107,7 @@
 0
 0
 0
+146
 0
 0
 0
@@ -13083,6 +13116,7 @@
 0
 0
 0
+146
 0
 0
 0
@@ -13100,36 +13134,30 @@
 0
 0
 0
-1053195
-64711
 0
 0
-785328465
-1059226
-1082853633
 0
 0
 0
 0
-1082853633
-269549743
 0
 0
-235728779
 0
 0
-226128924
-31834531
 0
 0
 0
 0
-52108311
 0
 0
 0
+1388839
+82498
 0
 0
+895710183
+1387789
+1199087975
 0
 0
 0
@@ -13138,14 +13166,16 @@
 0
 0
 0
+297030807
 0
 0
-149125916
+20419375
+10455306
 0
-149125916
 0
 0
 0
+66321716
 0
 0
 0
@@ -13153,7 +13183,28 @@
 0
 0
 0
-478602654
+0
+0
+0
+0
+0
+0
+0
+0
+176537512
+0
+176537512
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+576327267
 0
 0
 0
@@ -13169,96 +13220,91 @@
 0
 0
 1
-** External Symbol **:146265227
+** External Symbol **:106017286
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 19
 2
-256:4442
+256:4369
 513:0
 0
 0
 0
-10
-32:12362298
-513:12332804
-33:5525863
-64:5283444
-65:4108825
-16:1207717
-256:1010462
-129:826595
-257:765870
-128:655031
+9
+33:6844542
+65:5255881
+16:1615430
+513:967784
+128:882583
+257:812205
+256:784168
+129:304686
+32:95564
 8
-65:2106979
-33:1981421
-16:1108452
-128:655031
-257:607569
-129:226192
-513:197060
-32:63594
-11
-513:2963512
-129:1222357
-257:791830
-65:770085
-256:436443
-33:432459
-32:262735
-128:204389
-64:124559
-16:117849
-512:70286
+65:2738991
+33:2440830
+16:1480368
+128:882583
+257:812205
+129:304686
+513:236521
+32:85726
+9
+65:754177
+513:747122
+33:287071
+129:226633
+257:218502
+128:176219
+16:158180
+32:117111
+256:8209
 0
 0
 0
 0
-6
-65:191704834
-129:104702143
-17:70580399
-0:29389128
-33:27733522
-257:12507547
-6
-0:229367352
-17:55982027
-65:27801890
-129:18239275
-33:14677507
-257:14054
-1
-0:318968070
-4
-257:5168829
-129:4249026
-513:3002540
-65:586681
 5
-257:70046200
-65:26981579
-129:26457487
-513:21282889
-33:1497072
+65:262749745
+129:125125409
+17:97086488
+33:38183856
+257:1290451
 6
-65:76049069
-129:45416243
-33:22736069
-257:11709426
-17:3361496
-0:362440
-6
-65:60391443
-17:42791576
-0:27227359
-129:16071415
-33:12425829
-257:727121
+0:273690631
+17:104905757
+65:86137159
+33:25942885
+129:25254560
+257:244915
 1
-0:159634743
+0:438114307
+4
+257:13368336
+65:8565048
+129:5881397
+513:4381229
+5
+257:39430780
+129:31935175
+65:23016521
+513:9521638
+33:2113172
+5
+65:73145728
+129:32952461
+33:25251006
+17:4731773
+257:2132328
+6
+17:44006809
+65:42252397
+0:26334406
+129:13375247
+33:11295564
+257:948873
+1
+0:138213296
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;bindless_on
 # Func Hash:
@@ -13266,7 +13312,7 @@
 # Num Counters:
 10
 # Counter Values:
-18
+6
 0
 0
 0
@@ -13309,7 +13355,7 @@
 # Num Counters:
 15
 # Counter Values:
-143308
+138348
 0
 0
 0
@@ -13318,10 +13364,10 @@
 0
 0
 0
-132503
-4978
+123081
+7198
 0
-5381
+7604
 0
 0
 
@@ -13331,40 +13377,38 @@
 # Num Counters:
 4
 # Counter Values:
-845695
+1163622
 0
 0
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;buffer_create
 # Func Hash:
-423116156081916224
+600457686804046595
 # Num Counters:
-36
+34
 # Counter Values:
-1424977
-561316075
-493743394
-33808
-16904
-33808
-33808
-25356
-47
-67572681
-121
+1624333
+34188
+17094
+34188
+34188
+25912
+49
+91368745
+132
 0
 0
-16783
-16783
-14464
-16783
-16783
+16962
+16962
+14720
+16962
+16962
 0
 0
 0
 0
-47
+49
 0
 0
 0
@@ -13376,8 +13420,8 @@
 0
 0
 0
-16904
-121
+17094
+132
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -13385,22 +13429,22 @@
 # NumValueSites:
 9
 1
-** External Symbol **:16904
+** External Symbol **:17094
 1
-** External Symbol **:16904
+** External Symbol **:17094
 1
-** External Symbol **:47
+** External Symbol **:49
 1
-** External Symbol **:47
+** External Symbol **:49
 0
 1
-** External Symbol **:16783
+** External Symbol **:16962
 1
-** External Symbol **:121
+** External Symbol **:132
 1
-** External Symbol **:121
+** External Symbol **:132
 1
-** External Symbol **:121
+** External Symbol **:132
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;buffer_destroy
 # Func Hash:
@@ -13410,10 +13454,10 @@
 # Counter Values:
 0
 0
-127259334
-845684
-67583453
-67583453
+171368104
+1163611
+91381361
+91381361
 0
 0
 0
@@ -13441,7 +13485,7 @@
 # Num Counters:
 7
 # Counter Values:
-58421972
+96361468
 0
 0
 0
@@ -13455,21 +13499,21 @@
 # Num Counters:
 15
 # Counter Values:
-780879
-245572
-163761
-163773
-163773
+1275706
+355972
+209945
+209948
+209948
 0
-12
-163761
+26
+209922
 0
-12
-12
+20
+3
 0
 0
 0
-50056
+61324
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -13477,9 +13521,9 @@
 # NumValueSites:
 3
 1
-** External Symbol **:12
+** External Symbol **:3
 1
-** External Symbol **:12
+** External Symbol **:20
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;cond_counter
@@ -13488,15 +13532,15 @@
 # Num Counters:
 9
 # Counter Values:
-8346602994
-8343172293
-8344982936
-10807854
-1620058
-1619953
-9187901
-9187901
-8343172293
+10543047941
+10538260143
+10540891594
+14230056
+2156347
+2156183
+12073873
+12073873
+10538260143
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;counter_gpu_convert
 # Func Hash:
@@ -13504,9 +13548,9 @@
 # Num Counters:
 3
 # Counter Values:
-9524253
-4110601
-4110601
+13623960
+5399824
+5399824
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -13514,7 +13558,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:9524253
+** External Symbol **:13623962
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;counter_gpu_initialize
 # Func Hash:
@@ -13522,7 +13566,7 @@
 # Num Counters:
 12
 # Counter Values:
-10459113
+14899313
 0
 0
 0
@@ -13567,18 +13611,18 @@
 # Num Counters:
 12
 # Counter Values:
-1244134
-11399
-1508028
-691589
-1508028
-816439
-683622
+1325544
+3597
+1973035
+916994
+1973035
+1056041
+909499
 0
 0
 0
 0
-7967
+7495
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;descriptor_allocate
 # Func Hash:
@@ -13588,9 +13632,9 @@
 # Counter Values:
 0
 0
-156341707
+119704849
 0
-156341707
+119704849
 0
 0
 0
@@ -13601,7 +13645,7 @@
 # NumValueSites:
 2
 1
-** External Symbol **:156341735
+** External Symbol **:119704901
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;descriptor_chunk_new
@@ -13630,15 +13674,15 @@
 13
 # Counter Values:
 78
-23240
-39234
-32002
-21316
+23070
+38484
+31398
+21168
 0
-31924
-21316
+31320
+21168
 0
-4502
+4414
 0
 0
 0
@@ -13649,54 +13693,54 @@
 # Num Counters:
 48
 # Counter Values:
-543886
-66175722
-515052
-595988612
-2175544
-264702888
-76912828
-543886
-451175750
-1087772
-65199256
-83926660
+617772
+87975162
+665380
+705484668
+2471088
+351900648
+90457984
+617772
+545608159
+1235544
+86697907
+89839605
 0
-149125916
-65247708
-83878208
+176537512
+86747811
+89789701
 0
-867024
-148122608
-65247708
-83878208
-65247708
-83878208
+1107574
+175278514
+86747811
+89789701
+86747811
+89789701
 0
 0
 0
-83878208
-83926660
-867024
-145957668
-65247708
-65199256
-130507
-130507
-130507
-128763
-595981636
-595981636
-595981636
-79747795
+89789701
+89839605
+1107574
+172723310
+86747811
+86697907
+167585
+167585
+167585
+166345
+705479708
+705479708
+705479708
+96635193
 0
-451175750
-415493195
-1903601
-271943
+545608159
+499220671
+2162202
+308886
 0
-147951573
-146093952
+175075228
+172874734
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dispatch_compute
 # Func Hash:
@@ -13705,38 +13749,36 @@
 51
 # Counter Values:
 0
-421833
+549585
 0
-5607532
-3868736
-0
-0
-0
-0
-2463048
+7158072
+4815071
 0
 0
 0
 0
-2463048
-0
-2463048
+3279286
 0
 0
 0
-119
-724252
+0
+3279286
+0
+3279286
 0
 0
 0
-724252
-119
+120
+936285
 0
 0
-119
-724252
+0
+936285
+120
 0
 0
+120
+936285
 0
 0
 0
@@ -13749,11 +13791,13 @@
 0
 0
 0
-119
-119
 0
-2463048
-2463048
+0
+120
+120
+0
+3279286
+3279286
 0
 # Num Value Kinds:
 1
@@ -13762,65 +13806,38 @@
 # NumValueSites:
 1
 1
-** External Symbol **:119
+** External Symbol **:120
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;draw_graphics
 # Func Hash:
-830659418228489760
+1083424331999874792
 # Num Counters:
-10
+12
 # Counter Values:
-208379532
-208379602
-66
+286523988
+286524106
+112
+286523994
 0
 0
 0
 0
-3
+4
+88231
 0
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;draw_graphics_inner
 # Func Hash:
-549339677235658919
+77900866009223557
 # Num Counters:
-1217
+1226
 # Counter Values:
 0
 0
 0
 0
 0
-130268
-0
-0
-0
-0
-0
-0
-0
-0
-0
-65134
-0
-0
-0
-0
-0
-0
-61297
-0
-0
-208317797
-208317797
-0
-0
-0
-208318238
-0
-0
-24473202
 0
 0
 0
@@ -13831,8 +13848,37 @@
 0
 0
 0
-208252450
-65134
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+286523990
+286523990
+0
+0
+0
+286523991
+0
+0
+34690939
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+286523991
+0
 0
 0
 2
@@ -13846,91 +13892,79 @@
 0
 0
 0
-2721
+2745
 0
 0
-65344
 0
 0
 0
 0
 0
-1666545904
-3333091808
-416759072
-17714380
 0
+2292191928
+4584383856
+573047994
+23788241
 0
-593018120
 0
-3333084768
+816766555
 0
-593018112
+4584383856
 0
+816766555
 0
-22134293
-322582434
 0
-5673572
+29595297
+443464314
 0
+6940406
 0
-18729218
-17714380
 0
-410962024
-410962024
-410962024
+25154655
+23788241
 0
+566107576
+566107576
+566107576
 0
 0
-88279520
-64297379
 0
-3333091808
-3333091808
-571967952
-3333091808
-1666545904
 0
 0
 0
-208379536
+4584383856
+4584383856
+787928153
+4584383856
+2292191928
 0
 0
-60704112
-14756665
 0
-1085386711
+286523997
 0
-119259860
-261922806
-492317646
 0
-1085180449
-2272
+81852192
+19855352
 0
+1503318132
 0
+162710772
 0
-21954553
-84803473
 0
 0
-33682974
+1503032806
 0
 0
 0
 0
+29360753
+443464314
+108604966
 0
 0
-195402
+39215670
 0
 0
-1058689523
-322582434
-404186994
-52042945
-1058689523
-322582434
 0
 0
 0
@@ -13938,152 +13972,147 @@
 0
 0
 0
+1457778550
+443464314
+556443730
+70085789
+1457778550
+443464314
 0
 0
-492317646
 0
-410962026
-410962026
-410962026
 0
 0
-574759668
 0
 0
-208318238
-574756951
 0
 0
-574598274
 0
-322582434
-544762424
 0
-14089324
-43727463
-934893734
+566107576
+566107576
+566107576
 0
 0
+795306296
 0
-910420532
 0
-1178052291
+286523991
+795303561
 0
 0
 0
 0
-208379538
-231135467
+795100629
 0
+760131423
 0
+18952547
+58147335
+1281461056
 0
 0
 0
-545250174
-545250174
+1246770117
 0
 0
 0
 0
 0
 0
+286523997
+318884926
 0
-1176237
 0
 0
-15606428
 0
 0
 0
-12699289
+748316120
+748316120
 0
-492317646
 0
 0
-15671772
 0
-1403508
 0
 0
 0
 0
+20954668
 0
+17087427
 0
 0
-55526
-554253572
-574289677
-860835084
-55524
 0
-24473202
 0
+21042893
 0
+1921256
 0
 0
 0
 0
 0
 0
-203321798
 0
-206976030
+443464314
+58409
 0
+764139914
+791611904
+1166573832
+58407
 0
+34690939
 0
 0
 0
 0
 0
-492317646
 0
 0
 0
+280753542
 0
+284602741
 0
 0
 0
-1042144
-388515222
-574289677
 0
-492315066
 0
-65344
 0
 0
-306485
-206976030
-208379537
-245188
 0
 0
-3489
-90335
 0
-574289677
-87614
 0
+2737
 0
 0
 0
 0
+535400839
+791611903
 0
 0
 0
 0
+88225
 0
 0
 0
+284602741
+286523997
 0
 0
-61297
 0
+3758
+97209
 0
+791611904
+94464
 0
 0
-206325371
-204695449
 0
 0
 0
@@ -14092,20 +14121,17 @@
 0
 0
 0
-47735157
 0
 0
 0
-61297
-2721
 0
 0
 0
 0
 0
-77755114
-113205
 0
+283820726
+281805968
 0
 0
 0
@@ -14113,93 +14139,74 @@
 0
 0
 0
-3684088
 0
-208379537
 0
 0
 0
 0
 0
+2666
+2745
 0
 0
 0
 0
 0
-205691199
-206914730
-1403508
-188831901
-10530203
 0
-208318238
 0
 0
 0
-206325371
-1629922
 0
 0
-3057446
-24679464
 0
 0
 0
-208317799
 0
-10530203
+4718029
 0
+286523997
 0
 0
-206914291
 0
-208317799
 0
 0
-208317799
 0
 0
 0
-77662551
 0
 0
+283026055
+284602737
+1921256
+260322826
+14052273
 0
-65134
-208318240
+286523991
 0
 0
 0
-208318240
+283820726
+2014758
+2666
 0
-208318238
-208318238
-208318238
-82771736
-188831901
-208318238
 0
-110
-296
-296
+4111762
+34976265
 0
 0
 0
-2627040
+286523991
 0
+14052273
 0
 0
 0
+284602735
 0
-110
-130961403
+286523991
 0
-65348
-82052941
-205481013
-205481013
-205481013
-204475267
 0
+286523991
 0
 0
 0
@@ -14208,171 +14215,162 @@
 0
 0
 0
-208379537
 0
-24679464
 0
 0
 0
+286523994
 0
+286523993
+286523992
+286523992
+114491378
 0
+286523992
 0
+146
 0
 0
 0
 0
 0
+3497939
 0
-1403508
 0
-9534
-9534
-9534
 0
 0
-9160
 0
+146
 0
 0
 0
-3684088
-61297
 0
+283053788
+283053788
+283053788
+281561438
 0
-86004
 0
 0
 0
 0
 0
-206914291
 0
 0
 0
+286523997
 0
+34976265
 0
 0
 0
-208317799
-155482305
-177545868
 0
-13283210
 0
+284602737
 0
-65134
 0
 0
-205677052
-30981945
-206914731
-188831901
 0
-208318238
+286523997
 0
-208318238
 0
+1921256
 0
-206325371
+10034
+10034
+10034
 0
 0
+9683
 0
+2666
 0
-2057376
 0
 0
+4718029
 0
-110
-110
 0
 0
+113489
 0
 0
 0
 0
-201402458
 0
+284602736
 0
 0
 0
 0
 0
-30981945
-9692276
 0
 0
+286523993
+214975935
+244860671
 0
+17611845
 0
 0
 0
-81554393
 0
-65348
 0
+283011298
+41923314
+284602737
+260322826
 0
-24473202
-175932787
+286523993
 0
+286523993
 0
 0
+283820726
 0
 0
-157188205
 0
 0
+2767925
 0
-65348
 0
 0
+146
+145
 0
 0
-67616
 0
 0
 0
-70841890
-208379537
 0
+277374725
 0
 0
 0
 0
 0
 0
+12937948
 0
 0
 0
 0
 0
-208318238
-65348
-65344
 0
 0
-81738531
-9534
-9160
-3684088
 0
 0
 0
 0
+34690939
 0
 0
-206914291
 0
 0
 0
-105148523
-200603420
-200450938
-203325053
+217124663
 0
 0
-9692276
-392079
 0
-30981945
 0
 0
 0
@@ -14381,148 +14379,123 @@
 0
 0
 0
-206325372
 0
 0
 0
+286523997
 0
-198625523
 0
 0
 0
-208379538
 0
 0
 0
 0
 0
 0
-65348
 0
 0
-1403508
+286523994
 0
 0
 0
 0
 0
+10034
+9683
+4718029
 0
-198103186
-30981945
 0
-9534
-439
 0
 0
 0
 0
-67616
 0
 0
-82052512
 0
 0
+183185396
+276358816
+276149094
+280118036
 0
 0
+12937948
 0
-65348
 0
+41923314
 0
 0
-2455712
 0
 0
 0
 0
 0
 0
-65348
+283820728
 0
 0
 0
 0
 0
+273586046
 0
-130268
-521072
-260536
-61297
-61297
-61297
 0
+41923314
 0
+286523999
 0
 0
-175932787
-55965170
 0
 0
 0
-198103186
 0
 0
 0
 0
+1921256
+242679425
 0
 0
 0
 0
-61297
 0
 0
-65348
-19679740
+272794532
+41923314
 0
+10034
 0
 0
 0
 0
-185774457
 0
 0
-6811
 0
 0
-2455712
-81791132
-65134
 0
 0
 0
 0
-61297
-61297
-61297
-61297
-61297
-61297
 0
-55965170
 0
 0
 0
-374
-183
-65344
 0
 0
+3113365
 0
-67616
 0
-130268
 0
 0
 0
 0
-65348
 0
 0
 0
 0
-104
 0
 0
-65134
 0
 0
 0
@@ -14531,126 +14504,96 @@
 0
 0
 0
-110
 0
 0
 0
-130693
-70841891
-210
+93246630
 0
-110
 0
 0
-67616
+272794532
 0
 0
-61297
-61297
-61297
 0
 0
-61297
 0
 0
-55965170
 0
 0
 0
-65134
-704373368
 0
 0
 0
+26703549
 0
 0
-5680
 0
-1882645
-1882645
 0
 0
+256211066
 0
 0
-110
-110
+7287
 0
 0
+3113365
 0
 0
 0
 0
 0
 0
-1882645
-40
 0
 0
 0
 0
 0
-130693
 0
-148
 0
-97697548
+93246630
 0
 0
+351
 0
 0
-61297
 0
 0
 0
 0
 0
-65134
 0
 0
-61297
 0
+242679425
 0
 0
 0
 0
 0
-78
 0
 0
 0
 0
-70841891
-104
 0
 0
 0
 0
 0
 0
-65134
 0
-130693
-61297
-70841891
-70841891
 0
 0
 0
+146
 0
 0
 0
 0
-130693
 0
-78
-30
 0
-65134
-130446
 0
+146
 0
-61297
-70841891
 0
 0
 0
@@ -14659,153 +14602,13 @@
 0
 0
 0
-65128
 0
 0
 0
 0
+93246630
 0
 0
-0
-0
-0
-0
-0
-0
-0
-0
-61297
-70664177
-70841181
-0
-0
-65134
-0
-0
-0
-0
-0
-0
-0
-0
-710
-0
-0
-0
-0
-710
-40912611
-0
-710
-0
-0
-710
-0
-0
-0
-14161707
-0
-0
-110
-0
-0
-0
-29751566
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-206325373
-0
-3684088
-0
-0
-0
-0
-0
-208379539
-0
-245188
-61297
-0
-61297
-61297
-61297
-0
-0
-0
-0
-0
-0
-0
-61297
-0
-0
-195402
-65134
-65134
-65134
-65134
-65134
-0
-0
-325670
-0
-64809
 6
 0
 0
@@ -14818,102 +14621,60 @@
 0
 0
 0
+2306214
+2306214
 0
 0
 0
-198103186
 0
-15671772
+146
+145
 0
 0
-15671772
-2591
 0
 0
-86004
-86004
 0
 0
 0
 0
+2306214
+26
 0
 0
-86004
-86004
 0
-171497601
-30981945
-171497601
-30981945
 0
 0
 0
-206914732
-208318240
-208318240
 0
-208318120
-208316935
 0
 0
 0
 0
-188831903
-64867222
 0
 0
-188831903
-10530203
-653450
 0
 0
 0
-110
-197788037
-208318240
 0
 0
-2721
-2721
 0
 0
 0
-374
-356
 0
-356
 0
 0
-208317801
 0
 0
 0
 0
 0
 0
-208317801
-195959214
-131092095
-130893789
+351
 0
 0
 0
-65344
-2
 0
-13283230
-126264859
-65348
-46558
-46558
-46558
-82052942
-82052942
-82052942
-492317652
 0
-208317801
-65348
 0
 0
 0
@@ -14929,25 +14690,14 @@
 0
 0
 0
-105148525
 0
-2836786
-3793684
-3842532
-208317801
-205481015
-2108530
-2108530
-2108530
-208317801
 0
-208317801
-208317801
 0
 0
 0
 0
 0
+351
 0
 0
 0
@@ -14958,26 +14708,331 @@
 0
 0
 0
-1403508
-1403508
 0
-82052512
-130472
-70841891
-710
 0
-721386504
-29751566
 0
-29751566
-29751566
 0
-208317802
 0
 0
 0
 0
-208317802
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+283820728
+0
+4718029
+0
+0
+0
+0
+0
+286523999
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+272794532
+0
+21042894
+0
+0
+21042894
+71
+0
+0
+113489
+113489
+0
+0
+0
+0
+0
+0
+113489
+113489
+0
+237283793
+41923315
+237283793
+41923315
+0
+0
+0
+284602739
+286523995
+286523995
+0
+286523741
+286521776
+0
+0
+0
+0
+260322829
+89680899
+0
+0
+260322829
+14052273
+882260
+0
+0
+0
+146
+272471723
+286523996
+0
+0
+2745
+2745
+0
+0
+0
+0
+0
+0
+342
+0
+0
+286523996
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+17611846
+286523996
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+183185397
+0
+3470204
+4896157
+4962554
+286523995
+283053792
+2822455
+2822455
+2822455
+286523995
+0
+286523995
+286523995
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1921256
+1921256
+284602739
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+286523995
+0
+0
+0
+0
+286523995
 0
 0
 0
@@ -15012,25 +15067,18 @@
 29
 0
 1
-** External Symbol **:40
+** External Symbol **:26
 0
 0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
 0
 0
-1
-** External Symbol **:65134
+0
+0
+0
+0
+0
+0
+0
 0
 0
 0
@@ -15056,25 +15104,25 @@
 0
 0
 0
-5
-8:66731419
-16:14704103
-17:11895923
-9:11678380
-4:138759
-6
-8:71738481
-9:53012804
-16:32432977
-4:17093350
-17:11841185
-0:2519296
+7
+8:87634002
+17:61944033
+16:12931034
+32:7543707
+33:7091416
+9:6041338
+4:0
+8
+17:100157569
+8:96142061
+16:25312596
+9:13191154
+32:11238341
+33:7985606
+4:4336178
+0:1457073
 0
-4
-16:18328392
-17:10090064
-9:1173973
-8:159139
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;draw_pass_decide
 # Func Hash:
@@ -15082,48 +15130,48 @@
 # Num Counters:
 42
 # Counter Values:
-105063144
-6210046
-2186373
+135300369
+8329032
+2523718
 0
-3038943
+4065479
 0
-3038943
-0
-0
+4065479
 0
 0
 0
-6024336
-24056005
-2973878
 0
 0
-24056005
-1482862
-2501029
-0
-20651431
-20651431
-0
-13283230
-198484749
+7862435
+31316039
+3977519
 0
 0
-205776771
-197751699
-195034576
-196569403
-9576878
-196537581
-196297724
-196297724
-196297724
-196297724
-196142793
+31316039
+2047345
+3312691
+0
+27547952
+27547952
+0
+17611848
+273653020
 0
 0
-24056005
+283139554
+272661110
+268912157
+271067240
+12709148
+271026474
+270615968
+270615968
+270615968
+270615968
+270407706
+0
+0
+31316039
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -15131,11 +15179,11 @@
 # NumValueSites:
 1
 5
-8:77076286
-33:75719285
-16:38926427
-32:4021191
-65:399671
+8:106071378
+33:105299453
+16:53147992
+32:5347378
+65:541649
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_eds_stencil_op
 # Func Hash:
@@ -15143,7 +15191,7 @@
 # Num Counters:
 2
 # Counter Values:
-49130772
+25875898
 0
 # Num Value Kinds:
 1
@@ -15159,7 +15207,7 @@
 # Num Counters:
 6
 # Counter Values:
-1638206746
+1397772734
 0
 0
 0
@@ -15172,7 +15220,7 @@
 # Num Counters:
 4
 # Counter Values:
-2863211
+3636301
 0
 0
 0
@@ -15190,7 +15238,7 @@
 # Num Counters:
 2
 # Counter Values:
-5525418
+8383400
 0
 # Num Value Kinds:
 1
@@ -15206,8 +15254,8 @@
 # Num Counters:
 4
 # Counter Values:
-13827677
-2921722
+17821792
+3384476
 0
 0
 # Num Value Kinds:
@@ -15222,11 +15270,11 @@
 # NumValueSites:
 1
 5
-16:1660436
-32:1046279
-65:131118
-33:82629
-129:1260
+16:2204751
+32:893672
+65:176620
+33:108300
+129:1136
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkCmdBindDescriptorSets
 # Func Hash:
@@ -15234,8 +15282,8 @@
 # Num Counters:
 3
 # Counter Values:
-230561398
-217571639
+276787350
+260634497
 0
 # Num Value Kinds:
 2
@@ -15249,14 +15297,16 @@
 # NumValueSites:
 2
 2
-16:218384312
-8:12177117
-5
-8:72093442
-9:54185778
-16:50823147
-17:21930680
-4:18538623
+16:259820573
+8:16966903
+7
+17:100157567
+8:96406742
+16:25400821
+9:13191154
+32:11238341
+33:7985606
+4:6254387
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkCmdBindIndexBuffer
 # Func Hash:
@@ -15264,7 +15314,7 @@
 # Num Counters:
 2
 # Counter Values:
-152001653
+166529354
 0
 # Num Value Kinds:
 1
@@ -15280,7 +15330,7 @@
 # Num Counters:
 2
 # Counter Values:
-94758831
+88514958
 0
 # Num Value Kinds:
 1
@@ -15296,7 +15346,7 @@
 # Num Counters:
 2
 # Counter Values:
-163210999
+162710773
 0
 # Num Value Kinds:
 1
@@ -15312,7 +15362,7 @@
 # Num Counters:
 2
 # Counter Values:
-65342
+88224
 0
 # Num Value Kinds:
 1
@@ -15328,7 +15378,7 @@
 # Num Counters:
 2
 # Counter Values:
-163761
+209922
 0
 # Num Value Kinds:
 1
@@ -15344,7 +15394,7 @@
 # Num Counters:
 2
 # Counter Values:
-620358
+770172
 0
 # Num Value Kinds:
 1
@@ -15360,7 +15410,7 @@
 # Num Counters:
 2
 # Counter Values:
-220248
+295179
 0
 # Num Value Kinds:
 1
@@ -15392,7 +15442,7 @@
 # Num Counters:
 2
 # Counter Values:
-952586
+839741
 0
 # Num Value Kinds:
 1
@@ -15408,8 +15458,8 @@
 # Num Counters:
 3
 # Counter Values:
-65134
-65134
+0
+0
 0
 # Num Value Kinds:
 2
@@ -15423,7 +15473,7 @@
 # NumValueSites:
 1
 1
-65:65134
+65:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkCmdCopyImageToBuffer
 # Func Hash:
@@ -15431,8 +15481,8 @@
 # Num Counters:
 3
 # Counter Values:
-9610
-9610
+9490
+9490
 0
 # Num Value Kinds:
 2
@@ -15446,9 +15496,9 @@
 # NumValueSites:
 1
 5
-33:6929
-257:2654
-65:27
+33:6824
+257:2666
+65:0
 129:0
 513:0
 
@@ -15458,7 +15508,7 @@
 # Num Counters:
 2
 # Counter Values:
-10581941
+15068592
 0
 # Num Value Kinds:
 1
@@ -15474,7 +15524,7 @@
 # Num Counters:
 2
 # Counter Values:
-12177117
+16966899
 0
 # Num Value Kinds:
 1
@@ -15490,7 +15540,7 @@
 # Num Counters:
 2
 # Counter Values:
-1403508
+1921256
 0
 # Num Value Kinds:
 1
@@ -15506,7 +15556,7 @@
 # Num Counters:
 2
 # Counter Values:
-236660515
+284602743
 0
 # Num Value Kinds:
 1
@@ -15522,7 +15572,7 @@
 # Num Counters:
 2
 # Counter Values:
-5525418
+8383400
 0
 # Num Value Kinds:
 1
@@ -15538,7 +15588,7 @@
 # Num Counters:
 2
 # Counter Values:
-4110601
+5399824
 0
 # Num Value Kinds:
 1
@@ -15554,10 +15604,10 @@
 # Num Counters:
 5
 # Counter Values:
-83144865
-17733970
-24097196
-41313699
+109193556
+23375146
+33926202
+51892208
 0
 # Num Value Kinds:
 2
@@ -15571,11 +15621,11 @@
 # NumValueSites:
 3
 1
-17:17733970
+17:23375149
 1
-33:24097196
+33:33926209
 1
-65:41313710
+65:51892232
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkCmdPushConstants
 # Func Hash:
@@ -15583,7 +15633,7 @@
 # Num Counters:
 2
 # Counter Values:
-9714069
+13687613
 0
 # Num Value Kinds:
 2
@@ -15596,12 +15646,9 @@
 1
 # NumValueSites:
 1
-5
-16:9524253
-128:65134
-17:63073
-64:61297
-32:312
+2
+16:13623962
+17:63654
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkCmdResetQueryPool
 # Func Hash:
@@ -15609,7 +15656,7 @@
 # Num Counters:
 2
 # Counter Values:
-1416617
+1930372
 0
 # Num Value Kinds:
 1
@@ -15625,7 +15672,7 @@
 # Num Counters:
 2
 # Counter Values:
-33588752
+4962554
 0
 # Num Value Kinds:
 1
@@ -15641,7 +15688,7 @@
 # Num Counters:
 2
 # Counter Values:
-37613081
+10374901
 0
 # Num Value Kinds:
 1
@@ -15657,7 +15704,7 @@
 # Num Counters:
 2
 # Counter Values:
-35419792
+6940408
 0
 # Num Value Kinds:
 1
@@ -15673,7 +15720,7 @@
 # Num Counters:
 2
 # Counter Values:
-35419792
+6940408
 0
 # Num Value Kinds:
 1
@@ -15689,7 +15736,7 @@
 # Num Counters:
 2
 # Counter Values:
-35419792
+6940408
 0
 # Num Value Kinds:
 1
@@ -15705,7 +15752,7 @@
 # Num Counters:
 2
 # Counter Values:
-37460599
+10165179
 0
 # Num Value Kinds:
 1
@@ -15721,7 +15768,7 @@
 # Num Counters:
 2
 # Counter Values:
-11393970
+16174659
 0
 # Num Value Kinds:
 1
@@ -15733,18 +15780,19 @@
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_vkQueueSubmit
 # Func Hash:
-985454955166606623
+604570953317453844
 # Num Counters:
-10
+11
 # Counter Values:
-2817503
-2817503
-65342
-65342
-2817503
-65342
-2817503
-2817503
+3581560
+3581560
+88224
+88224
+3581560
+88224
+3581560
+3581560
+0
 0
 0
 # Num Value Kinds:
@@ -15759,90 +15807,94 @@
 # NumValueSites:
 4
 1
-8:65342
+8:88224
 1
-4:65342
+4:88224
 2
-8:2771798
-16:45706
+8:3526826
+16:54735
 1
-8:65342
+8:88224
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;dv_worker
 # Func Hash:
-41892878993067773
+687032683169539682
 # Num Counters:
-69
+73
 # Counter Values:
-437091
-2817501
-12501910316
-12501467285
-10283646
-83144817
+399016
+399016
+3581558
+15459383032
+15458982078
+400951
+10599139
+109193403
 0
-9610
-952586
-65134
-65342
-94758601
-230561106
-11393969
-1416617
-12177117
-620357
-220248
-163761
-9714069
-4110601
-13827671
-5525418
-5525418
-10581940
-13827673
-37460388
-37612870
-35419579
-35419579
-35419579
-33588540
-34738754
-236660165
-1403508
-163210549
-152001410
-39438283
-39438283
-39438283
-39438283
-39438283
-39438283
-39438283
-49130555
-2863207
-2863209
-2863209
-2817500
-5799829
-5799796
-7055388
+9490
+839741
 0
-5799796
+88224
+88514863
+276787192
+16174633
+1930368
+16966874
+770172
+295179
+209922
+13687591
+5399802
+17821751
+8383400
+8383400
+15068570
+17821753
+10165155
+10374877
+6940398
+6940398
+6940398
+4962547
+6405937
+284602539
+1921247
+162710496
+166529261
+12937924
+12937924
+12937924
+12937924
+12937924
+12937924
+12937924
+25875848
+3636293
+3636295
+3636295
+3581557
+8569336
 0
-5799796
+8569347
+3581558
+10030041
 0
+8569336
 0
-0
-0
-0
-0
+8569336
 0
 0
-65410877
-59047622
-41831135
-12989759
-10905952
+0
+0
+0
+0
+0
+0
+85818264
+75267267
+57301275
+16152825
+14437284
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -15850,92 +15902,92 @@
 # NumValueSites:
 44
 1
-** External Symbol **:83144851
+** External Symbol **:109193412
 0
 1
-** External Symbol **:9610
+** External Symbol **:9490
 1
-** External Symbol **:952586
+** External Symbol **:839741
 1
-** External Symbol **:65134
+** External Symbol **:0
 1
-** External Symbol **:65342
+** External Symbol **:88225
 1
-** External Symbol **:94758615
+** External Symbol **:88514884
 1
-** External Symbol **:230561150
+** External Symbol **:276787284
 1
-** External Symbol **:11393969
+** External Symbol **:16174636
 1
-** External Symbol **:1416617
+** External Symbol **:1930370
 1
-** External Symbol **:12177117
+** External Symbol **:16966875
 1
-** External Symbol **:620357
+** External Symbol **:770173
 1
-** External Symbol **:220248
+** External Symbol **:295179
 1
-** External Symbol **:163761
+** External Symbol **:209922
 1
-** External Symbol **:9714069
+** External Symbol **:13687592
 1
-** External Symbol **:4110601
+** External Symbol **:5399802
 1
-** External Symbol **:13827672
+** External Symbol **:17821752
 1
-** External Symbol **:5525418
+** External Symbol **:8383400
 1
-** External Symbol **:5525418
+** External Symbol **:8383400
 1
-** External Symbol **:10581940
+** External Symbol **:15068571
 1
-** External Symbol **:13827674
+** External Symbol **:17821755
 1
-** External Symbol **:37460389
+** External Symbol **:10165157
 1
-** External Symbol **:37612871
+** External Symbol **:10374879
 1
-** External Symbol **:35419581
+** External Symbol **:6940402
 1
-** External Symbol **:35419581
+** External Symbol **:6940402
 1
-** External Symbol **:35419581
+** External Symbol **:6940402
 1
-** External Symbol **:33588541
+** External Symbol **:4962549
 1
-** External Symbol **:34738755
+** External Symbol **:6405939
 1
-** External Symbol **:236660226
+** External Symbol **:284602642
 1
-** External Symbol **:1403508
+** External Symbol **:1921247
 1
-** External Symbol **:163210561
+** External Symbol **:162710546
 1
-** External Symbol **:152001424
+** External Symbol **:166529320
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:39438284
+** External Symbol **:12937926
 1
-** External Symbol **:49130557
+** External Symbol **:25875852
 1
-** External Symbol **:2863210
+** External Symbol **:3636298
 1
-** External Symbol **:2863208
+** External Symbol **:3636294
 1
-** External Symbol **:2863210
+** External Symbol **:3636298
 1
-** External Symbol **:2817502
+** External Symbol **:3581559
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;execute
 # Func Hash:
@@ -15943,12 +15995,10 @@
 # Num Counters:
 423
 # Counter Values:
-2430832151
-326054276
+3318012787
+441722384
 0
-454244097
-0
-0
+621605098
 0
 0
 0
@@ -15957,18 +16007,18 @@
 0
 0
 0
-914852
-0
-326054276
-0
-217410580
-751144507
-1424110307
 0
 0
-2431957935
+1235202
+0
+441722384
+0
+297685631
+1016371750
+1943506135
 0
 0
+3319541796
 0
 0
 0
@@ -16003,83 +16053,64 @@
 0
 0
 0
-24553064
-1125775
 0
-1060364
-326720
-9524253
-65345
-65348
-65348
-12318840
-5081046
-1245876
-20082487
-2279319
+0
+32617831
+1528994
+0
+1440706
+441125
+13623960
+88226
+88231
+88231
+16460843
+6721316
+1647249
+27080218
+3093762
 0
 72
 0
-12674923
-11974376
-11974376
-161106414
+16909107
+15987236
+15987236
+217091130
 0
-9117276
-5413652
-2463048
-1403508
-206976089
-32653289
-48143772
-20128549
-4988984
-16461713
+12375048
+8224136
+3279286
+1921256
+284602834
+43988447
+65099702
+27152462
+6591885
+21184533
 0
-54984434
-454244097
-54984434
-454244097
-217410580
-126611055
-126611055
-0
-0
-0
-0
-641862
-47349392
-326054276
-0
-0
-1125784
+74724972
+621605098
+74724972
+621605098
+297685631
+172829649
+172829650
 0
 0
 0
 0
+699769
+64702218
+441722384
 0
-9734736
+0
+1529009
 0
 0
 0
 0
 0
-0
-72
-16377284
-0
-0
-0
-0
-161106414
-5413652
-255207688
-256333463
-1619953
-0
-0
-0
-0
+13032225
 0
 0
 0
@@ -16087,55 +16118,76 @@
 0
 0
 72
-3194098
-0
-0
-958950
+21078419
 0
 0
 0
 0
+217091130
+8224136
+351535580
+353064579
+2156183
 0
 0
-3783974
 0
 0
 0
 0
-255207679
 0
 0
-2173940
-3281615
+0
+0
+72
+4238143
+0
+0
+1294300
+0
+0
+0
+0
+0
+0
+4958845
+0
+0
+0
+0
+351535570
+0
+0
+2836234
+4312191
 0
 0
 0
 72
 0
 0
-9734736
+13032225
 0
 0
-958950
-0
-0
-0
-0
-0
-5413322
-3194098
-914852
-0
-0
-0
-255207679
+1294300
 0
 0
 0
 0
-958950
 0
-1123875
+8223734
+4238143
+1235202
+0
+0
+0
+351535570
+0
+0
+0
+0
+1294300
+0
+1493843
 0
 0
 72
@@ -16157,26 +16209,26 @@
 0
 0
 0
-958950
+1294300
 0
 0
 0
 0
 0
-3194098
-3194082
+4238143
+4238109
 0
 0
 0
 0
 0
 0
-466985
+635648
 0
 0
-9004
+11857
 0
-914848
+1235196
 0
 0
 0
@@ -16189,14 +16241,14 @@
 0
 0
 0
-2964785
+3939682
 0
 0
-180711
+244445
 0
 0
 0
-229313
+298461
 0
 0
 0
@@ -16208,10 +16260,10 @@
 0
 0
 0
-163761
+209922
 0
 0
-492
+662
 0
 0
 0
@@ -16232,7 +16284,7 @@
 0
 0
 0
-929
+1267
 0
 0
 0
@@ -16304,20 +16356,20 @@
 0
 0
 0
-255207688
+351535580
 0
 0
 0
-255207679
+351535570
 0
 0
-3194098
+4238143
 0
-3194098
-115276
-115608
-229313
-163935
+4238143
+149469
+149863
+298461
+210218
 0
 0
 0
@@ -16325,8 +16377,8 @@
 0
 0
 0
-3783974
-917
+4958845
+1259
 0
 0
 0
@@ -16382,10 +16434,10 @@
 # NumValueSites:
 2
 4
-17:1967580870
-8:311514170
-16:150611594
-0:2251559
+17:2685069642
+8:427862158
+16:203553243
+0:3058003
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;exp_word
@@ -16403,8 +16455,8 @@
 0
 0
 0
-3
-3
+4
+4
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_dilation
 # Func Hash:
@@ -16478,7 +16530,102 @@
 # Num Counters:
 6
 # Counter Values:
-221862394
+304400521
+0
+0
+0
+0
+0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_eval_compare
+# Func Hash:
+610709002562185467
+# Num Counters:
+7
+# Counter Values:
+0
+0
+0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_IndirectCallTarget:
+0
+# NumValueSites:
+1
+0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_eval_on
+# Func Hash:
+490771320767117433
+# Num Counters:
+12
+# Counter Values:
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_MemOPSize:
+1
+# NumValueSites:
+1
+0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_eval_pipeline
+# Func Hash:
+958177319474756456
+# Num Counters:
+10
+# Counter Values:
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_IndirectCallTarget:
+0
+# NumValueSites:
+4
+0
+0
+0
+0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_eval_poll
+# Func Hash:
+1029578616320276237
+# Num Counters:
+14
+# Counter Values:
+0
+0
+0
+0
+0
+0
+0
+0
+0
 0
 0
 0
@@ -16496,20 +16643,17 @@
 0
 0
 0
-130684
 0
-220529
-155188
 0
 0
 0
 0
 0
 0
-5290
 0
 0
 0
+5306
 0
 0
 0
@@ -16522,57 +16666,44 @@
 0
 0
 0
-65342
-65342
-2645
 0
-1333
 0
 0
 0
 0
+2653
 0
+1336
 0
 0
 0
 0
-65342
 0
 0
-65342
 0
-65342
 0
-65342
-65274
-2645
 0
 0
+88233
 0
+88233
 0
 0
 0
 0
 0
+2653
 0
 0
-5159
-210
-65342
 0
 0
 0
 0
-65274
 0
-2645
-65342
 0
 0
-5159
 0
 0
-5159
 0
 0
 0
@@ -16581,31 +16712,28 @@
 0
 0
 0
+2653
 0
 0
 0
+5219
 0
 0
-5159
 0
 0
-110
 0
 0
 0
-110
 0
 0
 0
 0
 0
 0
-208
-104
-104
 0
 0
 0
+5219
 0
 0
 0
@@ -16631,12 +16759,7 @@
 0
 0
 0
-314
-314
-210
 0
-65342
-110
 0
 0
 0
@@ -16660,13 +16783,37 @@
 0
 0
 0
-63938
-64920
 0
 0
-104
-104
-63938
+88233
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -16738,14 +16885,14 @@
 0
 0
 0
-706656
-0
-706656
 0
 0
-706656
-706656
-706656
+0
+0
+0
+0
+0
+0
 0
 0
 0
@@ -16763,14 +16910,10 @@
 0
 0
 0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_invert4
 # Func Hash:
@@ -16778,22 +16921,22 @@
 # Num Counters:
 16
 # Counter Values:
-82202
-6242880
-390180
-1040480
-1040480
-1040480
-2080960
-1040480
-780360
-657616
-260120
-260120
-260120
-260120
-65030
-91830
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;fg_own_on
 # Func Hash:
@@ -16949,49 +17092,12 @@
 0
 0
 
-@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fill_thread
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;fill_make
 # Func Hash:
-665731654521961788
+824893244717729666
 # Num Counters:
-57
+20
 # Counter Values:
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
-0
 0
 0
 0
@@ -17042,27 +17148,27 @@
 0
 0
 0
-16527057
-16527057
+21272755
+21272755
 0
-48956376
-48956376
+60901923
+60901923
 0
-16448748
+20630598
 0
-16527057
+21272755
 0
 0
-16527057
-16527057
+21272755
+21272755
 0
-16527057
-16461712
+21272755
+21184529
 0
-16461712
-11809944
+21184529
+14979017
 0
-11809944
+14979017
 0
 0
 0
@@ -17158,18 +17264,18 @@
 # Num Counters:
 12
 # Counter Values:
-526080
-65760
-4384
-4384
+704640
+88080
+5872
+5872
 0
-65342
-65342
-548
+88233
+88233
+734
 0
 0
-2694
-4384
+3601
+5872
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;frz_copy
 # Func Hash:
@@ -17353,7 +17459,7 @@
 # Num Counters:
 2
 # Counter Values:
-6728
+22820
 0
 # Num Value Kinds:
 1
@@ -17362,19 +17468,19 @@
 # NumValueSites:
 1
 13
-4:4968
-8:930
-33:458
-65:111
-16:78
-17:69
-0:36
-32:33
-9:9
+4:16764
+8:2787
+33:1565
+65:599
+16:361
+17:315
+32:296
+0:70
+9:36
 64:9
 128:9
 129:9
-256:9
+256:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;gpl_exp_full
 # Func Hash:
@@ -17382,7 +17488,7 @@
 # Num Counters:
 3
 # Counter Values:
-284
+812
 0
 0
 
@@ -17392,10 +17498,10 @@
 # Num Counters:
 6
 # Counter Values:
-98
-43
-284
-250
+148
+468
+812
+352
 0
 0
 # Num Value Kinds:
@@ -17405,7 +17511,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:250
+** External Symbol **:352
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;gpl_warm_main
 # Func Hash:
@@ -17491,9 +17597,9 @@
 # Num Counters:
 5
 # Counter Values:
-13784391
-13663904
-24278
+17915859
+17611847
+24253
 0
 0
 # Num Value Kinds:
@@ -17503,29 +17609,29 @@
 # NumValueSites:
 1
 1
-** External Symbol **:24278
+** External Symbol **:24253
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 2
 8
-8:7501902
-16:2790133
-33:2669854
-17:247966
-65:188434
-32:179614
-0:86004
+8:10129102
+33:3359367
+16:3198391
+17:322915
+65:252385
+32:236218
+0:113489
 64:0
 8
-8:24041
-16:159
-17:51
-33:18
-65:9
+8:24109
+16:106
+17:36
+33:2
 0:0
 32:0
 64:0
+65:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;graphics_hash
 # Func Hash:
@@ -17533,9 +17639,9 @@
 # Num Counters:
 3
 # Counter Values:
-4786559590
-338555306
-26291
+4383744900
+381095576
+28323
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -17543,9 +17649,9 @@
 # NumValueSites:
 1
 3
-5:25879
-4:293
-2:119
+5:27355
+4:848
+2:120
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;graphics_layout_get
 # Func Hash:
@@ -17553,21 +17659,21 @@
 # Num Counters:
 15
 # Counter Values:
-37710377
-17787311
-238069808
-17773807
-220435927
-783
-17773024
-783
-220296001
+43948749
+19653079
+286524004
+19599269
+266929525
+174
+19599095
+174
+266924735
 0
 0
 0
-783
+174
 0
-783
+174
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -17575,7 +17681,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:783
+** External Symbol **:174
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;graphics_pass_end
 # Func Hash:
@@ -17588,7 +17694,7 @@
 0
 0
 0
-8945730
+12870773
 0
 0
 0
@@ -17598,24 +17704,24 @@
 0
 0
 0
-74533919
+95357994
 0
 0
 0
 0
-13283228
-1369553
+17611844
 0
 0
 0
 0
 0
-1988608
+0
+2609006
 0
 0
 0
 0
-13283228
+17611844
 0
 0
 0
@@ -17662,18 +17768,18 @@
 # Num Counters:
 12
 # Counter Values:
-1929429
-10595856
-10595856
-5912938
+2262487
+13729575
+13729575
+7529436
 0
-2
-2
-2
+6
+6
+6
 0
 0
 0
-2
+6
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -17681,7 +17787,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:2
+** External Symbol **:6
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;graphics_pipeline_build
 # Func Hash:
@@ -17689,112 +17795,110 @@
 # Num Counters:
 153
 # Counter Values:
-63551
-486
+57024
+420
 0
 0
-256
+220
 0
 0
 0
 0
-203635
-203612
+184768
+184768
 0
-63563
-1458
+57024
+1260
 0
-203792
-203792
-35810
-203536
-1330
-88942
-25454
-392
-63551
-0
-0
-27687
-0
-880
+184768
+184768
+34587
+184768
+1150
+80836
+23096
+332
+57024
 0
 0
-4096
-384
-4096
-750592
+25630
+0
+3028
+0
+0
+3520
+330
+3520
+713338
 6
 0
-12745
-148
+11548
+112
 0
-640
-0
-0
-0
-148
-148
-128
-128
-128
-128
-750464
-120
-256
-148
-0
-128
-120
+550
+11
 0
 0
-0
-12740
+112
+112
+110
+110
+110
+110
+713228
+947
+220
+112
+11
+110
+947
 0
 0
 0
-0
-12714
-136
-12706
+11548
 0
 0
+0
+0
+11548
+118
+11548
 0
 0
 0
 0
 0
-12706
-136
 0
 0
-12740
-128
-12474
+11548
+118
+0
+0
+11548
+110
+11276
 0
 0
 0
-128
+110
 0
-12284
-0
-0
-206
-156
-192
-78
-78
-128
-0
-78
+10034
 0
 0
-206
-78
-192
-120
+461
+702
+457
+351
+351
+110
+0
+351
 0
 0
+461
+351
+457
+947
 0
 0
 0
@@ -17818,28 +17922,30 @@
 0
 0
 0
-12737
-12737
-12746
-0
-2927
-2927
-15584
-128
-128
-750464
-750464
-9072
-128
-128
-128
 0
 0
+11548
+11548
+11548
+0
+4055
+4055
+15706
+110
+110
+713228
+713228
+7902
+110
+110
+110
 0
 0
-440
 0
-78
+0
+1514
+0
+351
 0
 0
 # Num Value Kinds:
@@ -17850,47 +17956,50 @@
 5
 0
 1
-** External Symbol **:128
+** External Symbol **:110
 1
-** External Symbol **:128
+** External Symbol **:110
 1
-** External Symbol **:128
+** External Symbol **:110
 0
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 8
+4
+16:108
+32:2
+33:0
+64:0
 3
-16:114
-32:8
-33:6
-2
-65:114
-129:14
+65:108
+129:2
+257:0
 5
-65:120
-64:6
+65:108
 33:2
 17:0
 32:0
-3
-4:114
-8:8
-9:6
+64:0
+4
+4:108
+8:2
+9:0
+16:0
 7
-16:421496
-9:153796
-17:127272
-32:26156
-8:20876
-4:626
-33:242
+16:399956
+9:146926
+17:120432
+32:24470
+8:20636
+4:590
+33:218
 3
-129:102
-257:18
-65:0
+129:928
+65:10
+257:9
 3
-129:192
+129:457
 65:0
 257:0
 0
@@ -17942,7 +18051,7 @@
 # Counter Values:
 0
 0
-689453182
+866223149
 0
 0
 0
@@ -18143,17 +18252,17 @@
 # Num Counters:
 11
 # Counter Values:
-5901329
-5720618
-3923735
-3524681
-3743024
-3743024
-3743024
-319767
-145186
-3568443
-3568443
+7851257
+7606812
+5233982
+4694088
+4989537
+4989537
+4989537
+475424
+196116
+4710229
+4710229
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;image_get
 # Func Hash:
@@ -18162,83 +18271,77 @@
 108
 # Counter Values:
 0
-60113
+49645
 0
 0
 0
 0
-60182583
-13545
-377487
-13098
-6921751
-22346166
-22259279
+88671631
+11198
+390549
+11165
+9879687
+19106194
+19021835
 0
 0
-14209
-10314
+14052
+7966
 0
-185132
-185132
-194534709
+206261
+206261
+236993000
 0
-10314
-10112
-202
+7966
+7887
+79
 0
-45524117
-146635
-12816
-185132
-185132
-20628
-10347
-149010592
-2852851
-42671266
-2806150
+57595408
+163325
+14755
+206261
+206261
+15932
+7993
+179397592
+3757647
+53837761
+3721287
 0
-50500
-86887
-50500
-50500
-50500
+55965
+84359
+55956
+55956
+55965
 0
-2755650
-10314
-0
-0
-299
+3665322
+7966
+9
 0
 299
 0
-0
-0
-0
-10314
-97201
-0
-50500
+299
 0
 0
 0
 0
-1385
-33
-50500
-10314
-97201
+7966
+92325
 0
-4852
-6575
-26245
+55956
 0
 0
 0
 0
+1266
+27
+55956
+7966
+92325
 0
-0
+5884
+7350
+27963
 0
 0
 0
@@ -18256,16 +18359,22 @@
 0
 0
 0
-46701
 0
 0
-185132
-12828
 0
-10314
-10314
 0
-771
+0
+0
+36360
+0
+0
+206261
+14759
+0
+7966
+7966
+0
+658
 299
 0
 0
@@ -18276,30 +18385,30 @@
 # NumValueSites:
 8
 1
-** External Symbol **:97201
+** External Symbol **:92325
 1
-** External Symbol **:185132
+** External Symbol **:206261
 1
-** External Symbol **:10314
+** External Symbol **:7966
 1
-** External Symbol **:10314
+** External Symbol **:7966
 1
 ** External Symbol **:0
 1
-** External Symbol **:10314
+** External Symbol **:7966
 1
-** External Symbol **:50500
+** External Symbol **:55956
 1
-** External Symbol **:97201
+** External Symbol **:92325
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
 5
-9:20829
-17:12828
-16:11991
-8:4852
+9:22297
+17:14759
+16:13016
+8:5884
 32:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;image_peek
@@ -18346,7 +18455,7 @@
 # NumValueSites:
 2
 1
-** External Symbol **:33
+** External Symbol **:27
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;image_read_back
@@ -18376,35 +18485,35 @@
 # Num Counters:
 30
 # Counter Values:
-328480075
-255088
-31666
-0
-2
-0
-246017731
-0
-6498
-103799808
-127544
+276709763
+243166
+31814
 0
 0
-95521
-94773
-2507221
-94773
 0
-5973
+214567501
 0
-3828
-4616
+3808
+97824768
+121583
 0
 0
-1896
-3354661
-870
-1882
-671
+54095
+91691
+1137003
+91691
+0
+3418
+0
+2285
+2797
+0
+0
+1013
+4325383
+543
+1011
+330
 0
 # Num Value Kinds:
 1
@@ -18413,17 +18522,16 @@
 # NumValueSites:
 7
 1
-** External Symbol **:31666
+** External Symbol **:31814
 1
-** External Symbol **:127544
+** External Symbol **:121583
+0
 1
-** External Symbol **:2
+** External Symbol **:95532
 1
-** External Symbol **:101367
+** External Symbol **:95532
 1
-** External Symbol **:101367
-1
-** External Symbol **:6594
+** External Symbol **:3841
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;image_save_ppm
@@ -18449,67 +18557,65 @@
 # Num Counters:
 71
 # Counter Values:
-8683524
-89257
+9464664
+102589
 0
-89257
-0
-0
-0
-846214
-0
-218812
-2664976
+102589
 0
 0
 0
+720465
 0
-663732205
-173911
-663732205
-102498
-0
-663637611
-0
-0
-61537
-0
-0
-0
-163448
-60950
-31330997
+216392
+3302085
 0
 0
 0
 0
+781443823
+215055
+781443823
+99600
 0
-60950
-340
-0
-31330997
-490212488
+781351594
 0
 0
-0
-60950
-0
+70575
 0
 0
 0
-31330997
-0
-45706
+169805
+70205
+37773589
 0
 0
 0
 0
 0
-88
-2664976
-28666021
+70205
+336
+0
+37773589
+577714129
 0
 0
+0
+70205
+0
+0
+0
+0
+37773589
+0
+54735
+0
+0
+0
+0
+0
+46
+3302085
+34471504
 0
 0
 0
@@ -18518,7 +18624,9 @@
 0
 0
 0
-94594
+0
+0
+92229
 0
 # Num Value Kinds:
 2
@@ -18527,17 +18635,20 @@
 # NumValueSites:
 2
 1
-** External Symbol **:88
+** External Symbol **:46
 0
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
-4
-513:7028064
-257:1297704
-17:186620
-128:171136
+7
+513:7482536
+257:1602264
+17:226424
+128:153440
+4:0
+16:0
+512:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;image_view_formatted
 # Func Hash:
@@ -18545,22 +18656,22 @@
 # Num Counters:
 21
 # Counter Values:
-248892413
-79900824
-240305724
-239503436
-14
-8
-6
-177195130
-4
-169107354
-166049908
-70479922
-115765
-69548
-69548
-2
+310842383
+108987528
+299318816
+296492991
+0
+0
+0
+212450476
+0
+201965767
+197854005
+92545859
+110912
+74991
+74991
+0
 0
 0
 0
@@ -18573,9 +18684,9 @@
 # NumValueSites:
 2
 1
-** External Symbol **:69548
+** External Symbol **:74991
 1
-** External Symbol **:115765
+** External Symbol **:110912
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;index_buffer_maximum
 # Func Hash:
@@ -18589,14 +18700,14 @@
 0
 0
 0
-1617316
+2391279
 0
 0
 0
-1617316
-1617316
-29364629
-1617316
+2391279
+2391279
+39532036
+2391279
 0
 0
 0
@@ -18604,8 +18715,8 @@
 0
 0
 0
-29364629
-29364629
+39532036
+39532036
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;initialize
@@ -19248,14 +19359,15 @@
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;inplace_on
 # Func Hash:
-579636726259400573
+64098200445463366
 # Num Counters:
-12
+13
 # Counter Values:
 0
 0
 0
-2148300380
+2659768334
+0
 0
 0
 0
@@ -19455,24 +19567,6 @@
 # Num Counters:
 45
 # Counter Values:
-38390449
-475939520
-43951138
-56811851
-761348
-29751564
-380674
-29746220
-2811
-0
-29746220
-0
-0
-0
-26931354
-2814866
-380674
-29746220
 0
 0
 0
@@ -19484,9 +19578,27 @@
 0
 0
 0
-380674
 0
-380674
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 0
 0
 0
@@ -19524,7 +19636,7 @@
 # Num Counters:
 4
 # Counter Values:
-89257455
+0
 0
 0
 0
@@ -19534,24 +19646,23 @@
 0
 # NumValueSites:
 2
-1
-** External Symbol **:0
-1
-** External Symbol **:0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;mo_image
 # Func Hash:
-619802544115525488
+541658438642673520
 # Num Counters:
-7
+8
 # Counter Values:
-65134
-65128
 0
 0
-65128
-65134
-65134
+0
+0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;mo_object_banks
 # Func Hash:
@@ -19559,7 +19670,7 @@
 # Num Counters:
 5
 # Counter Values:
-775037545
+0
 0
 0
 0
@@ -19586,11 +19697,11 @@
 # Num Counters:
 5
 # Counter Values:
-40451014
-39102323
-39102323
-1348691
-1348691
+45950994
+44419035
+44419035
+1531959
+1531959
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;mv_prev_block
 # Func Hash:
@@ -19598,94 +19709,86 @@
 # Num Counters:
 72
 # Counter Values:
-35184551
-21234875
-70644579
-2659637
-13299113
-64976
-29901233
-249820
-1935582
-23497446
-25497208
-3427847
-3424696
-10050630
-10046766
-195497994
-47056211
-1115378
-172000548
-45940833
-195497994
-25497208
-69438279
-126059715
-20928169
-484544
-172000548
-45940833
-10363489
-10339411
-126059715
-3740706
-3717341
-10050630
-20966188
-522563
-45940833
-172000548
-66913245
-52956603
-10046766
-414976
-45940833
-0
-20443625
-0
-20443625
-13326075
-0
-12916990
-13275393
-6649745
-409085
-25130
-4809
-822
-806
-195497994
-195497994
-172000548
 0
 0
-45940833
-10050630
-10046766
-6622783
-6622070
-6622070
-6622783
-10975926
-13235922
-13275393
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 2
-7
-256:10988913
-513:1376604
-129:318611
-65:281773
-33:179644
-257:176931
-64:3602
-1
-64:25936
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;mvs_find
 # Func Hash:
@@ -19693,13 +19796,13 @@
 # Num Counters:
 7
 # Counter Values:
-667570053
-3251865
-616583031
-664318188
 0
-47735157
-47735157
+0
+0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;mvs_settle
 # Func Hash:
@@ -19712,20 +19815,20 @@
 0
 0
 0
-65342
+88233
 0
 0
 0
-65342
-65342
+88233
+88233
 0
 0
 0
 0
 0
 0
-65342
-65342
+0
+0
 0
 0
 
@@ -19735,36 +19838,29 @@
 # Num Counters:
 16
 # Counter Values:
-908495751
-1291153144
-1291102462
-921345029
-910894836
-908546433
-2544059
-50682
-13326075
-2519684
-6362953
-905325192
-8192878
-668149
-902158195
-228224689
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
-7
-256:10988913
-513:1376604
-129:318611
-65:281773
-33:179644
-257:176931
-64:3602
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;nvn_state_apply
 # Func Hash:
@@ -19772,44 +19868,42 @@
 # Num Counters:
 57
 # Counter Values:
-326054276
+441722384
 0
-454244097
-9117276
-18234552
-11974376
-1653488797
-4558638
-4558638
-4558638
-509228531
+621605096
+12375048
+24750096
+15987235
+2249390915
+6187524
+6187524
+6187524
+696330068
 0
-65348
-65348
-48143772
-12318840
-20082487
-4988984
-2279319
-12674923
-11974376
+88231
+88231
+65099701
+16460843
+27080218
+6591884
+3093762
+16909106
+15987235
 0
-32653289
-20128549
-11974376
-126611055
-126611055
-217410580
-326054276
+43988447
+27152462
+15987235
+172829650
+172829649
+297685631
+441722384
 0
-52856210
-32653289
-33041215
-2279319
-20128549
-20147832
-0
-0
+71177303
+43988447
+44510712
+3093762
+27152462
+27168444
 0
 0
 0
@@ -19823,7 +19917,9 @@
 0
 0
 0
-454244097
+0
+0
+621605097
 0
 0
 0
@@ -19836,27 +19932,27 @@
 # NumValueSites:
 4
 1
-8:326054347
+8:441722432
 8
-33:78561157
-64:35486941
-4:8761517
-9:2271236
-32:595809
-8:423740
-16:276013
-17:234645
+33:108084339
+64:47782707
+4:11810064
+9:3002850
+32:819067
+8:567691
+17:395669
+16:367338
 8
-16:77440124
-128:35486941
-8:11325022
-33:973563
-64:678080
-65:571364
-17:79651
-32:56313
+16:106639887
+128:47782707
+8:15198346
+33:1326294
+64:918814
+65:783520
+17:115023
+32:65134
 1
-16:217410591
+16:297685752
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;ov_proc
 # Func Hash:
@@ -19864,7 +19960,7 @@
 # Num Counters:
 2
 # Counter Values:
-130684
+176448
 0
 # Num Value Kinds:
 1
@@ -19873,7 +19969,7 @@
 # NumValueSites:
 2
 1
-** External Symbol **:130684
+** External Symbol **:176449
 1
 ** External Symbol **:0
 
@@ -19883,17 +19979,17 @@
 # Num Counters:
 13
 # Counter Values:
-65348
-878843358
+88231
+1206537130
 0
 0
-878843358
-2178
-65348
+1206537130
+2940
+88231
 0
-2178
-63170
-2178
+2940
+85291
+2940
 0
 0
 
@@ -19903,15 +19999,15 @@
 # Num Counters:
 10
 # Counter Values:
-18729218
+25154656
 0
-92428
-3131371
-3038943
-3038943
-673354
-2365589
-673354
+124744
+4190223
+4065479
+4065479
+910893
+3154586
+910893
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pending_range_overlap
@@ -19920,8 +20016,8 @@
 # Num Counters:
 3
 # Counter Values:
-294081524
-294081524
+331380746
+331380746
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pipeline_create_compute
@@ -19930,10 +20026,10 @@
 # Num Counters:
 4
 # Counter Values:
-119
+120
 0
-119
-119
+120
+120
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -19941,7 +20037,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:119
+** External Symbol **:120
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pipeline_create_graphics
 # Func Hash:
@@ -19949,11 +20045,11 @@
 # Num Counters:
 5
 # Counter Values:
-12545
+10842
 0
-9430
-12426
-12534
+10491
+10842
+10842
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -19961,7 +20057,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:12577
+** External Symbol **:10842
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pipeline_disk_digest
 # Func Hash:
@@ -20054,8 +20150,8 @@
 # Num Counters:
 2
 # Counter Values:
-919565057
-436870451
+881199971
+419236085
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pool_sorted_rebuild_locked
 # Func Hash:
@@ -20063,9 +20159,9 @@
 # Num Counters:
 5
 # Counter Values:
-79979416
-79979416
-28953
+76519051
+76519051
+27693
 0
 0
 
@@ -20075,9 +20171,9 @@
 # Num Counters:
 6
 # Counter Values:
-79624811
-9850973
-16527129
+109499115
+14065085
+21272827
 0
 0
 0
@@ -20088,47 +20184,45 @@
 # Num Counters:
 58
 # Counter Values:
-9851045
-26378102
+14065157
+35337912
 0
-16529649
-16527129
-16527129
-16527129
-363
-9524253
-326720
-16527057
-9524253
-326720
+21275347
+21272827
+21272827
+21272827
+633
+13623960
+441125
+21272755
+13623960
+441125
 0
-16527129
-16527129
-16527057
+21272827
+21272827
+21272755
 0
-16527057
-16527129
-16527129
+21272755
+21272827
+21272827
 72
-16527057
+21272755
 0
 72
-16527057
+21272755
 0
-16527129
+21272827
 0
-16527057
-0
-0
-16108838
+21272755
 0
 0
-0
-418219
-220664
-630147
+20703333
 0
 0
+0
+569422
+315565
+840408
 0
 0
 0
@@ -20139,8 +20233,10 @@
 0
 0
 0
-26378102
-26378102
+0
+0
+35337912
+35337912
 0
 0
 0
@@ -20154,28 +20250,28 @@
 23
 # Counter Values:
 0
-65579676
-72457860
-387984019
+88572460
+98806667
+536729274
 4
-6888264
-36233751
-53036394
-16807389
-72457860
-52755962
-36229149
-72457860
-36229149
-19701898
-72457860
-36229005
+10244287
+49408584
+70675788
+21272809
+98806667
+70676111
+49403123
+98806667
+49403123
+28130556
+98806667
+49402979
 0
 0
 0
 0
-215052030
-215052030
+294596160
+294596160
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pp_any
 # Func Hash:
@@ -20183,26 +20279,26 @@
 # Num Counters:
 21
 # Counter Values:
-181179425
-151641980
+142406272
+110818456
 0
 0
-1428137201
-1398599756
-1404086491
-293574120
-169106680
-1404086491
+1328235220
+1296647404
+1317247511
+249309500
+126022932
+1317247511
 0
 0
-1404086491
+1317247511
 0
-1338239635
+1232509178
 0
-1308702190
+1200921362
 0
-169106680
-169106680
+126022932
+126022932
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;prefetch_main
@@ -20211,32 +20307,32 @@
 # Num Counters:
 26
 # Counter Values:
-256
-128
+220
+110
 0
-33778
-33778
-262
-262
-262
-128
-128
-10460
-33038
-128
-27118
+34960
+34960
+190
+190
+190
+110
+110
+11986
+34220
+110
+27272
 722
-27118
+27272
 722
-27840
-13334
+27994
+15292
 16
 0
 0
 0
-27840
+27994
 722
-262
+190
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;prefetch_variants_of
 # Func Hash:
@@ -20244,20 +20340,20 @@
 # Num Counters:
 14
 # Counter Values:
-184320
-184320
-118716
-61440
-61440
-54208
-7232
-7232
-54958
-7232
-54958
-7232
-61604
-114391
+188382
+188382
+122660
+62794
+62794
+55708
+7086
+7086
+55266
+7086
+55266
+7086
+62974
+117665
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;prelude_submit_list
 # Func Hash:
@@ -20265,8 +20361,8 @@
 # Num Counters:
 4
 # Counter Values:
-2817501
-45706
+3581560
+54735
 0
 0
 # Num Value Kinds:
@@ -20313,11 +20409,11 @@
 0
 0
 
-@PGO_ROOT@/port/android/vk/nvn_vulkan.c;present_one
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;present_one_body
 # Func Hash:
-538085458897989885
+19247693621156718
 # Num Counters:
-646
+702
 # Counter Values:
 0
 0
@@ -20347,6 +20443,7 @@
 0
 0
 0
+84949
 0
 0
 0
@@ -20363,10 +20460,10 @@
 0
 0
 0
+94542935
 0
-70308496
+89314943
 0
-66447504
 0
 0
 0
@@ -20377,29 +20474,29 @@
 0
 0
 0
+63653
 0
-63073
 0
 0
+351
+720
 0
-78
-156
 0
 0
+584
 0
-440
 0
 0
+88224
+351
 0
-65342
-78
+584
 0
-440
 0
 0
+970475
+16203
 0
-718784
-11990
 0
 0
 0
@@ -20415,29 +20512,31 @@
 0
 0
 0
+1235262
 0
-914788
+20622
+20622
 0
-15260
-15260
 0
+88225
 0
-65342
 0
 0
 0
+1146912
 0
-849446
+5558175
 0
-4116672
+20622
 0
-15260
 0
 0
+85003
+85003
+88225
+88225
+88225
 0
-65342
-65342
-65342
 0
 0
 0
@@ -20463,11 +20562,11 @@
 0
 0
 0
+176384
+20622
 0
-130631
-15260
+88225
 0
-65342
 0
 0
 0
@@ -20475,23 +20574,23 @@
 0
 0
 0
+4419
 0
-3270
 0
 0
 0
 0
+85003
 0
-65342
 0
 0
 0
 0
 0
+85003
+85003
+85003
 0
-65342
-65342
-65342
 0
 0
 0
@@ -20501,146 +20600,152 @@
 0
 0
 0
+64091
 0
-63242
 0
 0
 0
+85003
 0
-65342
+88225
+88225
+85003
+85003
+85003
+85003
+88225
 0
-65342
-65342
-65342
-65342
-65342
-65344
+88225
+88225
 0
-65344
-65344
+88233
+159
 0
-65342
-35
 0
 0
+12379
+75846
 0
-8320
-57022
 0
+88225
 0
-65344
+1473
+1473
+1473
+1473
 0
-1090
-1090
-1090
-1090
+1473
 0
-1090
+88233
 0
-65342
 0
 0
 0
 0
 0
+86760
+1473
+88225
 0
-64252
-1090
 0
+3229
+85003
 0
+88225
+88225
 0
 0
 0
-65344
-65344
 0
+88225
+84979
+137
 0
+88225
 0
 0
-65342
-65318
-110
 0
-65344
 0
 0
+88224
+88224
+88224
+88224
+88224
+88224
 0
 0
 0
-65342
-65342
-65342
-65342
-65342
-65342
+88224
+63653
 0
 0
+88224
+88224
+88224
+88233
 0
-65342
-63073
 0
 0
-65342
-65342
+88225
+1473
+88233
+4377
 0
 0
 0
-65344
-1090
-65342
-4336
 0
+49
 0
 0
 0
-47355
+88224
 0
+88224
+88233
 0
 0
-65342
 0
-65342
-65342
+88225
+88225
 0
 0
 0
-65344
-65344
 0
 0
 0
 0
 0
+88224
+88224
+88224
+88224
+88224
 0
+137
+88224
 0
+88224
+88224
+88224
 0
-65342
-65342
-65342
-65342
-65342
+88225
 0
-110
-65342
 0
-65342
-65342
-65342
 0
-65344
 0
+88233
 0
 0
 0
-65342
+88224
 0
+88233
+11654
+4377
 0
 0
-65342
 0
-65342
-31426
-4336
 0
 0
 0
@@ -20648,27 +20753,27 @@
 0
 0
 0
+88233
 0
-65342
 0
 0
+88225
 0
-65342
 0
 0
 0
-65342
+88224
 0
 0
 0
 0
-65342
-65342
+88224
+88224
 0
-65344
+88225
 0
 0
-4336
+4377
 0
 0
 0
@@ -20678,69 +20783,69 @@
 0
 0
 0
-65342
 0
-1090
-110
-110
-1090
-110
 0
+88224
 0
+1473
+146
+146
+1473
+146
 0
 0
 0
 0
 0
-63073
-5159
-322
 0
 0
 0
 0
-110
+63653
+5225
+414
 0
 0
 0
 0
-63073
+137
 0
 0
-110
-1090
-1090
-110
-1090
-1090
-1090
-1090
-1090
-1090
-1090
-1090
-1090
-1090
-1090
 0
 0
 0
+63653
 0
-110
 0
+146
+1473
+1473
+146
+1473
+1473
+1473
+1473
+1473
+1473
+1473
+1473
+1473
+1473
+1473
 0
 0
 0
-63073
-5159
-63073
 0
 0
 0
+146
 0
 0
 0
 0
+63653
+5225
+63653
 0
 0
 0
@@ -20749,13 +20854,8 @@
 0
 0
 0
-1090
-1090
-1090
-1090
 0
 0
-110
 0
 0
 0
@@ -20764,11 +20864,15 @@
 0
 0
 0
+1473
+1473
+1473
+1473
 0
-322
 0
 0
 0
+146
 0
 0
 0
@@ -20776,11 +20880,12 @@
 0
 0
 0
+5
 0
 0
 0
 0
-322
+414
 0
 0
 0
@@ -20796,9 +20901,9 @@
 0
 0
 0
-45
 0
 0
+414
 0
 0
 0
@@ -20814,6 +20919,7 @@
 0
 0
 0
+53
 0
 0
 0
@@ -20830,6 +20936,7 @@
 0
 0
 0
+5
 0
 0
 0
@@ -20849,7 +20956,6 @@
 0
 0
 0
-65344
 0
 0
 0
@@ -20870,25 +20976,19 @@
 0
 0
 0
-4336
 0
 0
 0
 0
 0
+88225
 0
-65344
-65344
-65344
 0
 0
 0
 0
 0
-65344
 0
-65342
-65342
 0
 0
 0
@@ -20896,61 +20996,113 @@
 0
 0
 0
-65342
 0
-65342
 0
 0
 0
 0
 0
+4377
 0
 0
 0
 0
 0
 0
+88225
+88225
+88225
 0
 0
-65342
-126315
-63073
-65342
 0
 0
 0
+88225
 0
+88225
+88225
 0
 0
 0
 0
-65342
 0
-65342
-65342
-65342
-5159
-5159
-5159
-65342
-65342
-65342
-110
-65342
-65342
 0
 0
-65342
-65342
-110
-110
-64252
-65342
+88224
 0
+88224
 0
 0
 0
-1090
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+88224
+127744
+63653
+88224
+0
+0
+0
+0
+0
+0
+0
+0
+88224
+0
+88224
+88224
+88224
+88224
+88224
+88224
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+5225
+4049
+5225
+85003
+85003
+85003
+133
+85003
+85003
+0
+0
+88233
+88233
+146
+146
+86760
+88233
+0
+0
+0
+0
+1473
 0
 0
 0
@@ -20978,7 +21130,7 @@
 0
 0
 1
-** External Symbol **:65344
+** External Symbol **:88225
 0
 0
 1
@@ -20992,25 +21144,25 @@
 1
 ** External Symbol **:0
 1
-** External Symbol **:63073
+** External Symbol **:63654
 0
 0
 1
-** External Symbol **:65342
+** External Symbol **:88224
 1
-** External Symbol **:5159
+** External Symbol **:5216
 1
 ** External Symbol **:0
 1
-** External Symbol **:65342
+** External Symbol **:88224
 1
-** External Symbol **:78
+** External Symbol **:351
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 3
 12
-512:65344
+512:88225
 8:0
 16:0
 17:0
@@ -21031,83 +21183,81 @@
 # Num Counters:
 96
 # Counter Values:
-2463048
-208379535
+3279286
+286523993
 0
-28693
-16946
+29647
+22094
 0
-58543396
-11358494472
-58474500
-562059776
-140514944
-70257472
-35128736
+79014050
+9481638331
+78942618
+756320640
+189080160
+94540080
+47270040
 0
-6459
-3588890
-13815024
-144
+6956
+4939577
+21567754
+48
 0
-6459
-64832
-45657
+6956
+76063
+51747
 0
-45639
-6459
-560905896
-560891618
-540229967
-7254
-7254
-20675929
-14278
-0
-0
-207026103
-4391092
+51741
+6956
+576327273
+576312460
+548290088
+7533
+7533
+28037184
+14812
 0
 0
-28711
-0
-207026103
-0
-0
-16946
-0
-5316
-19193
-4371899
-19175
-0
-28711
-0
-5316
-4371899
-19175
-16946
-186168758
-18
+284664868
+5908755
 0
 0
-5298
+29653
+0
+284664868
 0
 0
+22094
+0
+5620
+24322
+5884433
+24316
+0
+29653
+0
+5620
+5884433
+24316
+22094
+255729557
+6
 0
 0
-5298
+5614
 0
 0
 0
 0
-18
-0
-18
-18
-18
+5606
 0
 0
+0
+0
+6
+0
+6
+6
+6
 0
 0
 0
@@ -21118,15 +21268,17 @@
 0
 0
 0
-560905896
-76969333
-20675929
+0
+0
+576327273
+104098889
+28037184
 0
 142
-2776
+3806
 0
 0
-18
+6
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -21141,10 +21293,10 @@
 # Num Counters:
 5
 # Counter Values:
-3933608
-10351600
-25879
-25879
+4157960
+10942000
+27355
+27355
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pso_hash_cmp
@@ -21153,7 +21305,7 @@
 # Num Counters:
 1
 # Counter Values:
-193259
+204689
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;pso_hex_decode
 # Func Hash:
@@ -21235,11 +21387,11 @@
 10
 # Counter Values:
 0
-3355
+3228
 0
 0
-9653
-374
+10154
+351
 0
 0
 0
@@ -21264,7 +21416,7 @@
 # Counter Values:
 0
 0
-9653
+10154
 0
 0
 0
@@ -21397,13 +21549,13 @@
 # Num Counters:
 7
 # Counter Values:
-17534
-17534
+17190
+17190
 0
 0
 0
-14464
-14464
+14172
+14172
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;rec_feed
 # Func Hash:
@@ -21411,12 +21563,12 @@
 # Num Counters:
 7
 # Counter Values:
-504308
-63073
-63073
+508244
+63653
+63653
 0
-63004
-63073
+63408
+63653
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;resource_create_end
@@ -21425,14 +21577,14 @@
 # Num Counters:
 9
 # Counter Values:
-9357
-9357
-1317
-1329
-0
-0
-0
-9357
+10154
+10154
+1438
+1438
+8
+8
+8
+10146
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;sampler_get_for_type
@@ -21444,38 +21596,38 @@
 0
 0
 0
-24412
-246
-663647281
-359
-359
-359
+29988
+203
+781417984
+441
+441
+441
 0
-359
-351
-351
-355
+441
+433
+433
+437
 0
 0
 0
-345
-359
+427
+441
 4
 4
 4
-359
+441
 0
 14
 0
-345
-351
+427
+433
 14
 0
 8
 8
-351
-343
-343
+433
+425
+425
 0
 0
 14
@@ -21489,22 +21641,22 @@
 0
 0
 0
-359
-359
+441
+441
 8
 8
-345
+427
 8
 8
 8
 0
 14
-351
-355
-355
+433
+437
+437
 0
-232
-359
+189
+441
 0
 0
 0
@@ -21610,10 +21762,10 @@
 # Num Counters:
 7
 # Counter Values:
-1090
+1473
 0
 0
-1090
+1473
 0
 0
 0
@@ -21633,13 +21785,13 @@
 # Counter Values:
 0
 0
-65342
-65342
+88233
+88233
 0
 0
-1090
-1090
-1090
+1473
+1473
+1473
 0
 0
 0
@@ -21653,7 +21805,7 @@
 # NumValueSites:
 1
 1
-** External Symbol **:1090
+** External Symbol **:1473
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;screen_present_mode
 # Func Hash:
@@ -21806,12 +21958,12 @@
 # Num Counters:
 6
 # Counter Values:
-66434
-66434
-66434
-66434
-25
-66434
+89698
+89698
+89698
+89698
+0
+89698
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;setup_add
 # Func Hash:
@@ -22077,14 +22229,14 @@
 # Num Counters:
 10
 # Counter Values:
-666753744
+785385922
 0
 0
 0
 0
 0
 0
-666753744
+785385922
 0
 0
 
@@ -22094,8 +22246,8 @@
 # Num Counters:
 8
 # Counter Values:
-666753744
-666753744
+785385922
+785385922
 0
 0
 0
@@ -22110,125 +22262,126 @@
 7
 # Counter Values:
 0
-312228501
-285085989
-33991787
+441729601
+403474050
+47343234
 0
 0
-51615714
+72946490
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;shader_load_by_key
 # Func Hash:
-1119497940335028853
+531900911758117060
 # Num Counters:
-107
+108
 # Counter Values:
-13197102
-13197102
-16857585
+17747523
+17747523
+24833022
 0
-249896
-4399034
-7232
-186580
-4391802
-3070
-0
-0
-139838
-0
-7232
-7232
-46742
-24814
-29330
-7232
-62474
-62474
-62474
+246216
+5915841
+7086
+315684
+5908755
 0
 0
-41158
-7232
-24644
-21696
 0
-62474
+245418
 0
-17412
-23240
-17412
-21696
-20048
-1924
+7086
+7086
+70266
+39708
+43282
+7086
+61554
+61554
+61554
 0
-7232
-27500
-27422
+0
+40386
+7086
+34070
+21258
+0
+61554
+0
+26984
+23070
+26984
+21258
+19996
+1902
+0
+7086
+26984
+26906
 78
-33876
-0
-0
-0
-7232
-27422
-10088
-21316
-0
-0
-7232
-0
-0
-0
-3110
-7232
-3070
-7232
-7192
-3070
-7232
 0
 0
 0
 0
+7086
+26906
 0
-4122
+21168
 0
 0
-0
-0
-3070
-0
-4122
+7086
 0
 0
 0
-0
-7232
-0
-0
-0
-7232
+3058
+7086
+3018
+7086
+7046
+3018
+7086
 0
 0
 0
 0
 0
+4028
+0
+0
+0
+3018
+0
+4028
+0
+0
+0
+0
+7086
 0
 0
 0
 0
 0
-6886025
+7086
 0
-4122
+0
+0
+0
+0
+0
+0
+0
+0
+0
+9248868
+0
+4028
 428
-574
+570
 428
 140
 0
-4162
-13344
+4068
+13090
 0
 # Num Value Kinds:
 2
@@ -22237,9 +22390,9 @@
 # NumValueSites:
 4
 1
-** External Symbol **:7232
+** External Symbol **:7086
 1
-** External Symbol **:7232
+** External Symbol **:7086
 0
 0
 # ValueKind = IPVK_MemOPSize:
@@ -22247,21 +22400,22 @@
 # NumValueSites:
 2
 1
-0:7232
+0:7086
 1
-513:4122
+513:4028
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;shader_profile_check
 # Func Hash:
-176885381077235393
+734311862695160447
 # Num Counters:
-15
+16
 # Counter Values:
 0
 0
 0
 0
-17534
+17190
+0
 0
 0
 0
@@ -22311,7 +22465,7 @@
 4
 # Counter Values:
 0
-7232
+7086
 0
 0
 
@@ -22370,7 +22524,7 @@
 # Counter Values:
 0
 0
-296
+0
 0
 0
 0
@@ -22385,10 +22539,10 @@
 # Num Counters:
 9
 # Counter Values:
-104
-104
 0
-104
+0
+0
+0
 0
 0
 0
@@ -22400,8 +22554,7 @@
 0
 # NumValueSites:
 1
-1
-** External Symbol **:0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;smaa_lookup
 # Func Hash:
@@ -22416,8 +22569,7 @@
 1
 # NumValueSites:
 1
-1
-513:0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;smaa_on
 # Func Hash:
@@ -22425,7 +22577,7 @@
 # Num Counters:
 8
 # Counter Values:
-221731710
+304224063
 0
 0
 0
@@ -22440,22 +22592,21 @@
 # Num Counters:
 8
 # Counter Values:
-624
-416
-1040
-312
 0
 0
-312
-624
+0
+0
+0
+0
+0
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
 0
 # NumValueSites:
 1
-1
-** External Symbol **:312
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;smaa_pipeline
 # Func Hash:
@@ -22476,14 +22627,10 @@
 0
 # NumValueSites:
 4
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;smaa_setup
 # Func Hash:
@@ -22503,14 +22650,10 @@
 0
 # NumValueSites:
 4
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
-1
-** External Symbol **:0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;snapshot_diag_miss_row
 # Func Hash:
@@ -22534,14 +22677,14 @@
 # Num Counters:
 8
 # Counter Values:
-1000202
+1363586
 0
 0
 0
-1000202
+1363586
 0
 0
-1000202
+1363586
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;snapshot_prepare
 # Func Hash:
@@ -22549,11 +22692,11 @@
 # Num Counters:
 7
 # Counter Values:
-227369707
-780606
-226589101
+311076090
+1075760
+310000330
 0
-226589101
+310000330
 0
 0
 
@@ -22565,16 +22708,16 @@
 # Counter Values:
 0
 0
-82999794
-1628323
-1628323
-1628323
+43060787
+567195
+567195
+567195
 0
 0
 0
-1090
-1090
-1090
+1473
+1473
+1473
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;spirv_add_early_tests
 # Func Hash:
@@ -22613,41 +22756,41 @@
 36
 # Counter Values:
 0
-32823920
-34878510
-34878510
-10262
-34878510
-10262
-341966
-10262
-20524
-44986
-143034
-6203636
-10262
-341966
-10262
-20524
-44986
-143034
-6203636
-111420
+32273882
+34290336
+34290336
+10064
+34290336
+10064
+336210
+10064
+20128
+44318
+140460
+6099330
+10064
+336210
+10064
+20128
+44318
+140460
+6099330
+108968
 0
-10262
-20524
-44986
-24676
-61780
-33590
-24676
-61780
-33590
-55672
+10064
+20128
+44318
+24174
+60416
+33060
+24174
+60416
+33060
+54456
 0
 0
-10262
-55672
+10064
+54456
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;spirv_own_set
 # Func Hash:
@@ -22655,15 +22798,15 @@
 # Num Counters:
 9
 # Counter Values:
-3070
+3018
 0
-8466288
-8466288
-8466288
-3070
-107918
-33876
-3070
+8384332
+8384332
+8384332
+3018
+106440
+33530
+3018
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;spirv_uniform_extents
 # Func Hash:
@@ -22671,77 +22814,77 @@
 # Num Counters:
 71
 # Counter Values:
-414000
-1356470
-14059726
-35660
-62508
-20408
-2082742
+406068
+1334138
+13785628
+35000
+61110
+20110
+2038004
 0
 0
 20668
 20668
-759328
-18094
-41158
+740566
+17806
+40386
 9224
-53057218
-18092
+51949482
+17804
 2
-20408
+20110
 296034
 296032
-249147510
-35360786
-35360786
-2063652
+244537814
+34668028
+34668028
+2019092
 0
-249147510
-7232
-125707746
-249127102
-1841742
-242598
-232456068
-16691442
-158100426
-124948418
-69362224
-61908
-20532674
-1800584
-16689128
-2082742
-416270
-2084930
+244537814
+7086
+122961940
+244517704
+1809460
+240100
+228184032
+16353782
+154835672
+122221374
+67942950
+60662
+20012032
+1769074
+16351478
+2038004
+408838
+2040182
 126
-759328
-26736692
-82316
+740566
+26230474
+80772
 126
-761642
-759328
-26736692
-41158
-62474
-41158
-41158
+742870
+740566
+26230474
+40386
+61554
+40386
+40386
 124
-26736692
-41158
+26230474
+40386
 124
-4732346
-7232
-41158
+4643080
+7086
+40386
 0
-41158
-2085056
+40386
+2040308
 0
-2085056
-761642
-22230
-20750
+2040308
+742870
+21888
+20276
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;spv_alloc
 # Func Hash:
@@ -22749,15 +22892,15 @@
 # Num Counters:
 12
 # Counter Values:
-628
-11482
-11482
-11482
-20
-20
-20
+578
+11224
+11224
+11224
+18
+18
+18
 0
-20
+18
 0
 0
 0
@@ -22768,7 +22911,7 @@
 # Num Counters:
 1
 # Counter Values:
-7360
+7196
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;spv_cb_free
 # Func Hash:
@@ -22823,7 +22966,7 @@
 # Num Counters:
 1
 # Counter Values:
-3027901
+4048281
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;storage_key_of
 # Func Hash:
@@ -22831,13 +22974,13 @@
 # Num Counters:
 7
 # Counter Values:
-2852851
-2852851
-2852851
-2806150
+3757646
+3757646
+3757646
+3721286
 0
-46701
-502519
+36360
+669629
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;storage_pointer_resolve
 # Func Hash:
@@ -22845,15 +22988,15 @@
 # Num Counters:
 9
 # Counter Values:
-1348691
-1348691
-1348691
-1348691
-1348691
-1348691
-1348691
+1531959
+1531959
+1531959
+1531959
+1531959
+1531959
+1531959
 0
-1348691
+1531959
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;synccheck_read
 # Func Hash:
@@ -22861,7 +23004,7 @@
 # Num Counters:
 20
 # Counter Values:
-31033666
+40759015
 0
 0
 0
@@ -22888,19 +23031,19 @@
 # Num Counters:
 13
 # Counter Values:
-4147776
-1036944
-1042144
-1042144
-5200
-259236
-65134
-65030
-65030
-325
-65030
-65030
-65030
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;taa_enabled
 # Func Hash:
@@ -22909,7 +23052,7 @@
 12
 # Counter Values:
 0
-1916379386
+2649584435
 0
 0
 0
@@ -22940,7 +23083,7 @@
 # Num Counters:
 5
 # Counter Values:
-663647288
+781417983
 0
 0
 0
@@ -22978,16 +23121,16 @@
 # Num Counters:
 10
 # Counter Values:
-41611484
-41611484
+55841751
+55841751
 0
-42512275
-41480796
-41480796
+55905476
+55665301
+55665301
 0
 0
 0
-42512275
+55905476
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;topology
 # Func Hash:
@@ -22995,14 +23138,14 @@
 # Num Counters:
 9
 # Counter Values:
-186916623
+257376609
 0
-208318235
-186916623
+286523988
+257376609
 0
-130688
+176452
 0
-19193340
+26223298
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_answers_json
@@ -23011,23 +23154,47 @@
 # Num Counters:
 17
 # Counter Values:
-2304
-576
-288
-144
-576
+768
+192
+96
+48
+192
 0
-132
-0
-0
-0
-18
-0
-558
+42
 0
 0
-114
 0
+6
+0
+186
+0
+0
+36
+0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_cache_note
+# Func Hash:
+531478469973176421
+# Num Counters:
+8
+# Counter Values:
+0
+0
+0
+0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_MemOPSize:
+1
+# NumValueSites:
+1
+2
+4:0
+257:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_cpus
 # Func Hash:
@@ -23095,19 +23262,19 @@
 # Num Counters:
 14
 # Counter Values:
-32365
-25888
+35349
+28387
 0
 0
-6477
-5401
-20487
-5401
-25888
+6962
+5664
+22723
+5664
+28387
 0
 0
-20487
-5401
+22723
+5664
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_fmt_class
@@ -23116,16 +23283,16 @@
 # Num Counters:
 30
 # Counter Values:
-1637
+1625
 0
 0
-362
+384
 0
 0
 0
 0
 14
-1083
+1079
 0
 0
 0
@@ -23138,20 +23305,20 @@
 0
 0
 0
-28049980
+37816156
 0
 0
-3106
+3112
 0
 0
-28046874
+37813044
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_pin_self
 # Func Hash:
-854638109746397533
+914430014227209299
 # Num Counters:
-11
+15
 # Counter Values:
 0
 0
@@ -23164,6 +23331,19 @@
 0
 0
 0
+0
+0
+0
+0
+# Num Value Kinds:
+1
+# ValueKind = IPVK_MemOPSize:
+1
+# NumValueSites:
+1
+2
+8:0
+9:0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_read_text
 # Func Hash:
@@ -23171,10 +23351,10 @@
 # Num Counters:
 4
 # Counter Values:
-66751
+67848
 0
-66751
-66751
+67848
+67848
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_service_start
 # Func Hash:
@@ -23182,12 +23362,10 @@
 # Num Counters:
 13
 # Counter Values:
-0
-0
-18
-0
-0
-0
+558
+558
+6
+6
 0
 0
 0
@@ -23195,6 +23373,8 @@
 0
 0
 0
+6
+558
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_shader_id
 # Func Hash:
@@ -23202,12 +23382,12 @@
 # Num Counters:
 7
 # Counter Values:
-2238110
-69922
+2242368
+70078
 0
 0
 0
-68976
+69102
 0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;totk_state_sig
@@ -23218,19 +23398,19 @@
 # Counter Values:
 0
 0
-1247514420
+1322327668
 0
 0
-336095398
-1347796259
-271156001
-271156001
-271156001
-271156001
-65356
-623757210
-211387065
-409907097
+462012211
+1073658990
+372200479
+372200479
+372200479
+372200479
+88237
+661163833
+290552440
+367332107
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_apply
 # Func Hash:
@@ -23238,34 +23418,30 @@
 # Num Counters:
 9
 # Counter Values:
-757116349
-115899621
-46257167
-46257167
-69642454
-69642454
-69642455
-384808083
-384808083
+106007442
+19601436
+9800718
+9800718
+9800718
+9800718
+9800718
+58783195
+58783195
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
-12
-256:22686793
-513:7128667
-64:5415297
-65:2892059
-129:2501938
-257:1982392
-33:1536559
-16:958584
-128:859420
-32:159863
-512:70286
-9:65348
+8
+65:2659721
+513:1714906
+33:1299114
+16:1293496
+128:1058802
+257:1030707
+129:531319
+32:212675
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_collect
 # Func Hash:
@@ -23288,11 +23464,11 @@
 0
 0
 0
-65421
-65421
-65421
+88303
+88303
+88303
 0
-65349
+88231
 0
 0
 0
@@ -23305,11 +23481,22 @@
 # NumValueSites:
 1
 5
-513:65349
+513:88231
 0:72
-64:0
-128:0
+32:0
+65:0
 257:0
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_copy_blocks
+# Func Hash:
+844982798274935104
+# Num Counters:
+4
+# Counter Values:
+2589734
+88202
+51321
+142546
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_free
 # Func Hash:
@@ -23317,9 +23504,33 @@
 # Num Counters:
 3
 # Counter Values:
-65420
-65348
+88303
+88231
 72
+
+@PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_in_pools
+# Func Hash:
+502833845330291385
+# Num Counters:
+17
+# Counter Values:
+251270618
+251270618
+0
+251270618
+251270618
+0
+349636844
+251270618
+251270618
+251270618
+251270618
+251270618
+251270618
+0
+0
+0
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_range_of
 # Func Hash:
@@ -23327,36 +23538,22 @@
 # Num Counters:
 16
 # Counter Values:
-4529511957
-96
-1139373876
-415262944
-1062762025
+5307991684
+88
+1200379359
+480241298
+1097718780
 8
-11925701
+13738421
 8
-723563199
-11440659
+718930574
+13152693
 8
-5942557
-2370158100
-2370158100
-64
-64
-
-@PGO_ROOT@/port/android/vk/nvn_vulkan.c;ucap_wait
-# Func Hash:
-135188635704674150
-# Num Counters:
-7
-# Counter Values:
-76250679
-76250631
-38105
-341510046
-341510046
-38153
-38105
+7206647
+2709353831
+2709353831
+24
+24
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;uniform_allocate_overwrite
 # Func Hash:
@@ -23364,10 +23561,10 @@
 # Num Counters:
 6
 # Counter Values:
-680456
-90
-16493660
-6352845
+516118
+30
+13351375
+4076813
 0
 0
 # Num Value Kinds:
@@ -23377,17 +23574,17 @@
 # NumValueSites:
 1
 11
-513:3139356
-257:652425
-129:633741
-65:537605
-32:364739
-16:338334
-64:227070
-33:226669
-128:129623
-512:54219
-256:49064
+513:1701551
+129:523286
+65:510128
+32:475428
+16:348221
+64:162379
+33:154163
+257:129388
+256:62318
+128:9880
+512:79
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;uniform_chunk_new
 # Func Hash:
@@ -23395,7 +23592,7 @@
 # Num Counters:
 4
 # Counter Values:
-90
+30
 0
 0
 0
@@ -23412,7 +23609,7 @@
 # NumValueSites:
 1
 1
-513:90
+513:30
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;uniform_driver
 # Func Hash:
@@ -23420,9 +23617,9 @@
 # Num Counters:
 4
 # Counter Values:
-1272170
-840779
-1435
+1676282
+1102054
+12
 0
 # Num Value Kinds:
 1
@@ -23431,11 +23628,11 @@
 # NumValueSites:
 3
 1
-513:840779
+513:1102054
 1
-513:1270735
+513:1676270
 1
-513:1270735
+513:1676270
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;upscale_image_make_as
 # Func Hash:
@@ -23485,15 +23682,14 @@
 # Num Counters:
 1
 # Counter Values:
-61297
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
 0
 # NumValueSites:
 1
-1
-** External Symbol **:61297
+0
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;upscale_pipeline
 # Func Hash:
@@ -23528,7 +23724,7 @@
 0
 0
 0
-65342
+88224
 0
 0
 0
@@ -23603,13 +23799,13 @@
 8
 # Counter Values:
 0
-713252799
-149573
+950103927
+180063
 0
 0
-645986996
-4604953
-645986962
+857846658
+5945470
+857846658
 
 @PGO_ROOT@/port/android/vk/nvn_vulkan.c;zc_buffer_at
 # Func Hash:
@@ -23617,20 +23813,20 @@
 # Num Counters:
 15
 # Counter Values:
-6905805648
-28292481
-591973647
+9396452252
+30926139
+808985469
 0
-591973647
-10189
-591973647
+808985469
+11038
+808985469
 0
-591973647
-591973647
+808985469
+808985469
 0
-591963458
-3806842525
-3806842525
+808974431
+5161318461
+5161318461
 0
 
 @PGO_ROOT@/port/android/vk/pending_ranges.c;node_new
@@ -23639,16 +23835,16 @@
 # Num Counters:
 12
 # Counter Values:
-838437
-984
-42268480
-42268480
-47085475
+1271349
+1095
+64059244
+64059244
+70025524
 0
-38334591
-15675809
+57606966
+23738882
 0
-3933889
+6452278
 0
 0
 
@@ -23670,10 +23866,11 @@
 
 ANativeActivity_onCreate
 # Func Hash:
-1000185727205477592
+589843464997298254
 # Num Counters:
-67
+68
 # Counter Values:
+0
 0
 0
 0
@@ -23927,9 +24124,9 @@ audio_buffer_empty
 # Num Counters:
 3
 # Counter Values:
-6376880
-6376880
-6376880
+6428319
+6428319
+6428319
 
 audio_device_handler
 # Func Hash:
@@ -24096,10 +24293,10 @@ audio_mixer_effect_result
 # Num Counters:
 4
 # Counter Values:
-4304560
-4304560
+4310928
+4310928
 0
-269035
+269433
 
 audio_mixer_read
 # Func Hash:
@@ -24121,132 +24318,132 @@ audio_mixer_render
 # Counter Values:
 0
 0
-2332860480
-11758016
+2332817280
+11854028
 0
-2077945920
-885022320
+2017743360
+920457120
 0
-1890049
-61561596
-0
-0
-32621940
-9720252
+1890014
+61560456
 0
 0
-8658108
-9720252
+31377612
+9720072
 0
 0
-1410961920
-474184320
-0
-8658108
-3687593
-7560196
-0
-9664356
-129603360
-1898352
-5436990
-1080028
-1170324651
-3801004
-5436990
-10260266
-0
-5436990
-11390112
-5436990
-270007
-0
-5436990
-1975768
+8407264
+9720072
 0
 0
-1410961920
-11758016
-1975768
+1422483360
+477419040
+0
+8407264
+3835238
+7560056
+0
+7907034
+129600960
+1911900
+5229602
+1080008
+1191292342
+1988649
+5229602
+10260076
+0
+5229602
+11471400
+5229602
+270002
+0
+5229602
+1989246
 0
 0
-3240084
-25920672
-69121792
-2970077
-2160056
-2160056
-129603360
-3687593
-9664356
-64801680
-1898352
-2430063
-5972072
-2160056
-0
-270007
-1871956
-18629
-1170324651
-3801004
+1422483360
+11854028
+1989246
 0
 0
+3240024
+25920192
+69120512
+2970022
+2160016
+2160016
+129600960
+3835238
+7907034
+64800480
+1911900
+2430018
+6029748
+2160016
 0
-0
-0
-2160056
-1898352
-270007
-5881925
-0
-270007
-0
-1620042
-1890049
-1898352
-5881925
-1620042
-0
-0
-1620042
-64801680
-0
-0
-5879008
-0
-270007
-0
-0
-0
-64801680
-64801680
-64801680
-64801680
-64801680
+270002
+1804962
+18656
+1191292342
+1988649
 0
 0
 0
 0
 0
-1871956
-4007052
+2160016
+1911900
+270002
+5929951
+0
+270002
+0
+1620012
+1890014
+1911900
+5929951
+1620012
+0
+0
+1620012
+64800480
+0
+0
+5927014
+0
+270002
 0
 0
 0
-270007
-270007
-270007
-0
-270007
-1871956
-1898352
-0
-270007
+64800480
+64800480
+64800480
+64800480
+64800480
 0
 0
 0
-270007
+0
+0
+1804962
+4122052
+0
+0
+0
+270002
+270002
+270002
+0
+270002
+1804962
+1911900
+0
+270002
+0
+0
+0
+270002
 0
 0
 0
@@ -24256,14 +24453,14 @@ audio_mixer_render
 0
 0
 0
-5879008
-32621940
-11390112
-2970077
+5927014
+31377612
+11471400
+2970022
 0
 0
-10260266
-61561596
+10260076
+61560456
 0
 0
 0
@@ -24287,9 +24484,9 @@ audio_mixer_render
 # NumValueSites:
 3
 1
-513:270007
+513:270002
 1
-513:270007
+513:270002
 0
 
 audio_mixer_set_running
@@ -24324,48 +24521,48 @@ audio_mixer_update_effects
 0
 0
 0
-4035527
-269036
-4035528
-269036
+4041495
+269433
+4041495
+269433
 0
-4304564
-0
-0
-0
-0
-0
-269036
-0
-0
-0
-0
-4304564
-0
-0
-0
-15135
-0
-269035
-0
-0
-0
-0
-269035
-269035
-269036
-0
-0
-0
-4304564
+4310928
 0
 0
 0
 0
 0
+269433
 0
 0
-15135
+0
+0
+4310928
+0
+0
+0
+15832
+0
+269433
+0
+0
+0
+0
+269433
+269433
+269433
+0
+0
+0
+4310928
+0
+0
+0
+0
+0
+0
+0
+15832
 
 audio_mixer_update_routing
 # Func Hash:
@@ -24373,30 +24570,25 @@ audio_mixer_update_routing
 # Num Counters:
 50
 # Counter Values:
-1781186
+2170810
 0
 0
 0
 0
-3131
-1781186
+2954
+2170810
 0
 0
-1781186
+2170810
 0
 0
-3155
-890593
+3007
+1085405
 0
-269035
-0
-0
-269035
+269433
 0
 0
-0
-0
-0
+269433
 0
 0
 0
@@ -24416,13 +24608,18 @@ audio_mixer_update_routing
 0
 0
 0
-269035
-890593
-890593
 0
-890593
-890593
-269035
+0
+0
+0
+0
+269433
+1085405
+1085405
+0
+1085405
+1085405
+269433
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -24430,11 +24627,11 @@ audio_mixer_update_routing
 # NumValueSites:
 3
 3
-0:2106
-9:1033
+0:2017
+9:974
 8:16
 1
-129:890593
+129:1085405
 0
 
 audio_reverb_free
@@ -24444,7 +24641,7 @@ audio_reverb_free
 3
 # Counter Values:
 0
-4035540
+4041495
 0
 
 audio_reverb_process
@@ -24453,30 +24650,30 @@ audio_reverb_process
 # Num Counters:
 26
 # Counter Values:
-1296033600
-259206720
-259206720
-259206720
-526123
-553795
-59812
+1296009600
+259201920
+259201920
+259201920
+526124
+553785
+59837
 0
-259206720
+259201920
 28822500
 0
-1296033600
+1296009600
 0
 0
-64801680
+64800480
 3375
 0
 3375
-270007
+270002
 0
-64798305
-258680601
-258652928
-259146907
+64797105
+258675804
+258648135
+259142100
 0
 0
 
@@ -24486,20 +24683,20 @@ audio_reverb_update
 # Num Counters:
 15
 # Counter Values:
-302680
-60536
-60536
-60536
-60536
-60536
-15134
-13396
-15134
-15134
+316620
+63324
+63324
+63324
+63324
+63324
+15831
+14153
+15831
+15831
 0
-15134
-13396
-15134
+15831
+14153
+15831
 0
 
 audio_voices_prepare
@@ -24510,19 +24707,19 @@ audio_voices_prepare
 # Counter Values:
 0
 0
-23527700
-501155
-7724
-2900
-1850
-25920672
-5972072
+23719804
+504960
+8020
+3248
+1962
+25920192
+6029748
 0
-5881925
-1931
+5929951
+2005
 0
 0
-270007
+270002
 0
 0
 
@@ -24545,17 +24742,17 @@ compat_decommit
 0
 0
 0
-48770
+48774
 0
 0
-48770
-48770
-48770
-48770
+48774
+48774
+48774
+48774
 0
-48770
-48770
-48770
+48774
+48774
+48774
 0
 
 compat_guest_overlay
@@ -24565,20 +24762,20 @@ compat_guest_overlay
 15
 # Counter Values:
 0
-37547588
-37533982
-30180988
+37628414
+37614830
+30181724
 0
 0
 0
 0
 0
 0
-13606
+13584
 0
 0
 0
-13606
+13584
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -24586,7 +24783,7 @@ compat_guest_overlay
 # NumValueSites:
 1
 1
-513:13606
+513:13584
 
 compat_guest_remap
 # Func Hash:
@@ -24603,14 +24800,14 @@ compat_guest_unoverlay
 # Num Counters:
 8
 # Counter Values:
-42433657
-42418310
-15347
+38891314
+38877205
+14109
 0
-15347
-15347
-42449004
-15347
+14109
+14109
+38905423
+14109
 
 compat_overlay_count
 # Func Hash:
@@ -24618,7 +24815,7 @@ compat_overlay_count
 # Num Counters:
 1
 # Counter Values:
-1090
+1473
 
 dm_android_asset
 # Func Hash:
@@ -24639,8 +24836,8 @@ dm_android_clock_ns
 # Num Counters:
 2
 # Counter Values:
-12622199905
-12686729203
+15518661510
+15518053059
 
 dm_android_controls
 # Func Hash:
@@ -24719,29 +24916,29 @@ dm_android_perf_hint_frame
 # Counter Values:
 0
 0
-65344
-65344
-65344
+88225
+88225
+88225
 0
-65344
-0
-0
-0
-65344
-0
-58
+88225
 0
 0
+0
+88225
+0
+71
 0
 0
 0
 0
-65344
+0
+0
+88225
 0
 0
 0
-65344
-65344
+88225
+88225
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -24758,7 +24955,7 @@ dm_android_perf_hint_frame
 1
 ** External Symbol **:0
 1
-** External Symbol **:65344
+** External Symbol **:88225
 
 dm_android_perf_hint_thread
 # Func Hash:
@@ -24807,42 +25004,41 @@ dm_android_read_memory
 # Counter Values:
 0
 0
-39912760
+21272754
 0
-39912760
-0
-0
+21272754
 0
 0
 0
-13345243
-0
-11310145
-0
-770598
-0
-398266
 0
 0
-398266
+3230353
+0
+682119
+0
+499875
+0
+0
+0
+0
+0
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
-14
-32:12465170
-513:11219603
-4:5518513
-16:2910132
-33:2249002
-64:1991425
-65:1704617
-8:1433302
-256:252298
-257:90542
-129:78185
+13
+4:7349017
+16:3458382
+64:2657153
+33:2646087
+65:2279931
+8:1931868
+513:563306
+256:223872
+257:118813
+129:44431
 3:0
 6:0
 512:0
@@ -24853,8 +25049,8 @@ dm_android_read_ranges
 # Num Counters:
 4
 # Counter Values:
-108041993
-65349
+162524166
+2583347
 0
 0
 # Num Value Kinds:
@@ -24865,17 +25061,17 @@ dm_android_read_ranges
 2
 0
 11
-513:65484687
-257:17081065
-129:14097662
-64:5299810
-128:3407591
-512:900516
-65:781499
-33:481862
-256:437535
-4:65349
-32:4417
+513:71886914
+256:24118677
+257:22648582
+129:16687486
+64:7643127
+128:4384179
+512:3289714
+65:643112
+33:364791
+4:88231
+32:5113
 
 dm_android_report
 # Func Hash:
@@ -24902,10 +25098,10 @@ dm_android_sha256_final
 # Num Counters:
 5
 # Counter Values:
-2261568
-565344
-565392
-70674
+2242560
+560640
+560640
+70080
 0
 # Num Value Kinds:
 1
@@ -24914,10 +25110,8 @@ dm_android_sha256_final
 # NumValueSites:
 2
 0
-4
-33:70668
-17:6
-9:0
+2
+33:70080
 32:0
 
 dm_android_sha256_init
@@ -24926,7 +25120,7 @@ dm_android_sha256_init
 # Num Counters:
 1
 # Counter Values:
-70650
+70084
 
 dm_android_sha256_update
 # Func Hash:
@@ -24934,21 +25128,20 @@ dm_android_sha256_update
 # Num Counters:
 4
 # Counter Values:
-6175994
-1438
+6208438
+6
 0
-141316
+140134
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
 1
 # NumValueSites:
 1
-5
-6:710
-16:710
-9:12
-17:6
+4
+9:6
+1:0
+17:0
 33:0
 
 dm_android_window_acquire
@@ -24975,7 +25168,7 @@ dm_brightness_now
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 dm_detclock_enabled
 # Func Hash:
@@ -24983,7 +25176,7 @@ dm_detclock_enabled
 # Num Counters:
 1
 # Counter Values:
-457987
+530118
 
 dm_fault_hook_register
 # Func Hash:
@@ -25056,7 +25249,7 @@ dm_guest_frame_tick
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 dm_guest_write_prep_register
 # Func Hash:
@@ -25073,8 +25266,8 @@ dm_guest_write_prepare
 # Num Counters:
 2
 # Counter Values:
-30735634
-30735598
+40958864
+40958828
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -25082,7 +25275,7 @@ dm_guest_write_prepare
 # NumValueSites:
 1
 1
-** External Symbol **:30735363
+** External Symbol **:40958572
 
 dm_longframe_note
 # Func Hash:
@@ -25090,7 +25283,7 @@ dm_longframe_note
 # Num Counters:
 1
 # Counter Values:
-1289
+1319
 
 dm_main_yield_stats
 # Func Hash:
@@ -25259,20 +25452,20 @@ dm_pending_ranges_insert
 15
 # Counter Values:
 0
-9851045
+14065158
 0
-9851045
+14065158
 0
-9851045
+14065158
 0
-9492031
+13579343
 0
-9492031
-9851045
+13579343
+14065158
 0
-62
+101
 0
-20
+32
 
 dm_pending_ranges_overlap
 # Func Hash:
@@ -25281,22 +25474,22 @@ dm_pending_ranges_overlap
 19
 # Counter Values:
 0
-125439973
-44837577
-35932962
-35932962
-18542556
-35932962
-35744465
-21376973
-294081679
-294081679
+136939579
+38238498
+30480948
+30480948
+10854706
+30480948
+30298994
+21931897
+331380911
+331380911
 0
-294081679
+331380911
 0
-294081679
-89704131
-294081679
+331380911
+106673538
+331380911
 0
 0
 
@@ -25306,10 +25499,10 @@ dm_pending_ranges_reset
 # Num Counters:
 4
 # Counter Values:
-1869728
-19178823
-934864
-934864
+2550690
+28722886
+1275345
+1275345
 
 dm_perf_present
 # Func Hash:
@@ -25317,7 +25510,7 @@ dm_perf_present
 # Num Counters:
 1
 # Counter Values:
-65348
+88231
 
 dm_sched_stats
 # Func Hash:
@@ -25325,8 +25518,8 @@ dm_sched_stats
 # Num Counters:
 2
 # Counter Values:
-261396
-65349
+352924
+88231
 
 dm_shot_written
 # Func Hash:
@@ -25342,7 +25535,7 @@ dm_svc_kind_count
 # Num Counters:
 1
 # Counter Values:
-326745
+441155
 
 dm_svc_kind_ns
 # Func Hash:
@@ -25350,7 +25543,7 @@ dm_svc_kind_ns
 # Num Counters:
 1
 # Counter Values:
-326745
+441155
 
 dm_svc_stats
 # Func Hash:
@@ -25358,7 +25551,7 @@ dm_svc_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 dm_thermal_now
 # Func Hash:
@@ -26150,7 +26343,7 @@ dm_vk_driver_prepare_shader_stage
 # Num Counters:
 10
 # Counter Values:
-25573
+23216
 0
 0
 0
@@ -26268,7 +26461,7 @@ ipc_guest
 # Num Counters:
 3
 # Counter Values:
-2698128
+2698882
 0
 0
 
@@ -26304,7 +26497,7 @@ mach_absolute_time
 # Num Counters:
 1
 # Counter Values:
-2925953728
+3772049217
 
 mach_continuous_time
 # Func Hash:
@@ -26320,7 +26513,7 @@ mach_port_deallocate
 # Num Counters:
 1
 # Counter Values:
-130836
+176600
 
 mach_port_mod_refs
 # Func Hash:
@@ -26336,7 +26529,7 @@ mach_task_self
 # Num Counters:
 1
 # Counter Values:
-2345298
+3160418
 
 mach_thread_self
 # Func Hash:
@@ -26344,7 +26537,7 @@ mach_thread_self
 # Num Counters:
 1
 # Counter Values:
-130836
+176600
 
 mach_timebase_info
 # Func Hash:
@@ -26352,7 +26545,7 @@ mach_timebase_info
 # Num Counters:
 1
 # Counter Values:
-2921716475
+3767913764
 
 mach_vm_allocate
 # Func Hash:
@@ -26399,10 +26592,10 @@ mach_vm_read_overwrite
 # Num Counters:
 4
 # Counter Values:
-2214026
+2983254
 0
 0
-2214026
+2983254
 
 mach_vm_region
 # Func Hash:
@@ -26668,7 +26861,7 @@ mfx_enabled
 # Num Counters:
 1
 # Counter Values:
-1571640
+1504319
 
 mfx_latch
 # Func Hash:
@@ -26699,7 +26892,7 @@ movie_host_tick
 0
 0
 0
-1045584
+1411696
 0
 0
 0
@@ -26709,7 +26902,7 @@ movie_host_tick
 0
 0
 0
-65349
+88231
 # Num Value Kinds:
 2
 # ValueKind = IPVK_IndirectCallTarget:
@@ -26731,34 +26924,34 @@ mtl_addr
 # Num Counters:
 28
 # Counter Values:
-1494762
+1531957
 0
-2021786669
-54795175
-56207443
-1412268
-172729773
-71680519
-172729773
-171235011
-71016812
-0
-0
-1438616
-172729773
-70428848
-1438616
-1438616
-69599586
-1438616
-68893213
+40969923
+42887020
+44418977
+1531957
+3465710
+95825745
+3465710
+1933753
+95284962
 0
 0
-706373
-1294502281
-1294502281
-172647279
-171235011
+1933753
+3465710
+94602265
+1933753
+1933753
+93354894
+1933753
+92360035
+0
+0
+994859
+28820188
+28820188
+3465710
+1933753
 
 mtl_alloc_stats
 # Func Hash:
@@ -26774,7 +26967,7 @@ mtl_args_stats
 # Num Counters:
 1
 # Counter Values:
-65567
+88528
 
 mtl_blit_stats
 # Func Hash:
@@ -26782,7 +26975,7 @@ mtl_blit_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_bw
 # Func Hash:
@@ -26790,7 +26983,7 @@ mtl_bw
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_chunk_commits
 # Func Hash:
@@ -26798,7 +26991,7 @@ mtl_chunk_commits
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_create_ns
 # Func Hash:
@@ -26806,7 +26999,7 @@ mtl_create_ns
 # Num Counters:
 1
 # Counter Values:
-130698
+176462
 
 mtl_create_stats
 # Func Hash:
@@ -26814,7 +27007,7 @@ mtl_create_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_dead_forget
 # Func Hash:
@@ -26822,7 +27015,7 @@ mtl_dead_forget
 # Num Counters:
 1
 # Counter Values:
-101
+147
 
 mtl_dispatch_barrier_stats
 # Func Hash:
@@ -26830,8 +27023,8 @@ mtl_dispatch_barrier_stats
 # Num Counters:
 2
 # Counter Values:
-1090
-218
+1485
+297
 
 mtl_display_hz
 # Func Hash:
@@ -26839,7 +27032,7 @@ mtl_display_hz
 # Num Counters:
 2
 # Counter Values:
-327289
+353656
 0
 
 mtl_drain
@@ -26869,7 +27062,7 @@ mtl_drawable_ns_take
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_ds_omit
 # Func Hash:
@@ -26877,7 +27070,7 @@ mtl_ds_omit
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_exec
 # Func Hash:
@@ -26885,7 +27078,7 @@ mtl_exec
 # Num Counters:
 1
 # Counter Values:
-65420
+88303
 
 mtl_exec_rest
 # Func Hash:
@@ -26893,7 +27086,7 @@ mtl_exec_rest
 # Num Counters:
 1
 # Counter Values:
-130836
+176600
 
 mtl_eye_capture
 # Func Hash:
@@ -27049,7 +27242,7 @@ mtl_gpu_ms
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_gpu_span
 # Func Hash:
@@ -27081,7 +27274,7 @@ mtl_keepalive_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_last_fence
 # Func Hash:
@@ -27089,7 +27282,7 @@ mtl_last_fence
 # Num Counters:
 1
 # Counter Values:
-176058
+225147
 
 mtl_layer_stats
 # Func Hash:
@@ -27097,7 +27290,7 @@ mtl_layer_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_link_active
 # Func Hash:
@@ -27105,7 +27298,7 @@ mtl_link_active
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_link_wait_tick
 # Func Hash:
@@ -27121,7 +27314,7 @@ mtl_mem_stat
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_mv_banks
 # Func Hash:
@@ -27139,7 +27332,7 @@ mtl_noread_mark_frame
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_note_world
 # Func Hash:
@@ -27155,7 +27348,7 @@ mtl_pin_refs
 # Num Counters:
 1
 # Counter Values:
-101
+147
 
 mtl_pipeline_archive_tool
 # Func Hash:
@@ -27171,7 +27364,7 @@ mtl_pkg_miss
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_pkg_stats
 # Func Hash:
@@ -27179,7 +27372,7 @@ mtl_pkg_stats
 # Num Counters:
 1
 # Counter Values:
-130916
+176759
 
 mtl_pool_add
 # Func Hash:
@@ -27188,41 +27381,41 @@ mtl_pool_add
 37
 # Counter Values:
 0
-13606
+13584
 0
-13606
-13606
-0
-0
-13606
-10024
+13584
+13584
 0
 0
-0
-4278
+13584
+10046
 0
 0
 0
-13606
-0
-13606
-13606
+4252
 0
 0
 0
-13606
-13606
-13606
-13606
+13584
+0
+13584
+13584
 0
 0
+0
+13584
+13576
+13584
+13584
 0
 0
 0
 0
-4102
 0
-13606
+0
+4076
+0
+13584
 0
 # Num Value Kinds:
 1
@@ -27231,18 +27424,18 @@ mtl_pool_add
 # NumValueSites:
 9
 1
-** External Symbol **:13606
+** External Symbol **:13584
 1
-** External Symbol **:13606
+** External Symbol **:13584
 1
 ** External Symbol **:0
 1
-** External Symbol **:13606
+** External Symbol **:13584
 1
-** External Symbol **:13598
+** External Symbol **:13584
 0
 1
-** External Symbol **:13586
+** External Symbol **:13584
 0
 0
 
@@ -27252,7 +27445,7 @@ mtl_pool_addressed
 # Num Counters:
 1
 # Counter Values:
-259463370
+350560368
 
 mtl_pool_del
 # Func Hash:
@@ -27260,15 +27453,15 @@ mtl_pool_del
 # Num Counters:
 10
 # Counter Values:
-46041
-10705552
-10690205
+42327
+9161265
+9147156
 0
 0
-15347
-15347
-15347
-15347
+14109
+14109
+14109
+14109
 0
 # Num Value Kinds:
 1
@@ -27277,9 +27470,9 @@ mtl_pool_del
 # NumValueSites:
 2
 1
-** External Symbol **:15347
+** External Symbol **:14109
 1
-** External Symbol **:15347
+** External Symbol **:14109
 
 mtl_pool_forget_address
 # Func Hash:
@@ -27287,7 +27480,7 @@ mtl_pool_forget_address
 # Num Counters:
 1
 # Counter Values:
-15347
+14109
 
 mtl_pool_invalidate
 # Func Hash:
@@ -27295,7 +27488,7 @@ mtl_pool_invalidate
 # Num Counters:
 2
 # Counter Values:
-2010929
+2433977
 0
 
 mtl_pool_res_stats
@@ -27304,7 +27497,7 @@ mtl_pool_res_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_pool_zero_copy
 # Func Hash:
@@ -27312,27 +27505,28 @@ mtl_pool_zero_copy
 # Num Counters:
 3
 # Counter Values:
-164
-13606
-13606
+236
+13584
+13584
 
 mtl_present
 # Func Hash:
-355387712034213134
+835785529437030532
 # Num Counters:
-287
+345
 # Counter Values:
 0
 0
 0
 0
 0
-65344
+88225
 0
 0
 0
 0
 0
+88225
 0
 0
 0
@@ -27349,57 +27543,60 @@ mtl_present
 0
 0
 0
+88225
+88225
 0
+88233
 0
-65344
-65344
 0
-65342
+88225
 0
 0
-65344
 0
 0
 0
 0
 0
 0
+88225
 0
 0
-65344
 0
 0
-65344
+88225
 0
 0
-65344
-65344
 0
 0
+88225
 0
+88225
 0
 0
 0
 0
-65344
 0
 0
-65344
 0
-65344
 0
 0
 0
 0
 0
+88225
+88225
 0
 0
+88225
 0
 0
 0
+88225
+49358
+88225
+3228
 0
 0
-65344
 0
 0
 0
@@ -27420,6 +27617,8 @@ mtl_present
 0
 0
 0
+88225
+88225
 0
 0
 0
@@ -27427,6 +27626,8 @@ mtl_present
 0
 0
 0
+88225
+3228
 0
 0
 0
@@ -27441,8 +27642,10 @@ mtl_present
 0
 0
 0
+88225
 0
 0
+3228
 0
 0
 0
@@ -27459,6 +27662,7 @@ mtl_present
 0
 0
 0
+146
 0
 0
 0
@@ -27544,9 +27748,6 @@ mtl_present
 0
 0
 0
-65344
-65344
-65344
 0
 0
 0
@@ -27575,6 +27776,9 @@ mtl_present
 0
 0
 0
+88225
+88225
+88225
 0
 0
 0
@@ -27597,11 +27801,58 @@ mtl_present
 0
 0
 0
-65344
-65344
 0
-65344
-65344
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+88225
+88225
+0
+88225
+88225
+0
+0
+0
+88225
+0
+88225
+3228
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
 0
 0
 0
@@ -27610,11 +27861,11 @@ mtl_present
 0
 0
 # Num Value Kinds:
-2
+1
 # ValueKind = IPVK_IndirectCallTarget:
 0
 # NumValueSites:
-16
+13
 0
 0
 0
@@ -27627,14 +27878,6 @@ mtl_present
 0
 0
 0
-0
-0
-0
-0
-# ValueKind = IPVK_MemOPSize:
-1
-# NumValueSites:
-1
 0
 
 mtl_present_qos
@@ -27643,7 +27886,7 @@ mtl_present_qos
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_present_wait
 # Func Hash:
@@ -27651,10 +27894,10 @@ mtl_present_wait
 # Num Counters:
 6
 # Counter Values:
-65349
-65349
+88231
+88231
 0
-65348
+88229
 0
 0
 
@@ -27664,7 +27907,7 @@ mtl_presented_time
 # Num Counters:
 1
 # Counter Values:
-130698
+176462
 
 mtl_preview_hold
 # Func Hash:
@@ -27696,22 +27939,22 @@ mtl_prog_prefetch
 # Num Counters:
 17
 # Counter Values:
-54946
-54946
-54946
-27840
-27840
-27840
-27834
+55258
+55258
+55258
+27994
+27994
+27994
+27990
 0
 0
 0
 0
 0
 0
-54946
+55258
 0
-54224
+54536
 0
 
 mtl_prog_release
@@ -27720,10 +27963,10 @@ mtl_prog_release
 # Num Counters:
 4
 # Counter Values:
-382223
-381621
-37536
-602
+385279
+384681
+37710
+598
 
 mtl_qo_arm
 # Func Hash:
@@ -27840,8 +28083,8 @@ mtl_reg_samp
 # Num Counters:
 5
 # Counter Values:
-349
-349
+431
+431
 8
 0
 0
@@ -27860,14 +28103,14 @@ mtl_reg_tex
 # Num Counters:
 15
 # Counter Values:
-910846
-910846
-910846
+1115984
+1115984
+1115984
 0
-3073083
-178906
-178906
-178906
+4073754
+153344
+153344
+153344
 0
 0
 0
@@ -27882,7 +28125,7 @@ mtl_ren_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_scan_stats
 # Func Hash:
@@ -27890,7 +28133,7 @@ mtl_scan_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_screen_attach
 # Func Hash:
@@ -27942,7 +28185,7 @@ mtl_set_frame
 # Num Counters:
 1
 # Counter Values:
-65342
+88233
 
 mtl_shot_at_present
 # Func Hash:
@@ -27950,7 +28193,7 @@ mtl_shot_at_present
 # Num Counters:
 1
 # Counter Values:
-65344
+88225
 
 mtl_stats
 # Func Hash:
@@ -27958,7 +28201,7 @@ mtl_stats
 # Num Counters:
 1
 # Counter Values:
-130916
+176759
 
 mtl_stereo_project
 # Func Hash:
@@ -27974,95 +28217,93 @@ mtl_stereo_replay
 # Num Counters:
 1
 # Counter Values:
-65420
+88303
 
 mtl_sub_begin
 # Func Hash:
-167348422730237492
+902189278246254253
 # Num Counters:
-115
+117
 # Counter Values:
-16827480
+22956354
 0
-2902396
-1967536
-934860
-245942
-5609160
-19842011
-934860
-9076564
-957296640
+3954713
+2679360
+1275353
+334920
+7652118
+26671788
+1275353
+6562149
+1305961472
 0
-934860
-19842011
-18907151
-157442683
-6540
-8720
-0
-0
-0
-19227766
-1102
-0
-19227766
-24411
-13672476
-5693650
-0
-4909654
-2180
-934860
-934860
-934860
-122826
-0
-934860
-4907980
-0
-15897
-15897
-15897
-934860
-65342
+1275353
+26671788
+334920
+334920
+25396435
+225388491
+8838
+11784
 0
 0
 0
+20705487
+1485
 0
-358931
-1509591
+20705487
+24336
+13321892
+6949610
+0
+5890922
+2946
+1275353
+1275353
+1275353
+169285
+0
+1275353
+5890550
+0
+21516
+21516
+21516
+1275353
+88224
 0
 0
 0
 0
-0
-0
-0
-1509591
-3187
-1509591
-0
-0
-850289
-0
-0
-1090
-1090
-1090
-110
-327625
-1090
-1090
-1090
-1090
-1090
-327625
-3160
+485734
+1764530
 0
 0
 0
 0
+0
+0
+0
+1764530
+3040
+1764530
+0
+0
+1146962
+0
+0
+1473
+1473
+1473
+146
+441170
+1473
+1473
+1473
+1473
+1473
+441170
+3040
 0
 0
 0
@@ -28091,11 +28332,15 @@ mtl_sub_begin
 0
 0
 0
-18226740
 0
-157770317
-327625
-327625
+0
+0
+0
+24880347
+0
+225829662
+441170
+441170
 0
 # Num Value Kinds:
 1
@@ -28112,69 +28357,59 @@ mtl_sub_begin
 1
 ** External Symbol **:0
 1
-** External Symbol **:934861
+** External Symbol **:1275354
 0
 0
 0
 1
 ** External Symbol **:0
 
-mtl_sub_capture_copy
-# Func Hash:
-798733564245436077
-# Num Counters:
-5
-# Counter Values:
-65421
-65421
-65349
-38105
-110
-
 mtl_sub_capture_ubos
 # Func Hash:
-43325394265118131
+1059013208109254640
 # Num Counters:
-38
+40
 # Counter Values:
-122265129
-1152107025
-83646720
-1152107025
-65421
-230421405
-108041993
-230356056
-108041993
-230421405
-326745
-78051939
-34294490
-122296918
-34294490
-113495071
-113463282
-91744456
-23404247
-23404247
-65349
+88244253
+753811854
+67761408
+753811854
+88303
+251270618
+163026365
+21079831
+251182387
+163026365
+251182387
+352924
+264693
+88244253
+88244253
+88244253
+7516
+88231
 72
-65349
+80715
+88231
+8
 0
-65349
-9
-0
-0
-0
-0
+88231
+7
 0
 0
-392094
 0
 0
-65349
-65349
 0
+0
+0
+441155
+0
+0
+88231
+88231
+0
+72
+72
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -28182,9 +28417,9 @@ mtl_sub_capture_ubos
 # NumValueSites:
 1
 4
-513:65349
-64:0
-128:0
+513:88231
+32:0
+65:0
 257:0
 
 mtl_sub_commit
@@ -28193,39 +28428,39 @@ mtl_sub_commit
 # Num Counters:
 33
 # Counter Values:
-182984
+196793
 0
 0
 0
-934857
-934857
-122831
+1275347
+1275347
+169286
 0
-934857
-864277
-256605
-465733
-934857
-65342
+1275346
+1180589
 0
-0
-70580
+640397
+1275347
+88224
 0
 0
-0
-0
+94757
 0
 0
 0
 0
 0
 0
-678252
-678252
-934857
 0
-934857
-934857
+0
+0
+0
+1275347
+1275347
+1275347
+0
+1275347
+1275347
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -28234,7 +28469,7 @@ mtl_sub_commit
 2
 0
 1
-** External Symbol **:934857
+** External Symbol **:1275347
 
 mtl_sub_index
 # Func Hash:
@@ -28242,7 +28477,7 @@ mtl_sub_index
 # Num Counters:
 1
 # Counter Values:
-65420
+88303
 
 mtl_sub_job_time
 # Func Hash:
@@ -28250,7 +28485,7 @@ mtl_sub_job_time
 # Num Counters:
 1
 # Counter Values:
-65421
+88303
 
 mtl_sub_snapshot_ubos_cap
 # Func Hash:
@@ -28258,11 +28493,11 @@ mtl_sub_snapshot_ubos_cap
 # Num Counters:
 6
 # Counter Values:
-108040081
-108040081
-65420
-65420
-65348
+163026365
+163026365
+88303
+88303
+88231
 0
 
 mtl_sub_snapshot_ubos_rest
@@ -28317,7 +28552,7 @@ mtl_ub_present
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_ucap_dup
 # Func Hash:
@@ -28357,7 +28592,7 @@ mtl_udc_saved_bytes
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_upload_bytes
 # Func Hash:
@@ -28365,7 +28600,7 @@ mtl_upload_bytes
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_upload_gpu_ns_take
 # Func Hash:
@@ -28373,7 +28608,7 @@ mtl_upload_gpu_ns_take
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_upload_ns_take
 # Func Hash:
@@ -28381,7 +28616,7 @@ mtl_upload_ns_take
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_upload_wait_stats
 # Func Hash:
@@ -28389,7 +28624,7 @@ mtl_upload_wait_stats
 # Num Counters:
 1
 # Counter Values:
-218
+297
 
 mtl_use_stats
 # Func Hash:
@@ -28397,7 +28632,7 @@ mtl_use_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_variant_stats
 # Func Hash:
@@ -28405,7 +28640,7 @@ mtl_variant_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_view_stats
 # Func Hash:
@@ -28413,7 +28648,26 @@ mtl_view_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
+
+mtl_wait
+# Func Hash:
+804816984691703076
+# Num Counters:
+12
+# Counter Values:
+0
+429659
+795764
+366105
+1785400
+1520609
+158098
+158110
+158110
+0
+0
+0
 
 mtl_wait_stats
 # Func Hash:
@@ -28421,7 +28675,7 @@ mtl_wait_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 mtl_warm_wait
 # Func Hash:
@@ -28440,7 +28694,7 @@ mtl_wb_fence_done
 # Num Counters:
 1
 # Counter Values:
-130767
+176531
 
 mtl_wb_storage_reused
 # Func Hash:
@@ -28448,7 +28702,7 @@ mtl_wb_storage_reused
 # Num Counters:
 1
 # Counter Values:
-3087115
+4087954
 
 mtl_write_texels
 # Func Hash:
@@ -28456,40 +28710,38 @@ mtl_write_texels
 # Num Counters:
 45
 # Counter Values:
-2510888
-2510888
-34960
-34960
-34960
-34960
-34960
+2360640
+2360640
+34752
+34752
+34752
+34752
+34752
 0
-34960
-17115
-17115
-34960
-17115
-17115
+34752
+16687
+16687
+34752
+16687
+16687
 0
-17115
-17115
-17115
+16687
+16687
+16687
 0
-17115
-17115
-0
-0
-17115
-17115
-17115
-17115
-17115
-0
-17115
-17115
-17115
+16687
+16687
 0
 0
+16687
+16687
+16687
+16687
+16687
+0
+16687
+16687
+16687
 0
 0
 0
@@ -28499,8 +28751,10 @@ mtl_write_texels
 0
 0
 0
-17115
-34960
+0
+0
+16687
+34752
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -28508,8 +28762,8 @@ mtl_write_texels
 # NumValueSites:
 2
 15
-513:2374298
-3:64206
+513:2223258
+3:64998
 257:25352
 129:15144
 65:7418
@@ -28524,8 +28778,8 @@ mtl_write_texels
 8:154
 7:84
 15
-513:2374298
-3:64206
+513:2223258
+3:64998
 257:25352
 129:15144
 65:7418
@@ -28554,7 +28808,7 @@ now_ns
 # Num Counters:
 1
 # Counter Values:
-2821012011
+3635799112
 
 nvn_bind_handles_deferred
 # Func Hash:
@@ -28562,7 +28816,7 @@ nvn_bind_handles_deferred
 # Num Counters:
 2
 # Counter Values:
-22224353
+30190513
 0
 
 nvn_copy_ubo_ranges
@@ -28573,8 +28827,8 @@ nvn_copy_ubo_ranges
 # Counter Values:
 0
 0
-65421
-65421
+88303
+88303
 0
 0
 0
@@ -28585,7 +28839,7 @@ nvn_deswizzle
 # Num Counters:
 1
 # Counter Values:
-881174
+755217
 
 nvn_deswizzle_geom
 # Func Hash:
@@ -28596,15 +28850,15 @@ nvn_deswizzle_geom
 0
 0
 0
-940545
-940545
-940545
-940545
-940545
-940545
-940545
+814305
+814305
+814305
+814305
+814305
+814305
+814305
 0
-940545
+814305
 
 nvn_dirty_add_range
 # Func Hash:
@@ -28612,20 +28866,20 @@ nvn_dirty_add_range
 # Num Counters:
 21
 # Counter Values:
-72
-41579576
-37546488
-29802596
-29789062
-72
-30180150
+256
+41362208
+37627548
+30452428
+30439100
+256
+30181022
 0
-13606
-10746
-72
-2860
-72
-13606
+13584
+10490
+256
+3094
+256
+13584
 0
 0
 0
@@ -28639,27 +28893,25 @@ nvn_dirty_add_range
 1
 # NumValueSites:
 2
-11
-1:9472
-2:762
-3:254
-4:168
-6:28
-5:20
-9:14
-7:10
-8:10
-17:8
+10
+1:9308
+2:752
+3:218
+4:128
+5:26
+9:24
+7:14
+6:12
+8:8
 513:0
-9
-8:9472
-16:762
-17:254
-32:168
-33:58
-65:14
-64:10
-129:8
+8
+8:9308
+16:752
+17:218
+32:128
+33:52
+65:24
+64:8
 513:0
 
 nvn_dirty_gpu_write_begin
@@ -28668,16 +28920,16 @@ nvn_dirty_gpu_write_begin
 # Num Counters:
 10
 # Counter Values:
-12
 0
 0
-17166
-17178
-3160
-3160
-3160
 0
-3160
+14988
+14988
+3040
+3040
+3040
+0
+3040
 
 nvn_dirty_gpu_write_end
 # Func Hash:
@@ -28685,11 +28937,11 @@ nvn_dirty_gpu_write_end
 # Num Counters:
 6
 # Counter Values:
-17178
+14988
 0
-17166
-3160
-3160
+14988
+3040
+3040
 0
 
 nvn_dirty_mp_stats
@@ -28698,7 +28950,7 @@ nvn_dirty_mp_stats
 # Num Counters:
 2
 # Counter Values:
-66439
+89704
 0
 
 nvn_dirty_now
@@ -28707,7 +28959,7 @@ nvn_dirty_now
 # Num Counters:
 1
 # Counter Values:
-31514720
+37963121
 
 nvn_dirty_protect
 # Func Hash:
@@ -28716,22 +28968,22 @@ nvn_dirty_protect
 17
 # Counter Values:
 0
-2149052
-2431384
-2247661
-166395
+2149127
+2439034
+2249502
+173217
 0
 0
 0
-183723
-183723
-183723
-98609
-282332
-2264989
-2264989
-282332
-282332
+189532
+189532
+189532
+100375
+289907
+2265817
+2265817
+289907
+289907
 
 nvn_dirty_read_wait_stats
 # Func Hash:
@@ -28739,7 +28991,7 @@ nvn_dirty_read_wait_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 nvn_dirty_remove_range
 # Func Hash:
@@ -28747,8 +28999,8 @@ nvn_dirty_remove_range
 # Num Counters:
 2
 # Counter Values:
-15347
-15347
+14109
+14109
 
 nvn_dirty_since
 # Func Hash:
@@ -28756,13 +29008,13 @@ nvn_dirty_since
 # Num Counters:
 7
 # Counter Values:
-12541151651
-12541082797
-523862479
-523862479
-523862479
-523862479
-374365909
+16657409914
+16657332338
+622942508
+622942508
+622942508
+622942508
+438011327
 
 nvn_dirty_stats
 # Func Hash:
@@ -28770,7 +29022,7 @@ nvn_dirty_stats
 # Num Counters:
 1
 # Counter Values:
-66657
+90001
 
 nvn_dirty_tracked
 # Func Hash:
@@ -28778,8 +29030,8 @@ nvn_dirty_tracked
 # Num Counters:
 2
 # Counter Values:
-62316782
-62316782
+79700604
+79700604
 
 nvn_display_refresh_ns
 # Func Hash:
@@ -28787,7 +29039,15 @@ nvn_display_refresh_ns
 # Num Counters:
 2
 # Counter Values:
-65349
+88231
+0
+
+nvn_fill_real_set
+# Func Hash:
+742261418966908927
+# Num Counters:
+1
+# Counter Values:
 0
 
 nvn_frame_cap_get
@@ -28796,9 +29056,9 @@ nvn_frame_cap_get
 # Num Counters:
 3
 # Counter Values:
-5995923
-5995923
-5995923
+8833636
+8833636
+8833636
 
 nvn_frame_cap_set
 # Func Hash:
@@ -28815,7 +29075,7 @@ nvn_frame_sleep_ns
 # Num Counters:
 1
 # Counter Values:
-65344
+88225
 
 nvn_plan_yield
 # Func Hash:
@@ -28851,7 +29111,7 @@ nvn_swizzle
 # Num Counters:
 1
 # Counter Values:
-59371
+59088
 
 nvn_tex_level_offset
 # Func Hash:
@@ -28859,17 +29119,17 @@ nvn_tex_level_offset
 # Num Counters:
 11
 # Counter Values:
-289942
+220496
 0
-1180494
-1180472
-289942
-1091215
+1069382
+1069364
+220496
+966771
 0
-70656
+71514
 0
-819904
-1091213
+777364
+966771
 
 nvn_tex_level_tiles
 # Func Hash:
@@ -28877,23 +29137,31 @@ nvn_tex_level_tiles
 # Num Counters:
 18
 # Counter Values:
-270990
+201544
 0
-479335
+364963
 0
-135753
+111492
 0
-1020111
+839760
 0
-940545
-713089
+814305
+554456
 0
-940545
-270990
+814305
+201544
 0
-70656
+71514
 0
-598899
+541247
+0
+
+nvn_translate_cpu_ns
+# Func Hash:
+742261418966908927
+# Num Counters:
+1
+# Counter Values:
 0
 
 nvn_unimpl_c
@@ -28902,6 +29170,16 @@ nvn_unimpl_c
 # Num Counters:
 2
 # Counter Values:
+0
+0
+
+nvn_vkrec_boundary_arm
+# Func Hash:
+238984481799490044
+# Num Counters:
+3
+# Counter Values:
+0
 0
 0
 
@@ -29047,7 +29325,7 @@ pthread_mach_thread_np
 # Num Counters:
 1
 # Counter Values:
-555
+594
 
 qo_ring_dump
 # Func Hash:
@@ -29070,7 +29348,7 @@ recorder_enabled
 # Num Counters:
 4
 # Counter Values:
-65342
+88224
 0
 0
 0
@@ -29081,14 +29359,14 @@ recorder_frame
 # Num Counters:
 9
 # Counter Values:
-45416880
-22708440
-63079
+45835200
+22917600
+63660
 0
 0
 0
-63079
-15
+63660
+14
 0
 
 recorder_set
@@ -29645,19 +29923,19 @@ runtime_dispatch
 # Num Counters:
 13
 # Counter Values:
-531147023
-239435400
-159645100
-159645100
-80086244
-80087969
-60842451
+695772872
+313415418
+208972714
+104486357
+104860018
+105051973
+79970073
 0
-19069316
+24641577
 0
 0
-245476291
-245476291
+319759318
+319759318
 
 runtime_dump_threads
 # Func Hash:
@@ -29733,14 +30011,14 @@ runtime_frame_step_update
 # Num Counters:
 8
 # Counter Values:
-326740
-65348
+441155
+88231
 0
 0
 0
-65348
+88231
 0
-34
+39
 
 runtime_front_focus
 # Func Hash:
@@ -30050,7 +30328,7 @@ runtime_game_fps_limit
 # Num Counters:
 1
 # Counter Values:
-916786
+884872
 
 runtime_game_number
 # Func Hash:
@@ -30483,12 +30761,12 @@ runtime_gamepad_read
 # Num Counters:
 6
 # Counter Values:
-505312
+685748
 0
-126328
-126328
+171437
+171437
 0
-126328
+171437
 
 runtime_gfx_fault
 # Func Hash:
@@ -30511,12 +30789,12 @@ runtime_gfx_fault
 0
 0
 0
-500431
-500674
-500438
+478015
+478114
+477963
 0
 0
-500415
+477963
 0
 0
 0
@@ -30528,7 +30806,7 @@ runtime_gfx_fault
 # NumValueSites:
 1
 1
-** External Symbol **:500592
+** External Symbol **:478075
 
 runtime_gfx_override
 # Func Hash:
@@ -30727,10 +31005,10 @@ runtime_guest_code_pc
 # Num Counters:
 4
 # Counter Values:
-1674639
-369457
-1526159
-1365552
+2478467
+485682
+2145569
+2069294
 
 runtime_guest_committed
 # Func Hash:
@@ -30746,7 +31024,7 @@ runtime_handheld_mode
 # Num Counters:
 1
 # Counter Values:
-757968
+1028622
 
 runtime_heap_base
 # Func Hash:
@@ -30887,8 +31165,8 @@ runtime_image_bytes
 # Num Counters:
 2
 # Counter Values:
-861762
-287254
+932541
+310847
 
 runtime_input_file_start
 # Func Hash:
@@ -30944,37 +31222,33 @@ runtime_ipc_svc
 # Num Counters:
 56
 # Counter Values:
-269036
-807108
+269433
+808299
 0
 0
 0
-807108
-0
-0
-0
-0
-0
-0
-0
-878125
-269035
-0
-0
-0
-269036
+808299
 0
 0
 0
 0
 0
 0
-269035
-269036
+0
+927199
+269433
+0
+0
+0
+269433
 0
 0
 0
 0
+0
+0
+269433
+269433
 0
 0
 0
@@ -30988,7 +31262,11 @@ runtime_ipc_svc
 0
 0
 0
-269036
+0
+0
+0
+0
+269433
 0
 0
 0
@@ -30996,9 +31274,9 @@ runtime_ipc_svc
 0
 0
 0
-269035
-269035
-269035
+269433
+269433
+269433
 0
 # Num Value Kinds:
 2
@@ -31007,7 +31285,7 @@ runtime_ipc_svc
 # NumValueSites:
 1
 4
-@PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;renderer_handler:269036
+@PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;renderer_handler:269433
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/ipc.c;sm:0
 audio_device_handler:0
 @PGO_ROOT@/MacNativeGames/games/totk/runtime/audio_renderer.c;manager_handler:0
@@ -31016,7 +31294,7 @@ audio_device_handler:0
 # NumValueSites:
 1
 4
-0:269036
+0:269433
 2:0
 4:0
 8:0
@@ -31275,12 +31553,12 @@ runtime_motion_feed
 812445
 3999
 3999
-12
+29
 0
-3993
-3969
-3987
-3969
+3970
+3912
+3970
+3912
 0
 0
 270815
@@ -31292,19 +31570,19 @@ runtime_motion_feed
 269482
 0
 1333
-1323
-1323
+1304
+1304
 0
 0
 0
-3
+8
 0
 0
 0
 0
 0
-1323
-3
+1304
+8
 0
 
 runtime_motion_live
@@ -31365,7 +31643,7 @@ runtime_now_ns
 # Num Counters:
 1
 # Counter Values:
-2905534117
+3747047358
 
 runtime_observer
 # Func Hash:
@@ -31469,7 +31747,7 @@ runtime_romfs_handle
 # Num Counters:
 1
 # Counter Values:
-132766
+133183
 
 runtime_romfs_load
 # Func Hash:
@@ -31487,21 +31765,19 @@ runtime_romfs_open
 38
 # Counter Values:
 0
-143100
-135539
-95452
-69164
+143508
+169729
+95684
+69230
 0
-69164
-69148
-47704
+69222
+69212
+47820
 0
-47726
-47726
+47842
+47842
 0
-47292
-0
-0
+47428
 0
 0
 0
@@ -31522,8 +31798,10 @@ runtime_romfs_open
 0
 0
 0
-78456
-78456
+0
+0
+78810
+78810
 # Num Value Kinds:
 1
 # ValueKind = IPVK_IndirectCallTarget:
@@ -31531,7 +31809,7 @@ runtime_romfs_open
 # NumValueSites:
 2
 1
-@PGO_ROOT@/port/android/host/prompts_romfs.c;generate:47722
+@PGO_ROOT@/port/android/host/prompts_romfs.c;generate:47834
 1
 @PGO_ROOT@/port/android/host/prompts_romfs.c;generate:0
 
@@ -31541,9 +31819,9 @@ runtime_romfs_owns
 # Num Counters:
 3
 # Counter Values:
-155112
-155094
-154920
+155196
+155184
+155012
 
 runtime_romfs_read
 # Func Hash:
@@ -31551,25 +31829,25 @@ runtime_romfs_read
 # Num Counters:
 19
 # Counter Values:
-50117
-50117
-50135
-50129
+50313
+50313
+50329
+50319
 0
-50117
+50297
 0
-50133
+50321
 0
-50135
-0
-0
+50317
 0
 0
 0
 0
 0
 0
-50133
+0
+0
+50301
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -31694,7 +31972,7 @@ runtime_svc
 2
 # Counter Values:
 0
-61700508
+81289711
 
 runtime_svc_inner
 # Func Hash:
@@ -31704,7 +31982,7 @@ runtime_svc_inner
 # Counter Values:
 0
 0
-82987
+82768
 0
 0
 0
@@ -31717,14 +31995,14 @@ runtime_svc_inner
 0
 0
 0
-60238286
+79428477
 0
 0
 0
 0
 0
 0
-269035
+269433
 0
 0
 0
@@ -31732,7 +32010,7 @@ runtime_svc_inner
 0
 0
 0
-186921
+187675
 0
 0
 0
@@ -31742,13 +32020,13 @@ runtime_svc_inner
 0
 0
 0
-1646
+2182
 0
-420515
+467929
 0
 0
 0
-1646
+2182
 0
 0
 0
@@ -31782,7 +32060,7 @@ runtime_svc_inner
 0
 0
 0
-204267
+228079
 0
 0
 0
@@ -31803,7 +32081,7 @@ runtime_svc_inner
 0
 0
 0
-12037
+11779
 0
 0
 0
@@ -31921,7 +32199,7 @@ runtime_svc_stats_on
 # Num Counters:
 2
 # Counter Values:
-61805063
+81424978
 0
 
 runtime_swkbd_override
@@ -31958,15 +32236,15 @@ runtime_symbol
 # Num Counters:
 9
 # Counter Values:
-103473
-10428201
+103159
+10396260
 0
-103473
-103473
-310419
-206946
-103473
-206946
+103159
+103159
+309477
+206318
+103159
+206318
 
 runtime_sync_spin_boost
 # Func Hash:
@@ -31991,9 +32269,9 @@ runtime_thread_current_handle
 # Num Counters:
 3
 # Counter Values:
-65349
-65349
-65349
+88231
+88231
+88231
 
 runtime_thread_init
 # Func Hash:
@@ -32104,7 +32382,7 @@ runtime_vr_stick_pitch_locked
 # Num Counters:
 1
 # Counter Values:
-126328
+171437
 
 runtime_watch_set
 # Func Hash:
@@ -32139,7 +32417,7 @@ runtime_watch_tick
 0
 0
 0
-65348
+88231
 0
 0
 0
@@ -32151,7 +32429,7 @@ runtime_watch_tick
 0
 0
 0
-65348
+88231
 0
 
 svc_thread
@@ -32162,81 +32440,81 @@ svc_thread
 # Counter Values:
 0
 0
-6758427
-15804
+6994210
+21980
 0
 0
-32668
-4848841
-26
-545808092
-16058
-538047
-16022
-516014584
-228
-538047
-8468834
-170
-8468810
-389172709
-538047
-467
-60927523
-6716361
-134
-151454
-368659222
-60804324
-60808691
-459
-15662
-538047
+45708
+6339943
+12
+696182057
+22406
+538811
+22400
+658989249
+414
+538811
+10885140
+414
+10885118
+499308552
+538811
+502
+80134677
+6924546
+408
+158140
+473433551
+80135029
+80147000
+490
+21766
+538811
 0
-15804
+21980
 0
 0
-269035
-33263374
-435
+269433
+46527547
+468
 0
 0
-12294346
-26
-8468367
+15656537
+12
+10884638
 0
-33263374
-538047
+46527547
+538811
 0
-11942365
+16792937
 0
 0
-538047
+538811
 0
 0
 0
 0
-12037
+11779
 0
 0
-4701555
-4467098
-150704
-150514
-8640635
-8674397
+6385126
+6080031
+156947
+156596
+11083757
+11111385
 0
 0
 0
 0
-334382
+357661
 0
-269036
+269433
 0
-334382
+357661
 0
 0
-150488
+156532
 0
 0
 0
@@ -32249,9 +32527,9 @@ svc_thread
 0
 0
 0
-469254
-469577
-8675355
+536390
+536604
+11112571
 0
 0
 0
@@ -32261,36 +32539,36 @@ svc_thread
 0
 0
 0
-269011
-26
+269378
+12
 0
 0
 0
 0
 0
 0
-73018
-8467838
+74845
+10884025
 0
 0
-4361635
+5948685
 0
 0
-4374974
+5967126
 0
 0
 0
-269035
-334382
+269433
+357661
 0
-12037
+11779
 0
 0
-8469232
+10885124
 0
 0
 0
-334382
+357661
 0
 0
 0
@@ -32298,35 +32576,35 @@ svc_thread
 0
 0
 0
-102536
+136205
 0
 0
 0
 0
 0
-269011
-73018
+269378
+74845
 0
 0
-269036
-12037
+269433
+11779
 0
-32133037
-33013980
-13097086
+43052592
+44224978
+18600529
 0
-32184171
+43007950
 0
 0
 0
-4977437
-334382
+6485136
+357661
 0
 0
 0
 0
 0
-32850005
+44051800
 0
 0
 0
@@ -32339,26 +32617,26 @@ svc_thread
 0
 0
 0
-32570720
+43583239
 0
 0
 0
 0
 0
-3024347
-96195
-58
+3991448
+111675
+44
 0
 0
-6178901
+7425370
 0
 0
 0
 0
-12037
+11779
 0
 0
-32360784
+43309701
 0
 0
 0
@@ -32382,10 +32660,10 @@ svc_thread
 0
 0
 0
-102523
-33328184
+136205
+46608694
 0
-58
+44
 0
 0
 0
@@ -32408,32 +32686,32 @@ svc_thread
 0
 0
 0
-4374974
+5967126
 0
 0
-1690
+2740
 0
-26
-8676070
+12
+11112772
 0
 0
 0
 0
-128596
-8674820
-7317412
+145193
+11111842
+9172052
 0
-8467851
+10884030
 0
 0
 0
 0
 0
-269035
-538047
-269011
+269433
+538811
+269378
 0
-269011
+269378
 0
 0
 0
@@ -32456,9 +32734,9 @@ task_info
 # Num Counters:
 4
 # Counter Values:
-436
-436
-436
+594
+594
+594
 0
 
 task_threads
@@ -32475,13 +32753,13 @@ thread_info
 # Num Counters:
 7
 # Counter Values:
-131054
+176897
 0
-218
-130836
-218
-218
-131054
+297
+176600
+297
+297
+176897
 
 thread_policy_get
 # Func Hash:
@@ -32489,8 +32767,8 @@ thread_policy_get
 # Num Counters:
 2
 # Counter Values:
-218
-218
+297
+297
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -32498,7 +32776,7 @@ thread_policy_get
 # NumValueSites:
 1
 1
-16:218
+16:297
 
 thread_policy_set
 # Func Hash:
@@ -32506,7 +32784,7 @@ thread_policy_set
 # Num Counters:
 1
 # Counter Values:
-119
+0
 
 thread_resume
 # Func Hash:
@@ -32522,7 +32800,7 @@ thread_selfcounts
 # Num Counters:
 1
 # Counter Values:
-130836
+176600
 # Num Value Kinds:
 1
 # ValueKind = IPVK_MemOPSize:
@@ -32530,7 +32808,7 @@ thread_selfcounts
 # NumValueSites:
 1
 1
-16:130836
+16:176600
 
 thread_suspend
 # Func Hash:
@@ -32546,7 +32824,7 @@ totk_depth_near_minus_w
 # Num Counters:
 1
 # Counter Values:
-18
+6
 
 totk_life_cb_mark
 # Func Hash:
@@ -32602,7 +32880,7 @@ totk_life_on
 # Num Counters:
 12
 # Counter Values:
-321685618
+435382081
 0
 0
 0
@@ -32641,7 +32919,7 @@ totk_prompt_remove_pool
 # Num Counters:
 1
 # Counter Values:
-15347
+14109
 
 totk_rt_submit_stats
 # Func Hash:
@@ -32649,7 +32927,7 @@ totk_rt_submit_stats
 # Num Counters:
 1
 # Counter Values:
-65349
+88231
 
 totk_texture_lifetime
 # Func Hash:
@@ -32657,7 +32935,7 @@ totk_texture_lifetime
 # Num Counters:
 4
 # Counter Values:
-6509228
+8459642
 0
 0
 0
@@ -32668,7 +32946,7 @@ totk_tl
 # Num Counters:
 3
 # Counter Values:
-151645718
+221396230
 0
 0
 
@@ -32678,15 +32956,18 @@ totk_tl_at
 # Num Counters:
 1
 # Counter Values:
-1130881
+1536797
 
 totk_tl_at_frame
 # Func Hash:
-331779891047103400
+141929911841913239
 # Num Counters:
-9
+12
 # Counter Values:
-1130881
+1536797
+0
+0
+0
 0
 0
 0
@@ -32707,7 +32988,7 @@ totk_tl_frame
 0
 0
 0
-65349
+88231
 0
 0
 0
@@ -32728,7 +33009,7 @@ totk_tl_on
 # Num Counters:
 2
 # Counter Values:
-30681965
+40147340
 0
 
 totk_vpool_backing
@@ -32750,7 +33031,7 @@ totk_vpool_fini
 # Num Counters:
 2
 # Counter Values:
-15347
+14109
 0
 
 totk_vpool_init
