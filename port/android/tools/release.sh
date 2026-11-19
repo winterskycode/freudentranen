@@ -66,7 +66,9 @@ git -C "$ROOT" archive --prefix=totk/ HEAD | tar -x -C "$S/$N"
 MNG=$(sed -n 's/^COMMIT=//p' "$ROOT/port/setup.sh")
 git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor |
   tar -x -C "$S/$N"
-MESA=$(sed -n 's/.*COMMIT=\([0-9a-f]*\).*/\1/p' "$T/build_turnip.sh")
+# the commit of the base the build used (build_turnip.sh: one COMMIT= line per TURNIP_BASE, gen8 by default)
+MESA=$(sed -n "s/^ *${TURNIP_BASE:-gen8}) COMMIT=\([0-9a-f]*\).*/\1/p" "$T/build_turnip.sh")
+[ -n "$MESA" ] || { echo "no Mesa commit for TURNIP_BASE=${TURNIP_BASE:-gen8} in build_turnip.sh" >&2; exit 1; }
 git -C "$ROOT/work/turnip-build/mesa" archive --prefix=upstream/mesa/ "$MESA" | tar -x -C "$S/$N"
 for d in opus zstd libvpx capstone; do git -C "$ROOT/port/android/deps/src/$d" archive --prefix=upstream/$d/ HEAD | tar -x -C "$S/$N"; done
 cp -r "$ROOT/work/android/gpu-driver-src/." "$S/$N/upstream/"
