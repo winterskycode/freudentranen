@@ -295,14 +295,61 @@ static void mo_pass_begin(graphics_frame_entry *frame) {
 static void mo_pending_flush(void) { if (mo.n && mo.pend && !graphics_active_frame) mo_flush(mo.pend); }
 /* This frame's object motion for the motion consumers, or NULL: read in compute shaders. The live word noobjmo
    (<files>/exp.live) leaves them on the camera's motion alone, for A/B while playing. */
+/* With dynamic resolution the game draws the scene into a corner of its targets (fg.view: the corner's share of the
+   target, fg.view_off: its offset), and the depth and the object motion with it; the picture frame generation gets is
+   the whole canvas. Read as the whole target, depth and motion would be stretched against the picture: the part outside
+   the corner without motion, every depth inside it a little off its pixel. Once a frame the corner of both is scaled to
+   the whole target (nearest), so every frame generation pass reads them like the picture; nothing is done when the scene
+   fills its target. TOTK_FG_VIEWPORT=0 reads the whole target as it is. */
+static image_entry fg_depth_full, mo_img_full; static int mo_full_ok;
+static int fg_blit_ok(VkFormat f) {
+    VkFormatProperties fp; vkGetPhysicalDeviceFormatProperties(physical, f, &fp);
+    VkFormatFeatureFlags need = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
+    return (fp.optimalTilingFeatures & need) == need;
+}
+static void fg_blit_corner(image_entry *src, image_entry *dst, VkImageAspectFlags aspect) {
+    uint32_t w = src->texture.d.width, h = src->texture.d.height;
+    fg_image(dst, src->format, w, h, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    image_access(src, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+    image_access(dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+    int32_t x0 = (int32_t)(fg.view_off[0] * w + 0.5f), y0 = (int32_t)(fg.view_off[1] * h + 0.5f);
+    int32_t x1 = (int32_t)((fg.view_off[0] + fg.view[0]) * w + 0.5f), y1 = (int32_t)((fg.view_off[1] + fg.view[1]) * h + 0.5f);
+    if (x1 > (int32_t)w) x1 = (int32_t)w; if (y1 > (int32_t)h) y1 = (int32_t)h;
+    VkImageBlit b = {.srcSubresource = {aspect, 0, 0, 1}, .srcOffsets = {{x0, y0, 0}, {x1, y1, 1}},
+                     .dstSubresource = {aspect, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)w, (int32_t)h, 1}}};
+    vkCmdBlitImage(command, src->image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &b, VK_FILTER_NEAREST);
+}
+static void fg_viewport_normalize(void) {
+    static int off = -1; if (off < 0) { const char *e = getenv("TOTK_FG_VIEWPORT"); off = e && !strcmp(e, "0"); }
+    /* TOTK_FG_VIEWPORT_LOG=1 (diagnostic): every 300th frame, what frame generation got */
+    { static int lg = -1; static unsigned n; if (lg < 0) { const char *e = getenv("TOTK_FG_VIEWPORT_LOG"); lg = e && atoi(e) > 0; }
+      if (lg && !(n++ % 300)) LOG("[framegen] inputs: depth %ux%u fmt %d, view %.4f x %.4f at (%.4f, %.4f), in G-buffer %d, motion %ux%u fresh %d",
+          fg.depth ? fg.depth->texture.d.width : 0, fg.depth ? fg.depth->texture.d.height : 0, fg.depth ? (int)fg.depth->format : 0,
+          fg.view[0], fg.view[1], fg.view_off[0], fg.view_off[1], fg.in_gbuffer, mo.img.texture.d.width, mo.img.texture.d.height, mo.fresh); }
+    if (off || !fg.depth || fg.view[0] <= 0 || fg.view[1] <= 0) return;
+    if (fabsf(fg.view[0] - 1.0f) < 0.002f && fabsf(fg.view[1] - 1.0f) < 0.002f && fabsf(fg.view_off[0]) < 0.002f && fabsf(fg.view_off[1]) < 0.002f) return;
+    static int ok = -1;
+    if (ok < 0) { ok = fg_blit_ok(fg.depth->format) && fg_blit_ok(MO_FORMAT); if (!ok) LOG("[framegen] 【红】depth or motion format cannot be blitted: frame generation reads the dynamic-resolution corner as the whole target"); }
+    if (!ok) return;
+    { static float lw, lh; if (fabsf(lw - fg.view[0]) > 0.01f || fabsf(lh - fg.view[1]) > 0.01f) { lw = fg.view[0]; lh = fg.view[1];
+          LOG("[framegen] scene drawn in %.1f%% x %.1f%% of its targets at (%.1f%%, %.1f%%): depth and motion scaled to the picture", fg.view[0] * 100, fg.view[1] * 100, fg.view_off[0] * 100, fg.view_off[1] * 100); } }
+    if (async_recording_owned) mtl_sub_commit();
+    mtl_sub_begin();
+    fg_blit_corner(fg.depth, &fg_depth_full, VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (mo_on() && mo.fresh) { fg_blit_corner(&mo.img, &mo_img_full, VK_IMAGE_ASPECT_COLOR_BIT); mo_full_ok = 1; }
+    mtl_sub_commit();
+    fg.depth = &fg_depth_full;
+    fg.view[0] = fg.view[1] = 1.0f; fg.view_off[0] = fg.view_off[1] = 0.0f;
+}
 static image_entry *mo_image(void) {
     if (!mo_on() || !mo.fresh || (live_exp[0] && exp_word(live_exp, "noobjmo", 0))) return NULL;
-    image_access(&mo.img, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-    return &mo.img;
+    image_entry *m = mo_full_ok ? &mo_img_full : &mo.img;
+    image_access(m, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+    return m;
 }
 /* Once a frame (fg_frame_end): the dump, the summary */
 static void mo_frame(void) {
-    mo.n = 0; mo.fresh = 0; mo.pend = NULL;
+    mo.n = 0; mo.fresh = 0; mo.pend = NULL; mo_full_ok = 0;
     if (!mo_on()) return;
     if (mo.dump == 2) { mo_dump_write(); mo.dump = 0; }
     mo_ncams = 0;

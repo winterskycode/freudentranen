@@ -53,6 +53,8 @@ static struct {
     /* chunks */
     uint64_t published, replayed;
     int worker_waiting;
+    /* nvn_vkrec_boundary_arm: the worker spins rather than sleeps until this CLOCK_MONOTONIC time */
+    uint64_t spin_until;
     uint64_t records, bytes, drains, drain_ns;
 } dv = {.on = -1, .mu = PTHREAD_MUTEX_INITIALIZER, .work = PTHREAD_COND_INITIALIZER, .idle = PTHREAD_COND_INITIALIZER};
 
@@ -70,10 +72,11 @@ static void *dv_worker(void *unused) {
     for (;;) {
         /* a frame's chunks arrive every few microseconds: spin a little before sleeping (each sleep and wake-up cost
            more than the chunk) */
-        if (!__atomic_load_n(&dv.head, __ATOMIC_ACQUIRE)) { uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC), limit = dv_spin_ns();
-            while (!__atomic_load_n(&dv.head, __ATOMIC_ACQUIRE) && dm_android_clock_ns(CLOCK_MONOTONIC) - t0 < limit) __asm__ volatile("yield"); }
+        if (!__atomic_load_n(&dv.head, __ATOMIC_ACQUIRE)) { uint64_t t0 = dm_android_clock_ns(CLOCK_MONOTONIC), limit = dv_spin_ns(), t;
+            while (!__atomic_load_n(&dv.head, __ATOMIC_ACQUIRE) && ((t = dm_android_clock_ns(CLOCK_MONOTONIC)) - t0 < limit || t < __atomic_load_n(&dv.spin_until, __ATOMIC_RELAXED))) __asm__ volatile("yield"); }
         pthread_mutex_lock(&dv.mu);
-        while (!dv.head) { dv.worker_waiting = 1; pthread_cond_wait(&dv.work, &dv.mu); dv.worker_waiting = 0; }
+        while (!dv.head && dm_android_clock_ns(CLOCK_MONOTONIC) >= __atomic_load_n(&dv.spin_until, __ATOMIC_RELAXED)) { dv.worker_waiting = 1; pthread_cond_wait(&dv.work, &dv.mu); dv.worker_waiting = 0; }
+        if (!dv.head) { pthread_mutex_unlock(&dv.mu); continue; }
         dv_chunk *c = dv.head; dv.head = c->next; if (!dv.head) dv.tail = NULL;
         pthread_mutex_unlock(&dv.mu);
         dv_replay(c->data, c->data + c->used);
@@ -98,6 +101,12 @@ static void dv_publish_locked(void) {
     dv_chunk *c = dv.cur; if (!c || !c->used) return;
     dv.cur = NULL; c->next = NULL; if (dv.tail) dv.tail->next = c; else __atomic_store_n(&dv.head, c, __ATOMIC_RELEASE); dv.tail = c; dv.published++;
     if (dv.worker_waiting) pthread_cond_signal(&dv.work);
+}
+/* hle_nvn.c boundary_arm: a frame's first chunk is about to come; wake the worker into its spin for window_ns */
+void nvn_vkrec_boundary_arm(uint64_t window_ns) {
+    if (!dv_enabled()) return;
+    __atomic_store_n(&dv.spin_until, dm_android_clock_ns(CLOCK_MONOTONIC) + window_ns, __ATOMIC_RELAXED);
+    pthread_mutex_lock(&dv.mu); if (dv.worker_waiting) pthread_cond_signal(&dv.work); pthread_mutex_unlock(&dv.mu);
 }
 static void dv_publish(void) { pthread_mutex_lock(&dv.mu); dv_publish_locked(); pthread_mutex_unlock(&dv.mu); }
 /* Everything recorded so far has reached the driver. */

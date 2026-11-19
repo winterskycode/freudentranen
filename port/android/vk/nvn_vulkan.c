@@ -2465,6 +2465,8 @@ static uint64_t present_one_body(const tex_t *t, double period, const int crop[4
         /* a present id on every present when the extension is there: Android records a present's timing only then, and
            the on-screen histogram, TL_SHOWN and the latency estimate (pace_learn) need the timings also without pacing */
         if (pace_ext && pace_get_past) { present_time = (VkPresentTimeGOOGLE){++pace_id, pace_on() && pace_desired > 0 ? (uint64_t)pace_desired : 0}; pace_submit[pace_id % 64] = present_start; pace_ticket[pace_id % 64] = screen_acquire_ticket;
+            pace_target[pace_id % 64] = pace_on() && pace_desired > 0 ? (uint64_t)pace_desired + pace_refresh / 2 : 0; pace_real[pace_id % 64] = !source && !repeat;
+            { int hz = fg_shown_hz(); int k = hz > 0 ? (int)(period * hz + 0.5) : 1; pace_slots[pace_id % 64] = (uint8_t)(k < 1 ? 1 : k > 8 ? 8 : k); }
             if (totk_tl_at) totk_tl_at(TL_PLAN, present_start, pace_id, present_time.desiredPresentTime);
             present_times = (VkPresentTimesInfoGOOGLE){.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE, .swapchainCount = 1, .pTimes = &present_time}; pi.pNext = &present_times; }
         if (totk_tl) totk_tl(TL_MARK, TL_MARK_PRESENT_CALL_IN, 0);
@@ -2566,6 +2568,7 @@ static uint64_t present_one(const tex_t *t, double period, const int crop[4], im
 }
 static const tex_t *present_last; static double present_last_period; static int present_last_crop[4], present_last_has_crop;
 static void fill_start(void);
+static void fill_planned(const tex_t *t, double period, const int crop[4]);
 void runtime_audio_hold(int on) __attribute__((weak));
 /* The menu's preview replays (hle_nvn.c frz_replay): while held, the overlay's own presents pause, since the replays
    draw into the very window texture they show; a quiet replay's present only ends its frame (temporal anti-aliasing's
@@ -2607,12 +2610,20 @@ uint64_t mtl_present(const tex_t *t, double period, const int crop[4]) {
     { int cap = nvn_frame_cap_get ? nvn_frame_cap_get() : 0; pace_plan(planned, cap > 0 ? 1000.0 / cap : 1000.0 / 30, desired); }
     /* fill mode: this game frame's slot, and its own thread from the first frame on */
     if (fg_fill) { fill.real_prev = fill.real_last; fill.real_last = pace_last_target; fill.run = 0; fill_start(); }
+    /* TOTK_FILL_TURN_LOG=1 (diagnostic): per game frame, the slots since the last one and the camera's turn between them */
+    if (fg_fill) { static int tl = -1; if (tl < 0) { const char *e = getenv("TOTK_FILL_TURN_LOG"); tl = e && atoi(e) > 0; }
+        if (tl && fill.real_prev && pace_refresh) { int hz = fg_shown_hz(); uint64_t slot = hz > 0 ? 1000000000ull / (uint64_t)hz : 0;
+            double d = fill.cam[8] * fill.prev_cam[8] + fill.cam[9] * fill.prev_cam[9] + fill.cam[10] * fill.prev_cam[10];
+            static uint64_t prev_now; uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
+            LOG("[fill-turn] slots %.2f turn %.4f deg game %.2f ms", slot ? (double)(fill.real_last - fill.real_prev) / slot : 0.0, acos(d > 1.0 ? 1.0 : d) * 180.0 / M_PI, prev_now ? (now - prev_now) / 1e6 : 0.0);
+            prev_now = now; } }
     if (mid) { pace_desired = desired[0]; present_one(t, period, crop, mid, 0); }
     for (int i = 0; i < ngen; i++) { pace_desired = desired[i]; present_one(t, period, crop, gen[i], 0); }
     pace_desired = desired[planned];
     uint64_t ticket = present_one(t, period, crop, NULL, 0);
     pace_desired = -1;
     fg_frame_end(t, crop);
+    if (fg_fill && fg.on > 0) fill_planned(t, period, crop);
     present_last = t; present_last_period = period; present_last_has_crop = crop != NULL; if (crop) memcpy(present_last_crop, crop, sizeof present_last_crop);
     pthread_mutex_unlock(&present_serial);
     return ticket;
@@ -2706,6 +2717,119 @@ static void *fill_thread(void *arg) {
         pthread_mutex_unlock(&present_serial);
     }
     return NULL;
+}
+/* Planned fill: a game frame on the slot clock (hle_nvn.c fill_slots) that holds more than one slot of the cap gets the
+   pictures for its extra slots right after it, extrapolated to each slot's time, before the game queues its next frame
+   on the GPU. Made later by the fill thread, at a lead before the slot, they waited behind that frame's GPU work and
+   reached the screen a refresh late (Odin, 45 real: 4.3% of pictures 1 or 3 refreshes). The fill thread stays for
+   frames that miss their slot unplanned. */
+static uint64_t fill_planned_made;
+static void fill_planned(const tex_t *t, double period, const int crop[4]) {
+    int hz = fg_shown_hz();
+    if (hz <= 0 || !pace_refresh || !pace_last_target || fg.menu || overlay_wants_present()) return;
+    int slots = (int)(period * hz + 0.5);
+    if (slots < 2) return;
+    if (slots > FILL_RUN + 1) slots = FILL_RUN + 1;
+    uint64_t slot_ns = 1000000000ull / (uint64_t)hz;
+    /* the game's step between its last two frames: their planned slots */
+    uint64_t interval = fill.real_last > fill.real_prev && fill.real_prev ? fill.real_last - fill.real_prev : slot_ns;
+    if (interval < slot_ns / 2) interval = slot_ns / 2;
+    if (interval > 4 * slot_ns) interval = 4 * slot_ns;
+    for (int j = 1; j < slots; j++) {
+        uint64_t target = pace_grid_round(pace_last_target + slot_ns);
+        double tval = 1.0 + (double)(target > fill.real_last ? target - fill.real_last : slot_ns) / (double)interval;
+        if (tval > 1.0 + FILL_RUN) tval = 1.0 + FILL_RUN;
+        image_entry *pic = fill_make(tval);
+        if (!pic) break;
+        pace_desired = (int64_t)(target - pace_refresh / 2);
+        present_one(t, period, crop, pic, 0);
+        pace_desired = -1; pace_last_target = target; fill.run++;
+        if (!(++fill_planned_made % 600)) LOG("[framegen] fill: %llu planned pictures", (unsigned long long)fill_planned_made);
+    }
+}
+/* Fill's real rate (TOTK_FILL_ADAPT=1; otherwise the cap): the game renders the cap, or 5/6, 3/4, 2/3 or 1/2 of it, on the slot clock, and
+   planned fill makes the rest, so fill always has the time it needs. Once a second it looks at the two parts of the
+   frame chain that run at the frame rate: the GPU (kgsl's busy share at its top clock) and the translation thread (its CPU time
+   over the second), and at the game frames whose pictures were done after their planned screen time minus the
+   compositor's part (misses). Two misses in a second, the GPU over 92% or the translation thread over 90% take the next
+   lower rate at once. The next higher rate is taken after three seconds in a row without a miss in which both would
+   stay under 85% there: the frame chain's load scaled by the rates, the fill pictures' GPU time by their count. A higher
+   rate that fails within two seconds doubles the wait before the next try (up to 30 s), so the rate does not swing
+   between two levels. Menus and frames without fill's inputs render the cap. */
+void nvn_fill_real_set(int hz) __attribute__((weak));
+uint64_t nvn_translate_cpu_ns(void) __attribute__((weak));
+static const int fill_level_num[] = {6, 5, 9, 4, 3}, fill_level_den[] = {6, 6, 12, 6, 6};
+#define FILL_LEVELS 5
+static struct {
+    int on, level, good, need, settle;
+    uint64_t window_end, up_at, misses, changes, at_level_ns[FILL_LEVELS], level_since, report;
+    uint64_t x_cpu, gen_ns, pictures, t, gpu_at;
+    double gpu_sum; unsigned gpu_n;
+} fa = {.on = -1, .need = 3};
+static int fill_rate_at(int cap, int level) { return cap * fill_level_num[level] / fill_level_den[level]; }
+static void fill_adapt_apply(int level, const char *why, double gpu, double x) {
+    int cap = fg_shown_hz(); if (cap <= 0) return;
+    uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC);
+    if (fa.level_since) fa.at_level_ns[fa.level] += now - fa.level_since;
+    fa.level_since = now;
+    int was = fa.level; fa.level = level; fa.changes++;
+    if (nvn_fill_real_set) nvn_fill_real_set(level ? fill_rate_at(cap, level) : 0);
+    if (was != level) LOG("[framegen] fill real rate %d -> %d (%s; GPU %.0f%%, translation %.0f%%)", fill_rate_at(cap, was), fill_rate_at(cap, level), why, gpu * 100, x * 100);
+}
+static long long fill_read_sysfs(const char *path) {
+    FILE *f = fopen(path, "r"); long long v = -1;
+    if (f) { if (fscanf(f, "%lld", &v) != 1) v = -1; fclose(f); }
+    return v;
+}
+/* the GPU's load at its top clock (kgsl's busy percentage is of the current clock, which the governor lowers under a
+   cap): busy x clock / top clock, -1 unknown */
+static double fill_gpu_load(void) {
+    static long long top = -2; if (top == -2) top = fill_read_sysfs("/sys/class/kgsl/kgsl-3d0/max_gpuclk");
+    long long busy = fill_read_sysfs("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"), clk = fill_read_sysfs("/sys/class/kgsl/kgsl-3d0/gpuclk");
+    if (busy < 0 || clk <= 0 || top <= 0) return -1;
+    return busy / 100.0 * (double)clk / (double)top;
+}
+static void fill_adapt_sample(uint64_t done, uint64_t target, int slots) {
+    (void)slots;
+    if (fa.on < 0) { const char *e = getenv("TOTK_FILL_ADAPT"); fa.on = e && atoi(e) > 0; if (fa.on) LOG("[framegen] fill real rate follows the load (TOTK_FILL_ADAPT)"); }
+    if (!fa.on || !fg_fill || fg.on <= 0) return;
+    if (fg.menu || !fill.valid) { if (fa.level) fill_adapt_apply(0, fg.menu ? "menu" : "no fill inputs", 0, 0); fa.window_end = 0; return; }
+    int cap = fg_shown_hz(); if (cap <= 0) return;
+    uint64_t comp = pace_comp ? pace_comp : pace_refresh / 2;
+    if ((int64_t)target - (int64_t)comp - (int64_t)done < 0) fa.misses++;
+    uint64_t now = dm_android_clock_ns(CLOCK_MONOTONIC), x_cpu = nvn_translate_cpu_ns ? nvn_translate_cpu_ns() : 0, pics = fill_planned_made + fill.made;
+    /* the GPU's load every 100 ms, averaged over the second */
+    if (now - fa.gpu_at > 100000000ull) { double g = fill_gpu_load(); fa.gpu_at = now; if (g >= 0) { fa.gpu_sum += g; fa.gpu_n++; } }
+    if (!fa.window_end) { fa.window_end = now + 1000000000ull; fa.t = now; fa.x_cpu = x_cpu; fa.gen_ns = (uint64_t)fg_gen_gpu_ns; fa.pictures = pics; fa.misses = 0; fa.gpu_sum = 0; fa.gpu_n = 0; return; }
+    if (now < fa.window_end) return;
+    double wall = (double)(now - fa.t), gpu = fa.gpu_n ? fa.gpu_sum / fa.gpu_n : -1, x = x_cpu > fa.x_cpu ? (x_cpu - fa.x_cpu) / wall : 0;
+    double made = (double)(pics - fa.pictures), per_pic = made > 0 ? ((double)fg_gen_gpu_ns - fa.gen_ns) / made : 5e6, fill_share = made * per_pic / wall;
+    uint64_t misses = fa.misses;
+    fa.window_end = now + 1000000000ull; fa.t = now; fa.x_cpu = x_cpu; fa.gen_ns = (uint64_t)fg_gen_gpu_ns; fa.pictures = pics; fa.misses = 0; fa.gpu_sum = 0; fa.gpu_n = 0;
+    if (done > fa.report) { if (fa.report) {
+            uint64_t t[FILL_LEVELS]; memcpy(t, fa.at_level_ns, sizeof t); if (fa.level_since) t[fa.level] += now - fa.level_since;
+            LOG("[framegen] fill real rate: now %d, seconds at full/5-6/3-4/2-3/1-2: %.0f %.0f %.0f %.0f %.0f; %llu changes; GPU %.0f%% (fill %.0f%%), translation %.0f%%",
+                fill_rate_at(cap, fa.level), t[0] / 1e9, t[1] / 1e9, t[2] / 1e9, t[3] / 1e9, t[4] / 1e9, (unsigned long long)fa.changes, gpu * 100, fill_share * 100, x * 100); }
+        fa.report = done + 10000000000ull; }
+    if (!fa.level_since) fa.level_since = now;
+    if (fa.settle) { fa.settle--; return; }
+    if (gpu < 0) return;
+    if ((misses >= 2 || gpu > 0.92 || x > 0.90) && fa.level < FILL_LEVELS - 1) {
+        if (fa.up_at && now - fa.up_at < 2000000000ull) fa.need = fa.need * 2 > 30 ? 30 : fa.need * 2;
+        fa.up_at = 0; fa.good = 0; fa.settle = 1;
+        fill_adapt_apply(fa.level + 1, misses >= 2 ? "frames past their time" : gpu > 0.92 ? "GPU busy" : "translation busy", gpu, x);
+        return;
+    }
+    if (fa.level > 0 && !misses) {
+        double r = fill_rate_at(cap, fa.level), up = fill_rate_at(cap, fa.level - 1);
+        double chain = gpu - fill_share; if (chain < 0) chain = 0;
+        double gpu_up = chain * up / r + (cap - up) * per_pic / 1e9, x_up = x * up / r;
+        if (gpu_up < 0.85 && x_up < 0.85) {
+            if (++fa.good >= fa.need) { fa.good = 0; fa.settle = 1; fa.up_at = now; fill_adapt_apply(fa.level - 1, "load to spare", gpu, x); }
+        } else fa.good = 0;
+    } else fa.good = 0;
+    /* a level held long after a step up: the step stuck, back to the short wait */
+    if (fa.up_at && now - fa.up_at > 10000000000ull) { fa.up_at = 0; fa.need = 3; }
 }
 static void fill_start(void) {
     static int started; if (started++) return;

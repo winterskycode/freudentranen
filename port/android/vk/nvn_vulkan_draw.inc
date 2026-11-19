@@ -1,4 +1,4 @@
-static void dynres_note(float w, float h, uint32_t target_w, uint32_t target_h);
+static void dynres_note(float x, float y, float w, float h, uint32_t target_w, uint32_t target_h);
 // Graphics pipelines and draws, separated from descriptor/compute binding for independent optimization.
 static VkBlendFactor blend_factor(unsigned factor) {
     switch(factor){case 1:return VK_BLEND_FACTOR_ZERO;case 2:return VK_BLEND_FACTOR_ONE;case 3:return VK_BLEND_FACTOR_SRC_COLOR;case 4:return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;case 5:return VK_BLEND_FACTOR_SRC_ALPHA;case 6:return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;case 7:return VK_BLEND_FACTOR_DST_ALPHA;case 8:return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;case 9:return VK_BLEND_FACTOR_DST_COLOR;case 10:return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;case 11:return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;case 0x61:return VK_BLEND_FACTOR_CONSTANT_COLOR;case 0x62:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;case 0x63:return VK_BLEND_FACTOR_CONSTANT_ALPHA;case 0x64:return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;default:return VK_BLEND_FACTOR_ONE;}
@@ -566,7 +566,7 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     // Metal clip Y points up while Vulkan's positive viewport points down; a negative viewport preserves NVN orientation.
     { static uint64_t larger;if((viewport.width>width+0.5f||viewport.height>height+0.5f)&&width>=512){larger++;if(larger<=20||!(larger%2000))LOG("[vulkan-dynres] frame %llu: viewport %gx%g on a %ux%u target (%llu so far)",(unsigned long long)presents,viewport.width,viewport.height,width,height,(unsigned long long)larger);} }
     /* frame generation's depth, TOTK_DYNRES_STATS */
-    if(depth.attachment!=VK_ATTACHMENT_UNUSED&&state.rt.n>=3)dynres_note(viewport.width,viewport.height,width,height);
+    if(depth.attachment!=VK_ATTACHMENT_UNUSED&&state.rt.n>=3)dynres_note(viewport.x,viewport.y,viewport.width,viewport.height,width,height);
     viewport.y += viewport.height; viewport.height = -viewport.height;
     /* TOTK_TAA: the G-buffer pass's size */
     taa_viewport(&viewport,depth.attachment!=VK_ATTACHMENT_UNUSED?images[depth.attachment]:NULL,state.rt.n,state.rt.n?state.rt.color[0]:NULL,vs,fs);

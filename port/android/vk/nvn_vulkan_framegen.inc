@@ -43,7 +43,7 @@ static struct {
     int hud_generated;
     uint64_t made, frames, no_input, cuts, snapshots, hud_less, panel_limited;
     /* this frame's G-buffer viewport as a share of its target (dynres_note), 0 before it is known */
-    float view[2];
+    float view[2], view_off[2];
     /* the current pass is a G-buffer pass; this frame's draws into G-buffer passes */
     int in_gbuffer; unsigned gdraws;
     /* menu mode (fg_menu_frame), and the frame cap to restore after it */
@@ -648,7 +648,10 @@ static void fg_tune(float *push, int fill) {
    <files>/fgdump (fg_dump_image). Results are read when the GPU is done, so the game is not held up.
    TOTK_FG_EVAL_VARIANTS=<a>|<b>|...: each frame pair is generated once per variant, each a set of live words
    (exp.live's, e.g. "fgsplat=0|fgsplat=1 fgdilate=0") in force for its picture, and compared with the same real frame
-   (the lines carry v=<index>): a paired comparison, free of the scene's run-to-run differences. No dumps then. */
+   (the lines carry v=<index>): a paired comparison, free of the scene's run-to-run differences. No dumps then.
+   TOTK_FG_EVAL=2 with fill (TOTK_FRAMEGEN=fill<cap>, the game at the cap): fill's extrapolation instead. At each game
+   frame k, the picture fill would make one game frame past k-1 from frames k-2 and k-1 is compared with frame k (the
+   same "[fgeval]" lines and dumps). */
 uint64_t dm_nvn_frame_count(void) __attribute__((weak));
 static struct {
     int on, dump_every; image_entry anchor, diff; int anchor_ok; uint64_t anchor_frame, made; float anchor_cam[84];
@@ -659,7 +662,7 @@ static struct {
 /* fg_dispatch's object motion scale (framegen_interp.comp size.z): 2 while fg_eval spans two frames */
 static float fg_obj_scale = 1.0f;
 static int fg_eval_on(void) {
-    if (ev.on < 0) { const char *e = getenv("TOTK_FG_EVAL"), *d = getenv("TOTK_FG_EVAL_DUMP"); ev.on = e && atoi(e) > 0; ev.dump_every = d ? atoi(d) : 0;
+    if (ev.on < 0) { const char *e = getenv("TOTK_FG_EVAL"), *d = getenv("TOTK_FG_EVAL_DUMP"); ev.on = e && atoi(e) > 0 ? atoi(e) : 0; ev.dump_every = d ? atoi(d) : 0;
         const char *v = getenv("TOTK_FG_EVAL_VARIANTS");
         for (; v && *v && ev.nvariants < 8; ev.nvariants++) {
             const char *bar = strchr(v, '|'); size_t n = bar ? (size_t)(bar - v) : strlen(v); if (n > 127) n = 127;
@@ -711,6 +714,34 @@ static void fg_eval_poll(void) {
     }
 }
 /* The would-be generated picture between the anchor (frame k-2) and this frame k, against the previous frame's scene. */
+/* the comparison of a generated picture with the real frame into ring slot `slot` (recorded into the open submission) */
+static void fg_eval_compare(image_entry *gen, image_entry *truth, uint32_t sw, uint32_t sh, int slot) {
+    image_access(gen, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+    image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+    image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+    vk_buffer *rb = &ev.ring[slot].b;
+    vkCmdFillBuffer(command, rb->buffer, 0, 128, 0);
+    VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
+    VkDescriptorImageInfo img[3] = {
+        {fg.linear, attachment_view(gen, NULL, gen->format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
+        {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
+    VkDescriptorBufferInfo bi = {rb->buffer, 0, 128};
+    VkDescriptorSet set = descriptor_allocate(ev.set_layout);
+    VkWriteDescriptorSet w[4];
+    for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
+        .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pImageInfo = i < 3 ? &img[i] : NULL, .pBufferInfo = i == 3 ? &bi : NULL};
+    vkUpdateDescriptorSets(device, 4, w, 0, NULL);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.layout, 0, 1, &set, 0, NULL);
+    float ep[4] = {(float)sw, (float)sh, 1.0f, 0.0f};
+    vkCmdPushConstants(command, ev.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof ep, ep);
+    vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
+    VkMemoryBarrier host = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
+    ev.ring[slot].frame = dm_nvn_frame_count ? dm_nvn_frame_count() : fg.frames; ev.ring[slot].pixels = (uint64_t)sw * sh; ev.ring[slot].busy = 1;
+}
 static void fg_eval(const tex_t *t, const int crop[4]) {
     fg_eval_poll();
     uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
@@ -751,32 +782,7 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
             image_entry *obj = mo_image();
             push[24] = (float)sw / scene->texture.d.width; push[25] = (float)sh / scene->texture.d.height; push[26] = obj ? 1.0f : 0.0f; push[27] = 0.5f;
             fg_obj_scale = 2.0f; fg_dispatch(&ev.anchor, scene, obj ? obj : scene, fg.depth, depth_view, push, sw, sh); fg_obj_scale = 1.0f;
-            /* the comparison */
-            image_access(&fg.out, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-            image_access(truth, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
-            image_access(&ev.diff, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
-            vk_buffer *rb = &ev.ring[slot].b;
-            vkCmdFillBuffer(command, rb->buffer, 0, 128, 0);
-            VkMemoryBarrier fill = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
-            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill, 0, NULL, 0, NULL);
-            VkDescriptorImageInfo img[3] = {
-                {fg.linear, attachment_view(&fg.out, NULL, fg.out.format), VK_IMAGE_LAYOUT_GENERAL}, {fg.linear, attachment_view(truth, NULL, truth->format), VK_IMAGE_LAYOUT_GENERAL},
-                {VK_NULL_HANDLE, attachment_view(&ev.diff, NULL, ev.diff.format), VK_IMAGE_LAYOUT_GENERAL}};
-            VkDescriptorBufferInfo bi = {rb->buffer, 0, 128};
-            VkDescriptorSet set = descriptor_allocate(ev.set_layout);
-            VkWriteDescriptorSet w[4];
-            for (int i = 0; i < 4; i++) w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = (uint32_t)i, .descriptorCount = 1,
-                .descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : i == 2 ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pImageInfo = i < 3 ? &img[i] : NULL, .pBufferInfo = i == 3 ? &bi : NULL};
-            vkUpdateDescriptorSets(device, 4, w, 0, NULL);
-            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.pipeline);
-            vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, ev.layout, 0, 1, &set, 0, NULL);
-            float ep[4] = {(float)sw, (float)sh, 1.0f, 0.0f};
-            vkCmdPushConstants(command, ev.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof ep, ep);
-            vkCmdDispatch(command, (sw + 7) / 8, (sh + 7) / 8, 1);
-            VkMemoryBarrier host = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
-            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
-            ev.ring[slot].frame = dm_nvn_frame_count ? dm_nvn_frame_count() : fg.frames; ev.ring[slot].pixels = (uint64_t)sw * sh; ev.ring[slot].busy = 1;
+            fg_eval_compare(&fg.out, truth, sw, sh, slot);
             ev.ring[slot].variant = v;
         }
         memcpy(live_exp, saved, sizeof saved);
@@ -798,11 +804,17 @@ static void fg_eval(const tex_t *t, const int crop[4]) {
         fg_dump_image(&fg.out, sw, sh, "eval-generated"); fg_dump_image(truth, sw, sh, "eval-real"); fg_dump_image(&ev.diff, sw, sh, "eval-error");
     }
 }
+/* TOTK_FG_EVAL=2: fill's picture for this frame's time, from the two frames before it, against this frame */
+static int fill_no_hud;
+static image_entry *fill_make(double tval);
+static void fill_eval(const tex_t *t, const int crop[4]);
+static void fg_viewport_normalize(void);
 static image_entry *fg_prepare(const tex_t *t, const int crop[4]) {
     if (fg.on <= 0) return NULL;
     fg.frames++;
+    fg_viewport_normalize();
     /* fill mode makes its pictures between game frames, on its own thread */
-    if (fg_fill) return NULL;
+    if (fg_fill) { if (fg_eval_on() && ev.on == 2) fill_eval(t, crop); return NULL; }
     /* behind the boot logo: about 300 ms the first time, then from the pipeline cache */
     if (fsr_fg_enabled()) fsr_pipelines();
     /* from the first menu frame on, not three frames in */
@@ -1035,10 +1047,10 @@ static void fg_keep_picture(const tex_t *t, const int crop[4]) {
 /* TOTK_DYNRES_STATS=1 (diagnostic): the scene size the game's dynamic resolution picks, from the viewport of the main
    scene passes (3+ colour targets and depth, 1024+ wide): every 300 frames, how many frames used each size. */
 static struct { int on; float w, h; uint32_t tw, th; unsigned n; struct { uint16_t w, h; unsigned count; } sizes[16]; } dynres = {.on = -1};
-static void dynres_note(float w, float h, uint32_t tw, uint32_t th) {
+static void dynres_note(float x, float y, float w, float h, uint32_t tw, uint32_t th) {
     if (dynres.on < 0) { const char *e = getenv("TOTK_DYNRES_STATS"); dynres.on = e && atoi(e) > 0; }
     /* the share of the depth target the scene drew */
-    if (fg.in_gbuffer && tw && th) { fg.view[0] = w / (float)tw; fg.view[1] = h / (float)th; }
+    if (fg.in_gbuffer && tw && th) { fg.view[0] = w / (float)tw; fg.view[1] = h / (float)th; fg.view_off[0] = x / (float)tw; fg.view_off[1] = y / (float)th; }
     if (dynres.on && tw >= 1024 && w * h > dynres.w * dynres.h) { dynres.w = w; dynres.h = h; dynres.tw = tw; dynres.th = th; }
 }
 static void dynres_frame(void) {
@@ -1056,6 +1068,27 @@ static void dynres_frame(void) {
 }
 static void taa_frame_end(void);
 #include "nvn_vulkan_fgfill.inc"
+static void fill_eval(const tex_t *t, const int crop[4]) {
+    fg_eval_poll();
+    uint32_t sw = crop && crop[2] > 0 ? (uint32_t)crop[2] : t->d.width, sh = crop && crop[3] > 0 ? (uint32_t)crop[3] : t->d.height;
+    if ((crop && (crop[0] || crop[1])) || fg.menu || fg_menu_frame() || !fill.valid || fill.w != sw || fill.h != sh) return;
+    image_entry *truth = fg_scene(sw, sh, 0); int slot = -1;
+    for (int i = 0; i < 32; i++) if (!ev.ring[i].busy) { slot = i; break; }
+    if (!truth || slot < 0) return;
+    fill_no_hud = 1; image_entry *gen = fill_make(2.0); fill_no_hud = 0;
+    if (!gen) return;
+    if (async_recording_owned) mtl_sub_commit();
+    mtl_sub_begin(); async_current->gen = 1;
+    fg_eval_pipeline();
+    fg_image(&ev.diff, VK_FORMAT_R8G8B8A8_UNORM, sw, sh, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    fg_eval_compare(gen, truth, sw, sh, slot);
+    ev.ring[slot].variant = 0;
+    ev.ring[slot].ticket = mtl_sub_commit();
+    ev.made++;
+    if (ev.dump_every > 0 && ev.made % (uint64_t)ev.dump_every == 0) {
+        fg_dump_image(gen, sw, sh, "eval-generated"); fg_dump_image(truth, sw, sh, "eval-real"); fg_dump_image(&ev.diff, sw, sh, "eval-error");
+    }
+}
 static void fg_frame_end(const tex_t *t, const int crop[4]) {
     /* fill mode keeps this frame's object motion: mo_frame below starts the next frame's */
     image_entry *motion = fg_fill && fg.on > 0 ? mo_image() : NULL;
@@ -1080,7 +1113,7 @@ static void fg_frame_end(const tex_t *t, const int crop[4]) {
     if (fg.scene_done) fg.cur ^= 1;
     /* no scene this frame (no UI drawn): the older one is not the previous frame's */
     else fg.scene_valid[fg.cur ^ 1] = 0;
-    fg.view[0] = fg.view[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0; fg.place_seen = 0;
+    fg.view[0] = fg.view[1] = 0; fg.view_off[0] = fg.view_off[1] = 0; fg.scene_done = 0; fg.aa_done = 0; fg.last_c0_img = NULL; fg.cam_ok = 0; fg.depth = NULL; fg.gbuffer = NULL; fg.want_cam = 0; fg.in_gbuffer = 0; fg.gdraws = 0; fg.place_seen = 0;
     if (fg.frames && !(fg.frames % 300)) {
         /* the GPU time of a generated picture over the last 300 game frames */
         static double gen_ns; static uint64_t gen_made; double per = fg.made > gen_made ? (fg_gen_gpu_ns - gen_ns) / (double)(fg.made - gen_made) / 1e6 : 0;

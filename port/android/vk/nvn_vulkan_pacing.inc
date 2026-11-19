@@ -33,6 +33,10 @@ static int64_t pace_desired = -1;
 static uint64_t pace_submit[64];
 /* by present id % 64: the command buffer that draws it, and when the GPU finished it (0 not known) */
 static uint64_t pace_ticket[64], pace_done[64];
+/* by present id % 64: the planned screen time (0 unplanned), whether it is a game frame's own picture, and the cap's slots
+   its game frame holds (the fill controller's samples) */
+static uint64_t pace_target[64]; static uint8_t pace_real[64], pace_slots[64];
+static void fill_adapt_sample(uint64_t done, uint64_t target, int slots);
 /* by command buffer ticket % 1024, from the completion thread (nvn_vulkan_async.inc) */
 static _Atomic uint64_t pace_fence_ticket[1024], pace_fence_ns[1024];
 static void pace_fence_passed(uint64_t ticket, uint64_t ns) { atomic_store(&pace_fence_ns[ticket % 1024], ns); atomic_store(&pace_fence_ticket[ticket % 1024], ticket); }
@@ -96,6 +100,7 @@ static void pace_learn(void) {
         if (seen < ticket) break;
         pace_done[id % 64] = 0;
         if (seen == ticket) { uint64_t done = atomic_load(&pace_fence_ns[ticket % 1024]), submit = pace_submit[id % 64]; pace_done[id % 64] = done;
+            if (pace_real[id % 64] && pace_target[id % 64]) fill_adapt_sample(done, pace_target[id % 64], pace_slots[id % 64]);
             if (totk_tl_at) totk_tl_at(TL_READY, done, id, atomic_load(&pace_fence_ticket[(ticket - 1) % 1024]) == ticket - 1 ? atomic_load(&pace_fence_ns[(ticket - 1) % 1024]) : 0);
             uint64_t g = done > submit ? done - submit : 0; if (g > 100000000) g = 100000000;
             /* quick to rise, slow to fall: the slow frames are the ones that drop pictures */
@@ -171,7 +176,11 @@ static void pace_plan(int generated, double game_ms, int64_t *desired) {
        at a steady frame rate, seconds ahead, past the times the compositor honours */
     uint64_t after_last = pace_last_target ? pace_grid_round(pace_last_target + pace_refresh) : 0;
     if (after_last > earliest) earliest = after_last;
-    if (!generated && !fg_fill) { desired[0] = 0; pace_last_target = earliest; return; }
+    /* A frame without generated pictures is planned on the cap's grid like the others (TOTK_PACE_PLAIN=0: presented as
+       soon as it is ready). At 60 on 120 Hz the ready moment of an on-time frame falls near a refresh edge, and
+       unplanned, ~6% of pictures stayed 3 refreshes or 1 instead of 2 in a full-speed pan (Odin, game late 0.08%). */
+    static int plain = -1; if (plain < 0) { const char *e = getenv("TOTK_PACE_PLAIN"); plain = !(e && !strcmp(e, "0")); if (!plain) LOG("[pacing] frames without generated pictures presented when ready (TOTK_PACE_PLAIN=0)"); }
+    if (!generated && !fg_fill && !plain) { desired[0] = 0; pace_last_target = earliest; return; }
     uint64_t step = (uint64_t)(game_ms * 1e6 / (generated + 1)); if (step < pace_refresh) step = pace_refresh;
     uint64_t t = pace_last_target ? pace_grid_round(pace_last_target + step) : earliest;
     pace_frames++; if (t < earliest) { t = earliest; pace_late++; }
@@ -184,6 +193,18 @@ static void pace_plan(int generated, double game_ms, int64_t *desired) {
     static int pace_float = -1; if (pace_float < 0) { const char *e = getenv("TOTK_PACE_FLOAT"); pace_float = e && atoi(e) >= 0 ? atoi(e) : 1; }
     uint64_t room = (uint64_t)pace_float * pace_refresh < step ? (uint64_t)pace_float * pace_refresh : step;
     if (t > pace_grid_round(soonest + room)) t = pace_grid_round(soonest + room);
+    /* Fill plans its pictures a lead ahead, so the frame after one is always "ahead" of the soonest refresh: pulled back by
+       the room above, it lands a refresh after that picture, which stays on screen half its slot (Odin, fill at 45 real:
+       229 of 4200 pictures one refresh; a bound of one step instead of four, 3%). In fill mode a frame takes the slot
+       after the last picture's, unless that slot is more than TOTK_PACE_AFTER steps (diagnostic, default 4) after the
+       soonest refresh: only after fill pictures and the frames put after them, 0.7-2.2% of pictures were one refresh.
+       Not without fill: at a frame rate equal to the screen's nothing else ever shortens a plan that got ahead, and the
+       queue stayed that deep (Odin, FG off at 60: 86-100 ms stick to screen, 71 without). */
+    static int after_steps = -1; if (after_steps < 0) { const char *e = getenv("TOTK_PACE_AFTER"); after_steps = e && atoi(e) >= 0 ? atoi(e) : 4; }
+    if (fg_fill && pace_last_target && after_steps) {
+        uint64_t after = pace_grid_round(pace_last_target + step);
+        if (t < after && after <= pace_grid_round(soonest + (uint64_t)after_steps * step)) t = after;
+    }
     for (int i = 0; i <= generated; i++) {
         if (i) { uint64_t next = pace_grid_round(t + step); t = next < t + pace_refresh ? t + pace_refresh : next; }
         /* half a refresh early: that refresh */
