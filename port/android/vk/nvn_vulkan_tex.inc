@@ -484,8 +484,9 @@ static void image_gpu_written(image_entry *e) {
         if(said++<2000)LOG("[vulkan-watch] frame %llu GPU write serial %llu fmt %#x %ux%u lv%u by %s (site libtotk+%#lx)",(unsigned long long)presents,(unsigned long long)t->serial,t->d.format,t->d.width,t->d.height,t->d.levels,
             gpu_write_shaders?gpu_write_shaders:"-",dladdr(ret,&info)&&info.dli_fbase?(unsigned long)((uintptr_t)ret-(uintptr_t)info.dli_fbase):0ul);
         /* TOTK_VK_WATCH_FREEZE=1 (or =<shader key>): the first draw into it (by that shader) requests a freeze-frame (frz.sh) */
-        static int froze;const char *fz=getenv("TOTK_VK_WATCH_FREEZE"),*dir=getenv("TOTK_FILES_DIR");
-        if(!froze&&gpu_write_shaders&&fz&&*fz&&strcmp(fz,"0")&&(!strcmp(fz,"1")||strstr(gpu_write_shaders,fz))&&dir){froze=1;char path[600];snprintf(path,sizeof path,"%s/freeze",dir);FILE *f=fopen(path,"w");if(f)fclose(f);LOG("[vulkan-watch] freeze requested");}} }
+        /* TOTK_VK_WATCH_FREEZE_AT=<n>: at the n-th such draw instead of the first (a frame that holds the burst) */
+        static int froze;static unsigned hits;const char *fz=getenv("TOTK_VK_WATCH_FREEZE"),*dir=getenv("TOTK_FILES_DIR"),*fat=getenv("TOTK_VK_WATCH_FREEZE_AT");
+        if(!froze&&gpu_write_shaders&&fz&&*fz&&strcmp(fz,"0")&&(!strcmp(fz,"1")||strstr(gpu_write_shaders,fz))&&dir&&++hits>=(unsigned)(fat?atoi(fat):1)){froze=1;char path[600];snprintf(path,sizeof path,"%s/freeze",dir);FILE *f=fopen(path,"w");if(f)fclose(f);LOG("[vulkan-watch] freeze requested");}} }
     // Existing baselines represent CPU versions actually read; repeated GPU marking cannot consume unread CPU changes.
     if(t->has_layout&&t->mem&&!e->source_valid){nvn_dirty_protect(t->mem,t->L.size);image_source_baseline(e,t->mem,nvn_dirty_now());}
     TRACEIMG(&e->texture,"GPU write (entry %llu) by %s",(unsigned long long)e->serial,gpu_write_shaders?gpu_write_shaders:"-");

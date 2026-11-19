@@ -529,7 +529,7 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
         if(bytes>UINTPTR_MAX-indexed->ibuf)die("Vulkan draw index range overflow");
         // Reacquire after any vertex-dependency flush rather than retaining the preflight handle.
         vk_buffer raw={0};uint32_t maximum=0;
-        if(inplace_on()){if(size!=1&&!quad_primitive(indexed->prim)){VkBuffer pool=zc_buffer_at(indexed->ibuf,bytes,&index_off);if(pool){raw.buffer=pool;index_in_place=1;inplace_index++;}else{inplace_fallback++;inplace_why[IF_INDEX_POOL]++;inplace_classify(indexed->ibuf,bytes);}}else{inplace_fallback++;inplace_why[IF_INDEX_KIND]++;}}
+        if(inplace_on()&&(inplace_kinds&2)){if(size!=1&&!quad_primitive(indexed->prim)){VkBuffer pool=zc_buffer_at(indexed->ibuf,bytes,&index_off);if(pool){raw.buffer=pool;index_in_place=1;inplace_index++;}else{inplace_fallback++;inplace_why[IF_INDEX_POOL]++;inplace_classify(indexed->ibuf,bytes);}}else{inplace_fallback++;inplace_why[IF_INDEX_KIND]++;}}
         if(!index_in_place&&!index_stash_take(indexed,bytes,&raw,&maximum)){raw=snapshot_buffer(indexed->ibuf,bytes);maximum=index_buffer_maximum(raw,size);}vk_buffer indices=raw;
         if(quad_primitive(indexed->prim)){post_op *p=post_new(3);p->source=buffer_create((uint64_t)quad_index_bound(indexed->prim,indexed->count)*4+4);
             index_count=quad_indices((uint32_t*)p->source.mapped,indexed->prim,raw.mapped,size,indexed->count);indices=p->source;
@@ -553,7 +553,7 @@ static void draw_graphics_inner(const p_draw *draw,const p_draw_idx *indexed,con
     for(unsigned i=0;i<16;i++)if(stream_used[i]){const vs_st *s=&state.streams[i];if(s->divisor>1)die("Vulkan vertex divisor %u pending",s->divisor);streams[nstream++]=(VkVertexInputBindingDescription){i,s->stride,s->divisor?VK_VERTEX_INPUT_RATE_INSTANCE:VK_VERTEX_INPUT_RATE_VERTEX};}
     primitive=topology(draw?draw->prim:indexed->prim);}
     for(unsigned i=0;i<16;i++)if(stream_used[i]){const vs_st *s=&state.streams[i];const NVNbufferRange *v=&state.vertices[i];if(!v->address||!v->size)die("Vulkan missing vertex buffer %u",i);
-        if(inplace_on()){uint64_t off;VkBuffer pool=zc_buffer_at(v->address,1,&off);if(pool){vertex_buffers[i]=pool;offsets[i]=off;inplace_vbuf++;continue;}inplace_fallback++;inplace_why[IF_VBUF_POOL]++;inplace_classify(v->address,v->size);}
+        if(inplace_on()&&(inplace_kinds&1)){uint64_t off;VkBuffer pool=zc_buffer_at(v->address,1,&off);if(pool){vertex_buffers[i]=pool;offsets[i]=off;inplace_vbuf++;continue;}inplace_fallback++;inplace_why[IF_VBUF_POOL]++;inplace_classify(v->address,v->size);}
         /* instance streams: up to the last instance (copying instance 0 only would leave particles reading garbage) */
         uint64_t element=s->divisor?draw_last_instance(draw,indexed):(uint64_t)highest; uint64_t needed=index_in_place?v->size:element*s->stride+attribute_end[i];if(needed>v->size)needed=v->size;static fwd_memo vertex_memo[16];VkDescriptorBufferInfo fetched=forward_readonly_buffer_m(&vertex_memo[i],v->address,needed,1,VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);vertex_buffers[i]=fetched.buffer;offsets[i]=fetched.offset;}
     // NVN permits reversed or constant ranges, as does Vulkan; state initialization supplies the 0..1 default.

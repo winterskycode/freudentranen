@@ -203,11 +203,15 @@ static int inplace_state = -1; static uint64_t inplace_keep[32]; static unsigned
    completion-time probe (TOTK_VK_INPLACE=2) finds blocks the game rewrites before the GPU is done with them (256- and
    672-byte per-object blocks, up to 13 a frame in bursts). Vertex, index and storage buffers have no capture: in place. */
 static int inplace_ubo_on = 0;
+/* TOTK_VK_INPLACE_KINDS=<mask> (diagnostic): in place only for 1 vertex, 2 index, 4 storage-write buffers (default all);
+   storage reached through a pointer in a constant buffer stays in place either way */
+static int inplace_kinds = 7;
 static int inplace_init(void) {
     const char *e = getenv("TOTK_VK_INPLACE"); inplace_state = e && atoi(e) == 2 ? 2 : !(e && atoi(e) == 0);
     /* the default list: the uniform probe's early-reuse blocks */
     const char *k = getenv("TOTK_VK_INPLACE_KEEP"); if (!k) k = "3a4a76000,3a4a76400,3a876f000";
     { const char *u = getenv("TOTK_VK_INPLACE_UBO"); inplace_ubo_on = u && atoi(u) > 0; }
+    { const char *m = getenv("TOTK_VK_INPLACE_KINDS"); if (m) { inplace_kinds = (int)strtol(m, NULL, 0); LOG("[vulkan-inplace] kinds %#x (TOTK_VK_INPLACE_KINDS)", inplace_kinds); } }
     while (k && *k && inplace_nkeep < 32) { inplace_keep[inplace_nkeep++] = strtoull(k, (char **)&k, 16); if (*k == ',') k++; else break; }
     if (inplace_state) LOG("[vulkan-inplace] on: buffers bound in place from the zero-copy pools (%u blocks kept on the capture path)", inplace_nkeep);
     return inplace_state;
@@ -1766,8 +1770,10 @@ static vk_buffer snapshot_buffer(uintptr_t address,uint64_t size) {
     snapshot_last_cached=0;
     // Cache only read-only snapshots in registered pools; dirty pages, pending copies and pool destruction invalidate them.
     // Keep this short-circuit order and these query counts; diagnostics never infer rejection from unexecuted later gates.
-    int limit_ok,pool_ok=-1,tracked_ok=-1,pending=-1;
-    int cache=(limit_ok=size<=(64u<<20))&&(pool_ok=mtl_addr(address,size,NULL,NULL))&&(tracked_ok=nvn_dirty_tracked((void*)address,size))&&!(pending=snapshot_pending(address,size));
+    int limit_ok=0,pool_ok=-1,tracked_ok=-1,pending=-1;
+    /* TOTK_VK_READ_CACHE=0 (diagnostic): every snapshot read fresh */
+    static int read_cache_on=-1;if(read_cache_on<0){const char *e=getenv("TOTK_VK_READ_CACHE");read_cache_on=!(e&&!strcmp(e,"0"));if(!read_cache_on)LOG("[vulkan] read cache off (TOTK_VK_READ_CACHE=0)");}
+    int cache=read_cache_on&&(limit_ok=size<=(64u<<20))&&(pool_ok=mtl_addr(address,size,NULL,NULL))&&(tracked_ok=nvn_dirty_tracked((void*)address,size))&&!(pending=snapshot_pending(address,size));
     unsigned reason=!limit_ok?SNAP_DIAG_LIMIT:!pool_ok?SNAP_DIAG_POOL:!tracked_ok?SNAP_DIAG_UNTRACKED:pending>0?SNAP_DIAG_PENDING:SNAP_DIAG_NO_ENTRY;
     snapshot_diag_row *row=snapshot_diag_current;int old_entry=0;
     unsigned bucket=read_bucket(address,size);
