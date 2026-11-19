@@ -10,6 +10,8 @@ final class Game {
     static final String DATA = "/sdcard/tok/" + KEY;
     static final String TITLE = BOTW ? "Breath of the Wild" : "Tears of the Kingdom";
     static final String VERSION = BOTW ? "1.6.0" : "1.4.3";
+    /* stamped by build_apk.sh: the optimisations libtotk.so was built with ("PGO + ThinLTO"), empty for a plain build */
+    static final String BUILD = "";
     /** romfs.bin's size: the merged RomFS of the update over the base game (MacNativeGames scripts/extract_romfs.py) */
     static final long ROMFS_SIZE = BOTW ? 15131979952L : 17052625232L;
     static final boolean MODS = !BOTW;

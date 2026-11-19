@@ -22,6 +22,12 @@ rm -rf $OUT/stage && mkdir -p $OUT/stage/classes $OUT/stage/lib/arm64-v8a
 mkdir -p $OUT/stage/java && cp -r $APP/java/. $OUT/stage/java/
 sed -i "s|static final String KEY = \"v143\";|static final String KEY = \"$V\";|" $OUT/stage/java/dev/tok/totk/Game.java
 grep -q "KEY = \"$V\";" $OUT/stage/java/dev/tok/totk/Game.java || { echo "Game.java KEY not stamped" >&2; exit 1; }
+# the launcher's header names the optimisations libtotk.so was built with (the build folder's TOTK_PGO and TOTK_LTO)
+PGO=$(sed -n 's/^TOTK_PGO:STRING=//p' $B/CMakeCache.txt 2>/dev/null); LTO=$(sed -n 's/^TOTK_LTO:BOOL=//p' $B/CMakeCache.txt 2>/dev/null)
+case $PGO in "") FLAVOUR= ;; generate) FLAVOUR="PGO profiling" ;; *) FLAVOUR=PGO ;; esac
+case $LTO in ON|on|TRUE|true|1) FLAVOUR="${FLAVOUR:+$FLAVOUR + }ThinLTO" ;; esac
+sed -i "s|static final String BUILD = \"\";|static final String BUILD = \"$FLAVOUR\";|" $OUT/stage/java/dev/tok/totk/Game.java
+grep -q "BUILD = \"$FLAVOUR\";" $OUT/stage/java/dev/tok/totk/Game.java || { echo "Game.java BUILD not stamped" >&2; exit 1; }
 javac -Xlint:all -Xlint:-options -source 11 -target 11 -classpath $JAR -d $OUT/stage/classes $(find $OUT/stage/java -name '*.java')
 $BT/d8 --min-api 33 --lib $JAR --output $OUT/stage $(find $OUT/stage/classes -name '*.class')
 # unstripped copy stays in the build folder

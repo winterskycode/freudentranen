@@ -151,6 +151,20 @@ static char data_root[512], rewritten_dir[600];
 static void *game_thread(void *arg) {
     (void)arg;
     char *argv[] = {"totk", rewritten_dir, "boot", NULL};
+    /* how libtotk.so was built (CMakeLists.txt TOTK_PGO, TOTK_LTO): the launcher's header says the same (build_apk.sh) */
+#if defined(TOTK_PGO_GENERATE)
+    const char *pgo = "profiling (instrumented)";
+#elif defined(TOTK_PGO_USE)
+    const char *pgo = "on";
+#else
+    const char *pgo = "off";
+#endif
+#if defined(TOTK_LTO_ON)
+    const char *lto = "on";
+#else
+    const char *lto = "off";
+#endif
+    fprintf(stderr, "[android] build: PGO %s, ThinLTO %s\n", pgo, lto);
     fprintf(stderr, "[android] game thread: %s boot\n", rewritten_dir);
     int r = main(3, argv);
     fprintf(stderr, "[android] game main returned %d\n", r);

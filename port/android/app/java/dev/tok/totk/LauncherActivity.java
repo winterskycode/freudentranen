@@ -296,7 +296,7 @@ public class LauncherActivity extends Activity {
             c.drawLine(gx, gy - Ui.u(15), gx, gy - Ui.u(10), ring); c.drawLine(gx, gy + Ui.u(10), gx, gy + Ui.u(15), ring);
             c.drawLine(gx - Ui.u(15), gy, gx - Ui.u(10), gy, ring); c.drawLine(gx + Ui.u(10), gy, gx + Ui.u(15), gy, ring);
             Paint cap = Ui.text(Ui.body, 13, Ui.MUTED); cap.setLetterSpacing(0.22f);
-            Ui.centred(c, "NATIVE ANDROID PORT · " + Game.VERSION, Ui.u(72 + 46), gy, cap);
+            Ui.centred(c, "NATIVE ANDROID PORT · " + Game.VERSION + (Game.BUILD.isEmpty() ? "" : " · " + Game.BUILD), Ui.u(72 + 46), gy, cap);
             Paint title = Ui.text(Ui.title, 50, Ui.CREAM);
             c.drawText(Game.TITLE, Ui.u(72), Ui.u(64 + 34 + 14 + 44), title);
             Ui.ornament(c, Ui.u(72), Ui.u(64 + 34 + 14 + 62), Ui.u(360));
