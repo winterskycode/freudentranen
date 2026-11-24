@@ -77,3 +77,13 @@ __attribute__((weak)) void *mtl_qo_state_save(void) { return NULL; }
 __attribute__((weak)) void mtl_qo_state_restore(void *p) { (void)p; }
 __attribute__((weak)) void *mtl_ucap_overlay(const void *base, const void *over) { (void)base; (void)over; return NULL; }
 __attribute__((weak)) void mtl_sub_snapshot_ubos_rest(const uint64_t *h, int n, int ncur, uint64_t top, void *cap) { (void)h; (void)n; (void)ncur; (void)top; (void)cap; }
+/* the same since upstream 7c5026cb: the frame record's counters of the Metal renderer, the display link's pacing of a
+   present (no display link here), and the cutscene switch of the MetalFX interpolation. */
+__attribute__((weak)) uint64_t mtl_shader_scan_ns_take(void) { return 0; }
+__attribute__((weak)) int mtl_present_diag(uint64_t n, double *t_in, double *tick, double *target, double *blit_end, int *merged) { (void)n; (void)t_in; (void)tick; (void)target; (void)blit_end; (void)merged; return 0; }
+__attribute__((weak)) void mtl_pool_gen_stats(uint64_t out[9]) { for (int i = 0; i < 9; i++) out[i] = 0; }
+__attribute__((weak)) void mtl_pend_overlay_stats(uint64_t v[8]) { for (int i = 0; i < 8; i++) v[i] = 0; }
+__attribute__((weak)) void mtl_par_open_stats(uint64_t *n, uint64_t *ns) { *n = *ns = 0; }
+__attribute__((weak)) void mtl_migrate_stats(uint64_t *n, uint64_t *rows, uint64_t *bytes, uint64_t *ns) { *n = *rows = *bytes = *ns = 0; }
+__attribute__((weak)) void mfx_cutscene(int on) { (void)on; }
+__attribute__((weak)) void runtime_front_hud_shot(const char *path) { (void)path; fprintf(stderr, "hud shot: Mac only\n"); }

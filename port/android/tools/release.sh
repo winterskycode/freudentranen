@@ -64,7 +64,7 @@ S=$ROOT/work/release-source; N=totk-$TAG-source; rm -rf "$S"; mkdir -p "$S/$N/up
 git -C "$ROOT" archive --prefix=totk/ HEAD | tar -x -C "$S/$N"
 # the parts of MacNativeGames the build uses
 MNG=$(sed -n 's/^COMMIT=//p' "$ROOT/port/setup.sh")
-git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor zeldaVR/gfx zeldaVR/runtime |
+git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor zeldaVR/gfx zeldaVR/runtime shared |
   tar -x -C "$S/$N"
 # games/totk links to folders outside itself: each must be in the archive
 DANGLING=$(find "$S/$N/upstream/MacNativeGames" -xtype l)
