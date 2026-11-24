@@ -183,6 +183,7 @@ static void pipeline_disk_prune(void) {
     closedir(d);
     if(removed)LOG("[vulkan-pipeline-cache] pruned %u old caches (%.0f MB)",removed,bytes/1048576.0);
 }
+static int int_fold_enabled(void);
 static void pipeline_cache_initialize(const VkPhysicalDeviceProperties *properties) {
     pipeline_disk_properties=*properties;
     const char *directory=getenv("DM_VK_PIPELINE_CACHE_DIR");
@@ -204,6 +205,8 @@ static void pipeline_cache_initialize(const VkPhysicalDeviceProperties *properti
     dm_android_sha256_update(&digest,vk_api.driver_name,(uint32_t)strlen(vk_api.driver_name));
 #endif
     const char *profile=getenv("DM_VK_SHADERS");if(profile)dm_android_sha256_update(&digest,profile,(uint32_t)strlen(profile));
+    /* folded shaders compile to other pipelines: an older cache would only carry dead entries */
+    if(int_fold_enabled()){const char fold[]="int-fold-v1";dm_android_sha256_update(&digest,fold,sizeof fold);}
     shader_variant_identity(&digest);dm_android_sha256_final(pipeline_disk_identity,&digest);
     for(unsigned i=0;i<32;i++)snprintf(pipeline_disk_name+2*i,3,"%02x",pipeline_disk_identity[i]);strcpy(pipeline_disk_name+64,".bin");
     size_t size=0;void *data=pipeline_disk_load(&size);VkPipelineCacheCreateInfo info={.sType=VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,.initialDataSize=size,.pInitialData=data};

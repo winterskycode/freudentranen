@@ -3,6 +3,7 @@ typedef struct { uint32_t kind,binding,slot,cb_slot,cb_offset,handle,type,count,
 typedef struct { VkDescriptorType type; uint32_t offset; int storage_slot,uniform_pointer,dynamic_index; int cb_pointer,cb_pointer_offset; } shader_binding_plan;
 
 #include "nvn_vulkan_spirv_link.inc"
+#include "nvn_vulkan_int_fold.inc"
 /* per-binding memos of the last draw's answers (nvn_vulkan_binding_cache.inc, nvn_vulkan_forward_bind.inc) */
 /* the submit capture's range holding this binding's block */
 typedef struct { uint64_t address, serial; int index; } ucap_memo_entry;
@@ -248,6 +249,8 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     if(s->stage==1){size_t mb;void *marker=read_shader_file_opt(key,"early",&mb);
         if(marker){free(marker);size_t pw;uint32_t *patched=spirv_add_early_tests(code,bytes/4,&pw);if(patched){free(code);code=patched;bytes=pw*4;}s->early_tests=1;}}
     if(gpl_state>0&&s->stage==1)spirv_own_set(code,bytes/4,s->set);
+    spirv_uniform_extents(s,code,bytes/4);
+    shader_int_fold(code,bytes/4);
     VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=bytes,.pCode=code};VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&s->module));shaderstats_note_module(s->module,s->key);
     /* the module's identity for a driver-side list (TOTK_FP16_SKIP) */
     { static int on=-1;if(on<0){const char *x=getenv("TOTK_VK_SPVID");on=x&&atoi(x);}
@@ -256,7 +259,6 @@ static shader_entry *shader_load_by_key(const char *key,int stats,int fatal) {
     if(s->stage==0||s->stage==1)s->io_mask=spirv_io_scan(code,bytes/4,s->stage==0?SPV_STORAGE_OUTPUT:SPV_STORAGE_INPUT,s->io);
     /* render targets the shader writes */
     if(s->stage==1){spirv_io outs[32];s->frag_out_mask=spirv_io_scan(code,bytes/4,SPV_STORAGE_OUTPUT,outs);}
-    spirv_uniform_extents(s,code,bytes/4);
     { static unsigned logged;if(logged<40)for(unsigned i=0;i<s->count;i++)if(s->ubo_bytes&&s->bindings[i].kind!=0&&s->bindings[i].slot>=3&&s->bindings[i].slot<19&&logged++<40)LOG("[ubo-extent] %s binding %u slot %u: %u bytes",key,s->bindings[i].binding,s->bindings[i].slot,s->ubo_bytes[i]); }
     if(s->stage==0){s->spirv=spv_keep(code,bytes);s->spirv_words=bytes/4;}else free(code);
     // Reflection lives with the shader; precompute only layout and indices, never dynamic resource addresses or scratch pointers.

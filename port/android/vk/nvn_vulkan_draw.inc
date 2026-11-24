@@ -148,6 +148,7 @@ static void shader_enable_early_tests(shader_entry *s) {
     size_t bytes;uint32_t *code=read_shader_file_opt(s->key,"spv",&bytes);if(!code)return;
     size_t words;uint32_t *patched=spirv_add_early_tests(code,bytes/4,&words);free(code);if(!patched)return;
     if(gpl_state>0)spirv_own_set(patched,words,s->set);
+    shader_int_fold(patched,words);
     VkShaderModuleCreateInfo mi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=words*4,.pCode=patched};VkShaderModule module;
     VK_CHECK(vkCreateShaderModule(device,&mi,&spv_callbacks,&module));free(patched);s->module=module;early_tests_shaders++;
     for(unsigned b=0;b<2048;b++)for(pipeline_entry **link=&graphics_pipelines[b];*link;){if((*link)->key.fs==s){*link=(*link)->next;early_tests_pipelines++;}else link=&(*link)->next;}
