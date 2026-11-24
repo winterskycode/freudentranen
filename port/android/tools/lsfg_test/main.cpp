@@ -15,11 +15,14 @@
 //     mode as the game uses it (a transfer writes one picture, LSFG copies it in). On Turnip (every build tried, Mesa
 //     26.2 to 27.0-devel, Adreno 830) 1, 2, 7 and 9 make LSFG's first stage compute a constant in a share of runs, which
 //     persists; Qualcomm's driver and RADV never do
+//   LSFG_TEST_TIME=n: after the frames above, n more timed on the GPU from before LSFG's first submission to after its
+//     last; the median, the mean and the 10th percentile are printed (copy-in mode, LSFG_TEST_REWRITE=9, is the game's)
 //   LSFG_TEST_DUMP=<dir>: every internal LSFG image after the last frame, to compare two runs stage by stage
 #include <volk.h>
 #include "lsfg_bridge.h"
 
 #include <dlfcn.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -181,6 +184,20 @@ static PFN_vkGetInstanceProcAddr hal_driver(const char *path) {
 static VkImage make_image(uint32_t w, uint32_t h);
 static VkImage source_dummy(uint32_t w, uint32_t h) { static VkImage dummy; if (!dummy) dummy = make_image(w, h); return dummy; }
 
+// A timestamp on the queue, outside LSFG's command buffers.
+static void stamp(VkQueryPool queries, uint32_t query, bool reset) {
+    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1};
+    VkCommandBuffer cb; CHECK(vkAllocateCommandBuffers(dev, &ai, &cb));
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO}; CHECK(vkBeginCommandBuffer(cb, &bi));
+    if (reset) vkCmdResetQueryPool(cb, queries, 0, 2);
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT};
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0, nullptr, 0, nullptr);
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queries, query);
+    CHECK(vkEndCommandBuffer(cb));
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO}; si.commandBufferCount = 1; si.pCommandBuffers = &cb;
+    CHECK(vkQueueSubmit(queue, 1, &si, VK_NULL_HANDLE));
+}
+
 static int env_int(const char *name, int fallback) { const char *e = std::getenv(name); return e ? std::atoi(e) : fallback; }
 
 int main(int argc, char **argv) {
@@ -212,7 +229,14 @@ int main(int argc, char **argv) {
     float priority = 1;
     VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO}; qi.queueFamilyIndex = 0; qi.queueCount = 1; qi.pQueuePriorities = &priority;
     const char *exts[] = {VK_EXT_ROBUSTNESS_2_EXTENSION_NAME};
-    VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &memory_model}; dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qi;
+    // the 16-bit shaders of Lossless.dll
+    VkPhysicalDeviceShaderFloat16Int8Features float16{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES};
+    { VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &float16}; vkGetPhysicalDeviceFeatures2(phys, &query); }
+    std::printf("shaderFloat16: %u\n", float16.shaderFloat16); float16.shaderInt8 = VK_FALSE; float16.pNext = &memory_model;
+    VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &float16};
+    VkPhysicalDeviceFeatures have; vkGetPhysicalDeviceFeatures(phys, &have);
+    VkPhysicalDeviceFeatures enable{}; enable.shaderStorageImageExtendedFormats = have.shaderStorageImageExtendedFormats;
+    enable.shaderStorageImageWriteWithoutFormat = have.shaderStorageImageWriteWithoutFormat; dci.pEnabledFeatures = &enable; dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qi;
     dci.enabledExtensionCount = 1; dci.ppEnabledExtensionNames = exts;
     CHECK(vkCreateDevice(phys, &dci, nullptr, &dev));
     volkLoadDevice(dev);
@@ -257,6 +281,22 @@ int main(int argc, char **argv) {
         if (i + 1 == env_int("LSFG_TEST_STOP", 0)) break;
     }
     CHECK(vkQueueWaitIdle(queue));
+    if (int timed = env_int("LSFG_TEST_TIME", 0)) {
+        VkQueryPoolCreateInfo qpi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO}; qpi.queryType = VK_QUERY_TYPE_TIMESTAMP; qpi.queryCount = 2;
+        VkQueryPool queries; CHECK(vkCreateQueryPool(dev, &qpi, nullptr, &queries));
+        std::vector<double> ms;
+        for (int i = 0; i < timed; i++) {
+            stamp(queries, 0, true);
+            if (lsfg_bridge_present(ctx) < 0) return 1;
+            stamp(queries, 1, false);
+            CHECK(vkQueueWaitIdle(queue)); CHECK(vkResetCommandPool(dev, pool, 0));
+            uint64_t t[2]; CHECK(vkGetQueryPoolResults(dev, queries, 0, 2, sizeof t, t, 8, VK_QUERY_RESULT_64_BIT));
+            // the first third warms the clocks up
+            if (i >= timed / 3) ms.push_back((double)(t[1] - t[0]) * props2.properties.limits.timestampPeriod / 1e6);
+        }
+        std::sort(ms.begin(), ms.end()); double sum = 0; for (double x : ms) sum += x;
+        std::printf("LSFG GPU time a frame: median %.3f ms, mean %.3f, 10%% %.3f (%zu frames)\n", ms[ms.size() / 2], sum / ms.size(), ms[ms.size() / 10], ms.size());
+    }
 
     if (const char *dump = std::getenv("LSFG_TEST_DUMP")) std::printf("%d internal images dumped to %s\n", lsfg_debug_dump_images(dump), dump);
     transfer(out, staging, w, h, false, false);
