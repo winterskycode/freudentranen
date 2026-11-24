@@ -64,8 +64,11 @@ S=$ROOT/work/release-source; N=totk-$TAG-source; rm -rf "$S"; mkdir -p "$S/$N/up
 git -C "$ROOT" archive --prefix=totk/ HEAD | tar -x -C "$S/$N"
 # the parts of MacNativeGames the build uses
 MNG=$(sed -n 's/^COMMIT=//p' "$ROOT/port/setup.sh")
-git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor |
+git -C "$ROOT/MacNativeGames" archive --prefix=upstream/MacNativeGames/ "$MNG" LICENSE README.md THIRD_PARTY_NOTICES.md games/totk vendor zeldaVR/gfx zeldaVR/runtime |
   tar -x -C "$S/$N"
+# games/totk links to folders outside itself: each must be in the archive
+DANGLING=$(find "$S/$N/upstream/MacNativeGames" -xtype l)
+[ -z "$DANGLING" ] || { echo "the source archive lacks what these links point to: $DANGLING" >&2; exit 1; }
 # the commit of the base the build used (build_turnip.sh: one COMMIT= line per TURNIP_BASE, gen8 by default)
 MESA=$(sed -n "s/^ *${TURNIP_BASE:-gen8}) COMMIT=\([0-9a-f]*\).*/\1/p" "$T/build_turnip.sh")
 [ -n "$MESA" ] || { echo "no Mesa commit for TURNIP_BASE=${TURNIP_BASE:-gen8} in build_turnip.sh" >&2; exit 1; }
