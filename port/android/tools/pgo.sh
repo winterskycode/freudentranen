@@ -1,6 +1,6 @@
 #!/bin/bash
 # The profile release builds optimise libtotk.so with (pgo/totk.proftext; CMakeLists.txt TOTK_PGO, tools/release.sh):
-#   port/android/tools/pgo.sh        (the device: ANDROID_SERIAL; the 100% save of bench.py)
+#   port/android/tools/pgo.sh [bench.py options]   (the device: ANDROID_SERIAL; the 100% save of bench.py)
 # builds the instrumented library (TOTK_PGO=generate), installs it, flies the benchmark route once (host/pgo.c writes the
 # counters every 30 s after the first load), merges what the device wrote and stores it as text with this checkout's
 # path replaced by @PGO_ROOT@, so the file matches any checkout and holds no local path. A profile from older code still
@@ -14,7 +14,7 @@ cmake -G Ninja -S "$ROOT/port/android" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$NDK/buil
 TOTK_BUILD_DIR=$B sh "$T/build_apk.sh"
 adb install -r -d "$ROOT/work/android/v143/apk/totk.apk"
 adb shell 'run-as dev.tok.totk rm -rf files/pgo'
-python3 -I "$T/bench.py" --label pgo-collect
+python3 -I "$T/bench.py" --label pgo-collect "$@"
 mkdir -p "$W"
 adb exec-out run-as dev.tok.totk cat files/pgo/totk.profraw > "$W/totk.profraw"
 [ -s "$W/totk.profraw" ] || { echo "no profile on the device (files/pgo/totk.profraw)" >&2; exit 1; }
